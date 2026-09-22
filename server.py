@@ -1,5 +1,5 @@
 """L2 ONE: secure FastAPI/PostgreSQL application for Render."""
-import os, json, time, hashlib, secrets, re
+import os, json, time, hashlib, secrets, re, base64, gzip
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Header
@@ -43,8 +43,29 @@ def initialize():
             exists = con.execute('SELECT 1 FROM app_users WHERE username=%s',(user,)).fetchone()
             if not exists:
                 con.execute('INSERT INTO app_users(username,password_hash) VALUES(%s,%s)',(user,password_hash(password)))
-        # A carteira comercial é importada pela API autenticada após a publicação.
-        # Nenhum dado de cliente é armazenado no repositório de código.
+        # Importação inicial opcional por segredo do Render. O valor é gzip+base64,
+        # nunca fica no repositório, e só é aplicado enquanto a carteira estiver vazia.
+        initial_clients = os.getenv('L2_INITIAL_CLIENTS_B64', '')
+        has_clients = con.execute("SELECT 1 FROM entities WHERE kind='client' LIMIT 1").fetchone()
+        if initial_clients and not has_clients:
+            try:
+                decoded = gzip.decompress(base64.b64decode(initial_clients)).decode('utf-8')
+                clients = json.loads(decoded)
+                if not isinstance(clients, list) or len(clients) != 432:
+                    raise ValueError('A carga inicial deve conter 432 clientes.')
+                seen = set()
+                for client in clients:
+                    entity_id = client.get('id') if isinstance(client, dict) else None
+                    if not isinstance(entity_id, str) or not entity_id or entity_id in seen:
+                        raise ValueError('ID de cliente inválido ou duplicado.')
+                    if not isinstance(client.get('name'), str) or not client['name'].strip():
+                        raise ValueError('Nome de cliente obrigatório.')
+                    seen.add(entity_id)
+                    payload = dict(client)
+                    payload['updatedBy'] = 'importacao-inicial'
+                    con.execute('INSERT INTO entities(kind,id,payload) VALUES(%s,%s,%s)', ('client', entity_id, Jsonb(payload)))
+            except Exception as exc:
+                raise RuntimeError('Falha ao importar a carteira inicial protegida.') from exc
 
 @asynccontextmanager
 async def lifespan(app):
