@@ -163,8 +163,11 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
 
 @app.get('/health')
 def health():
-    with db() as con: con.execute('SELECT 1')
-    return {'status':'ok'}
+    with db() as con:
+        users = con.execute('SELECT count(*) FROM app_users WHERE active').fetchone()[0]
+        counts = {kind: con.execute('SELECT count(*) FROM entities WHERE kind=%s',(kind,)).fetchone()[0]
+                  for kind in ('client','visit','order','task','route','goal')}
+    return {'status':'ok', 'users':users, **counts}
 
 @app.middleware('http')
 async def security_headers(request, call_next):
