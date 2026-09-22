@@ -66,6 +66,18 @@ def initialize():
                     con.execute('INSERT INTO entities(kind,id,payload) VALUES(%s,%s,%s)', ('client', entity_id, Jsonb(payload)))
             except Exception as exc:
                 raise RuntimeError('Falha ao importar a carteira inicial protegida.') from exc
+        # Higienização regional: remove somente UF explicitamente fora de PA/AP.
+        # Cadastros sem UF são preservados para conferência, evitando perda indevida.
+        outside = con.execute("""
+            SELECT id FROM entities
+            WHERE kind='client'
+              AND trim(coalesce(payload->>'state','')) <> ''
+              AND upper(trim(payload->>'state')) NOT IN ('PA','PARA','PARÁ','AP','AMAPA','AMAPÁ')
+        """).fetchall()
+        for (client_id,) in outside:
+            con.execute("DELETE FROM entities WHERE kind='route' AND payload->>'clientId'=%s", (client_id,))
+            con.execute("DELETE FROM entities WHERE kind='client' AND id=%s", (client_id,))
+            con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES('sistema','client',%s,'delete-outside-pa-ap')", (client_id,))
 
 @asynccontextmanager
 async def lifespan(app):
@@ -130,6 +142,10 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 raise HTTPException(400, 'Alteração inválida')
             if kind == 'client' and (not isinstance(obj.get('name'),str) or not obj['name'].strip()):
                 raise HTTPException(400, 'Nome do cliente obrigatório')
+            if kind == 'client':
+                state = str(obj.get('state','')).strip().upper()
+                if state and state not in ('PA','PARA','PARÁ','AP','AMAPA','AMAPÁ'):
+                    raise HTTPException(400, 'A carteira aceita somente clientes do Pará e Amapá')
             if kind == 'order':
                 try: amount = float(obj.get('amount',0))
                 except (TypeError, ValueError): raise HTTPException(400,'Valor inválido')
