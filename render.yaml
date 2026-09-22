@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: l2-one
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: l2-one-db
+          property: connectionString
+      - key: L2_PASSWORD_1
+        sync: false
+      - key: L2_PASSWORD_2
+        sync: false
+      - key: L2_PASSWORD_3
+        sync: false
+      - key: L2_PASSWORD_4
+        sync: false
+databases:
+  - name: l2-one-db
+    plan: free
+    databaseName: l2one
+    user: l2one
