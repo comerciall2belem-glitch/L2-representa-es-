@@ -169,6 +169,26 @@ def health():
                   for kind in ('client','visit','order','task','route','goal')}
     return {'status':'ok', 'users':users, **counts}
 
+@app.post('/api/self-test')
+def self_test(authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    if user != 'Ana Paula':
+        raise HTTPException(403, 'Autoteste restrito à administradora')
+    sample = {
+        'visit': {'id':'self-test-visit','clientId':'self-test','date':'2026-01-01','notes':'teste transacional'},
+        'order': {'id':'self-test-order','clientId':'self-test','date':'2026-01-01','amount':1.0,'status':'Teste'},
+        'task': {'id':'self-test-task','title':'teste transacional','date':'2026-01-01','done':False},
+        'route': {'id':'self-test-route','date':'2026-01-01','clientIds':[]},
+        'goal': {'id':'self-test-goal','month':'2026-01','amount':1.0},
+    }
+    checks = {}
+    with db() as con:
+        for kind, payload in sample.items():
+            con.execute('INSERT INTO entities(kind,id,payload) VALUES(%s,%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,updated_at=now()', (kind,payload['id'],Jsonb(payload)))
+            checks[kind] = bool(con.execute('SELECT 1 FROM entities WHERE kind=%s AND id=%s',(kind,payload['id'])).fetchone())
+        con.rollback()
+    return {'status':'ok' if all(checks.values()) else 'failed', 'transactionRolledBack':True, 'checks':checks}
+
 @app.middleware('http')
 async def security_headers(request, call_next):
     response = await call_next(request)
