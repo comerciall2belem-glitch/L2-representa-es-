@@ -52,13 +52,1116 @@ if(tab==='config'){h=`<h2>Configuração e sincronização</h2><div class="box">
 $('app').innerHTML=h;let f=$('clientForm');if(f)f.onsubmit=saveClient;f=$('visitForm');if(f)f.onsubmit=saveVisit;f=$('taskForm');if(f)f.onsubmit=saveTask;f=$('goalForm');if(f)f.onsubmit=saveGoal;f=$('orderForm');if(f)f.onsubmit=saveOrder;f=$('priceImportForm');if(f)f.onsubmit=importPrices;f=$('recordForm');if(f)f.onsubmit=saveRecord;network()}
 
 const editableRecords={
- officeProcesses:{kind:'office_process',fields:['ID','Área','Processo','Objetivo/Entrega','Responsável','Frequência','Prazo/SLA','Prioridade','Status do processo']},
- officeActions:{kind:'office_action',fields:['ID','Demanda ou problema','Responsável','Prazo','Status','Observações']},
+ officeProcesses:{kind:'office_process',fields:['ID','Área','Macroprocesso','Processo','Objetivo/Entrega','Responsável','Substituto','Frequência','Prazo/SLA','Prioridade','Indicador','Meta/Padrão','Evidência obrigatória','Status do processo']},
+ officeActions:{kind:'office_action',fields:['ID','Data abertura','Área','Processo/ID','Demanda ou problema','Prioridade','Responsável','Prazo','Status','Causa raiz','Ação imediata','Próxima ação','Resultado esperado','Data conclusão','Evidência/Link','Dias em atraso','Atualizado por','Última atualização']},
  officeCommercial:{kind:'office_commercial',fields:['ID','Cliente','Marca','Demanda','Responsável','Prazo','Status','Observações']},
  officeAdministrative:{kind:'office_administrative',fields:['ID','Demanda','Responsável','Prazo','Status','Observações']},
- officeFinance:{kind:'office_finance',fields:['ID','Competência','Tipo','Categoria','Descrição','Vencimento','Valor','Situação','Responsável']},
- officeBudget:{kind:'office_budget',fields:['ID','Categoria','Descrição','Responsável','Orçado mensal','Realizado no mês']},
- officeMonthlyClose:{kind:'office_monthly_close',fields:['ID','Mês','Receitas recebidas','Despesas pagas','Resultado realizado','Status fechamento']}
+ officeFinance:{kind:'office_finance',fields:['ID','Competência','Data','Tipo','Categoria','Descrição','Marca/Indústria','Vencimento','Valor','Entrada','Saída','Situação','Responsável','Saldo acumulado','Comprovante/observação']},
+ officeBudget:{kind:'office_budget',fields:['ID','Categoria','Descrição','Responsável','Orçado mensal','Realizado no mês','Variação Rfunction renderRecordEditor(collection){
+ if(collection.startsWith('officeFin')||collection==='officeBudget'||collection==='officeMonthlyClose'){if(!financeAllowed())return ''}
+ const cfg=editableRecords[collection],rows=s[collection]||[];
+ const selected=rows.find(x=>x.id===window.recordEditId&&window.recordEditCollection===collection)||{};
+ const fields=cfg.fields.map(name=>{let type=['Valor','Entrada','Saída','Orçado mensal','Realizado no mês','Receitas previstas','Receitas recebidas','Despesas previstas','Despesas pagas','Resultado realizado','A receber','A pagar','Vencidos a receber','Faturamento comercial','Comissão apurada','Margem operacional','Variação R?'number':['Vencimento','Prazo','Data','Data abertura','Data conclusão'].includes(name)?'date':'text';return '<label>'+esc(name)+'<input name="'+esc(name)+'" type="'+type+'" '+(type==='number'?'step="0.01" min="0" ':'')+'value="'+esc(selected[name]??'')+'"></label>'}).join('');
+ return '<div class="box"><h3>'+(selected.id?'Editar registro':'Novo registro')+'</h3><p class="muted">As alterações ficam pendentes até a sincronização com a nuvem.</p><form id="recordForm" data-collection="'+collection+'"><div class="row">'+fields+'</div><button type="submit">Salvar alterações</button> <button type="button" class="secondary" onclick="clearRecordEditor()">Novo / limpar</button></form></div><div class="box"><h3>Registros existentes</h3>'+(rows.length?'<div class="scroll"><table><tr><th>Registro</th><th>Ação</th></tr>'+rows.map((x,i)=>'<tr><td>'+esc(x['Descrição']||x['Demanda ou problema']||x['Demanda']||x.Processo||x.Categoria||x['Mês']||x.ID||('Registro '+(i+1)))+'</td><td><button type="button" onclick="editRecord(\''+collection+'\','+i+')">Editar</button></td></tr>').join('')+'</table></div>':'Nenhum registro cadastrado.')+'</div>';
+}
+function editRecord(collection,index){
+ const row=(s[collection]||[])[index];if(!row)return;
+ window.recordEditCollection=collection;window.recordEditId=row.id||'';
+ if(!row.id){row.id=uid();save();window.recordEditId=row.id}
+ render();$('recordForm')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function clearRecordEditor(){window.recordEditId='';window.recordEditCollection='';render()}
+function saveRecord(e){
+ e.preventDefault();const collection=e.target.dataset.collection,cfg=editableRecords[collection];
+ if(!cfg||(collection==='officeFinance'||collection==='officeBudget'||collection==='officeMonthlyClose')&&!financeAllowed())return;
+ const data=Object.fromEntries(new FormData(e.target));
+ for(const name of ['Valor','Entrada','Saída','Orçado mensal','Realizado no mês','Receitas previstas','Receitas recebidas','Despesas previstas','Despesas pagas','Resultado realizado','A receber','A pagar','Vencidos a receber','Faturamento comercial','Comissão apurada','Margem operacional','Variação Rif(name in data){let v=Number(data[name]);if(!Number.isFinite(v)||v<0){alert('Informe um valor válido para '+name);return}data[name]=v}
+ const existing=(s[collection]||[]).find(x=>x.id===window.recordEditId);
+ const merged={...(existing||{}),...data,id:existing?.id||uid()};
+ const i=(s[collection]||[]).findIndex(x=>x.id===merged.id);
+ if(i<0)s[collection].push(merged);else s[collection][i]=merged;
+ queue(cfg.kind,merged);window.recordEditId='';window.recordEditCollection='';render();
+}
+function queue(type,data){s.pending.push({type,data:structuredClone(data),changeId:uid()});save();if(s.server&&navigator.onLine)sync()}
+function digits(value){return String(value||'').replace(/\D/g,'')}
+function validCNPJ(value){
+ const n=digits(value);
+ if(n.length!==14||/^(\d)\1{13}$/.test(n))return false;
+ const check=len=>{let sum=0,weight=len-7;for(let i=0;i<len;i++){sum+=Number(n[i])*weight;weight=weight===2?9:weight-1}let mod=sum%11;return mod<2?0:11-mod};
+ return Number(n[12])===check(12)&&Number(n[13])===check(13);
+}
+function newClient(){show('clientes');$('clientForm').reset();$('cid').value='';$('clientFormTitle').textContent='Cadastrar novo cliente';$('c_name').focus()}
+function saveClient(e){
+ e.preventDefault();
+ const d=Object.fromEntries(new FormData(e.target));
+ d.name=d.name.trim();d.city=d.city.trim();d.state=stateCode(d);
+ if(!d.name||!d.city||!['PA','AP'].includes(d.state)){alert('Informe razão social, cidade e UF válida (PA ou AP).');return}
+ if(!validCNPJ(d.taxId)){alert('Informe um CNPJ válido, com 14 dígitos e dígitos verificadores corretos.');$('c_taxId').focus();return}
+ d.taxId=digits(d.taxId);
+ d.stateRegistration=(d.stateRegistration||'').trim().toUpperCase();
+ if(d.stateRegistration!=='ISENTO'&&!/^\d{7,14}$/.test(d.stateRegistration)){alert('Informe a inscrição estadual (7 a 14 dígitos) ou ISENTO.');$('c_stateRegistration').focus();return}
+ if(d.stateRegistration!=='ISENTO')d.stateRegistration=digits(d.stateRegistration);
+ const old=s.clients.findIndex(c=>c.id===d.id);
+ if(s.clients.some(c=>c.id!==d.id&&digits(c.taxId)===d.taxId)){alert('Já existe um cliente com este CNPJ. Confira o cadastro antes de salvar.');return}
+ d.id=d.id||uid();
+ const merged=old<0?d:{...s.clients[old],...d};
+ if(old<0)s.clients.push(merged);else s.clients[old]=merged;
+ queue('client',merged);show('clientes');
+}
+function editClient(id){
+ show('clientes');let c=client(id);$('cid').value=id;
+ for(let k of ['name','tradeName','taxId','stateRegistration','contact','phone','email','address','district','city','state','channel','brands','last_purchase'])$('c_'+k).value=c[k]||'';
+ $('c_state').value=stateCode(c)==='FORA'?'':stateCode(c);
+ $('clientFormTitle').textContent='Editar cadastro do cliente';
+ $('clientForm').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function prefill(id){window.prefillId=id;show('registro')}
+function priceCents(value){let n=Number(String(value??0).replace(',','.'));return Number.isFinite(n)?Math.round(n*100):0}
+function parseBRLCents(value){let t=String(value||'').replace(/R\$/gi,'').replace(/\s/g,'');if(t.includes(','))t=t.replace(/\./g,'').replace(',','.');let n=Number(t);return Number.isFinite(n)?Math.round(n*100):NaN}
+function pricesForTable(priceTable){return (s.prices||[]).filter(p=>p.state===priceTable)}
+function orderDraft(){if(!window.currentOrder){let clientId=window.prefillId||'';window.currentOrder={date:today(),clientId,priceTable:stateCode(client(clientId))||'',brand:'',quantities:{}}}return window.currentOrder}
+function newOrder(){window.currentOrder={date:today(),clientId:'',priceTable:'',brand:'',quantities:{}};show('pedidos')}
+function setOrderDate(value){orderDraft().date=value}
+function setOrderClient(value){let d=orderDraft();d.clientId=value;d.priceTable=stateCode(client(value))||'';d.brand='';d.quantities={};show('pedidos')}
+function setOrderTable(value){let d=orderDraft();d.priceTable=value;d.brand='';d.quantities={};show('pedidos')}
+function setOrderBrand(value){let d=orderDraft();d.brand=value;d.quantities={};show('pedidos')}
+function orderTotalCents(products,draft){return products.reduce((sum,p)=>sum+priceCents(p.price)*Number(draft.quantities[p.sku]||0),0)}
+function setOrderQuantity(sku,value){let d=orderDraft(),qty=Math.max(0,Math.floor(Number(value)||0));d.quantities[sku]=qty;let products=pricesForTable(d.priceTable).filter(p=>p.brand===d.brand),p=products.find(x=>x.sku===sku),cell=document.querySelector(`[data-subtotal="${CSS.escape(sku)}"]`);if(cell&&p)cell.textContent=money(priceCents(p.price)*qty/100);let total=$('orderTotal');if(total)total.textContent=money(orderTotalCents(products,d)/100)}
+function saveOrder(e){e.preventDefault();let d=orderDraft(),products=pricesForTable(d.priceTable).filter(p=>p.brand===d.brand),items=products.map(p=>({sku:p.sku,description:p.description||'',quantity:Number(d.quantities[p.sku]||0),unitPrice:(priceCents(p.price)/100).toFixed(2)})).filter(i=>i.quantity>0);if(!d.clientId||!d.priceTable||!d.brand){alert('Selecione o cliente, a tabela de preços e a marca.');return}if(!items.length){alert('Informe a quantidade de pelo menos um produto.');return}let total=products.reduce((sum,p)=>sum+priceCents(p.price)*Number(d.quantities[p.sku]||0),0),form=new FormData(e.target),finalized=e.submitter?.value==='finalize',order={id:uid(),date:d.date,clientId:d.clientId,priceTable:d.priceTable,brand:d.brand,items,status:finalized?'Confirmado':(form.get('status')||'Pendente'),amount:total/100,user:s.user};s.orders.push(order);queue('order',order);window.currentOrder=null;window.prefillId='';if(finalized)shareOrderPDF(order.id,true);show('pedidos')}
+function pdfText(value){return String(value??'').normalize('NFC').replace(/[–—]/g,'-').replace(/[“”]/g,'"').replace(/[‘’]/g,"'").replace(/[^\x20-\xFF]/g,'?').replace(/([\\()])/g,'\\$1')}
+function wrapPDF(text,size=88){let words=String(text||'').split(/\s+/),lines=[],line='';for(const word of words){if((line+' '+word).trim().length>size){if(line)lines.push(line);line=word}else line=(line+' '+word).trim()}if(line)lines.push(line);return lines.length?lines:['']}
+function orderPDFBlob(order){let c=client(order.clientId),lines=[`Pedido ${order.id}`,`Data: ${order.date}   Status: ${order.status}`,`Cliente: ${c.name||'Não informado'}`,`CNPJ: ${c.taxId||'Não informado'}`,`Cidade/UF: ${c.city||''} / ${c.state||''}`,`Tabela: ${order.priceTable||order.state||'-'}   Marca: ${order.brand||'-'}`,''];for(const item of order.items||[]){let unit=priceCents(item.unitPrice)/100,subtotal=unit*Number(item.quantity||0);lines.push(...wrapPDF(`${item.sku} - ${item.description||item.sku} | ${item.quantity} x ${money(unit)} = ${money(subtotal)}`))}lines.push('',`TOTAL DO PEDIDO: ${money(order.amount)}`,`Responsável: ${order.user||s.user}`);let chunks=[];for(let i=0;i<lines.length;i+=34)chunks.push(lines.slice(i,i+34));let objects=['','',''],fontId=3,pageIds=[],contentIds=[];for(let i=0;i<chunks.length;i++){pageIds.push(4+i*2);contentIds.push(5+i*2)}objects[0]='<< /Type /Catalog /Pages 2 0 R >>';objects[1]=`<< /Type /Pages /Kids [${pageIds.map(id=>id+' 0 R').join(' ')}] /Count ${pageIds.length} >>`;objects[2]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';for(let i=0;i<chunks.length;i++){let stream=`BT\n/F1 16 Tf\n50 800 Td\n(L2 ONE - PEDIDO) Tj\n/F1 10 Tf\n0 -24 Td\n`;chunks[i].forEach((line,n)=>{stream+=`(${pdfText(line)}) Tj\n0 -18 Td\n`});stream+=`0 -8 Td\n(Página ${i+1} de ${chunks.length}) Tj\nET`;objects[pageIds[i]-1]=`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentIds[i]} 0 R >>`;objects[contentIds[i]-1]=`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`}let pdf='%PDF-1.4\n%âãÏÓ\n',offsets=[0];for(let i=0;i<objects.length;i++){offsets[i+1]=pdf.length;pdf+=`${i+1} 0 obj\n${objects[i]}\nendobj\n`}let xref=pdf.length;pdf+=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n`;for(let i=1;i<=objects.length;i++)pdf+=String(offsets[i]).padStart(10,'0')+' 00000 n \n';pdf+=`trailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;let bytes=Uint8Array.from([...pdf].map(ch=>ch.charCodeAt(0)&255));return new Blob([bytes],{type:'application/pdf'})}
+function orderFileName(order){let name=(client(order.clientId).name||'cliente').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'').toLowerCase();return `pedido-${order.date}-${name||'cliente'}.pdf`}
+function downloadBlob(blob,name){let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+function downloadOrderPDF(id){let order=s.orders.find(x=>x.id===id);if(!order)return;downloadBlob(orderPDFBlob(order),orderFileName(order))}
+function orderShareText(order){let c=client(order.clientId),items=(order.items||[]).reduce((n,i)=>n+Number(i.quantity||0),0);return `Pedido L2 ONE\nCliente: ${c.name||'-'}\nTabela: ${order.priceTable||order.state||'-'}\nMarca: ${order.brand||'-'}\nItens: ${items}\nTotal: ${money(order.amount)}`}
+async function shareOrderPDF(id,automatic=false){let order=s.orders.find(x=>x.id===id);if(!order)return;let blob=orderPDFBlob(order),name=orderFileName(order);downloadBlob(blob,name);let file=new File([blob],name,{type:'application/pdf'}),data={title:'Pedido L2 ONE',text:orderShareText(order),files:[file]};if(navigator.share&&navigator.canShare?.(data)){try{await navigator.share(data);return}catch(err){if(err.name==='AbortError')return}}let phone=digits(client(order.clientId).phone);if(phone.length===10||phone.length===11)phone='55'+phone;window.open(`https://wa.me/${phone}?text=${encodeURIComponent(orderShareText(order)+'\n\nO PDF foi baixado. Anexe o arquivo '+name+' nesta conversa.')}`,'_blank','noopener');if(automatic)alert('Pedido finalizado. O PDF foi salvo e o WhatsApp foi aberto para o envio.')}
+async function importPrices(e){e.preventDefault();if(!s.server||!s.token){alert('Conecte o sistema ao servidor antes de importar preços.');return}let lines=new FormData(e.target).get('prices').split(/\r?\n/).map(x=>x.trim()).filter(Boolean),prices=[];for(let i=0;i<lines.length;i++){let parts=lines[i].split(';').map(x=>x.trim());if(i===0&&/marca/i.test(parts[0])&&/sku/i.test(parts[1]||''))continue;if(parts.length<5){alert(`Linha ${i+1}: use Marca; SKU; Descrição; UF; Preço.`);return}let [brand,sku,description,state,value]=parts,cents=parseBRLCents(value);state=state.toUpperCase();if(!brand||!sku||!['PA','AP'].includes(state)||!Number.isFinite(cents)||cents<=0){alert(`Linha ${i+1}: confira marca, SKU, UF e preço.`);return}prices.push({brand,sku,description,state,price:(cents/100).toFixed(2)})}try{let r=await fetch(s.server+'/api/prices/import',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+s.token},body:JSON.stringify({prices})}),data=await r.json();if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:'Importação recusada.');alert(`${data.imported} preço(s) importado(s) com sucesso.`);await sync();show('marcas')}catch(err){alert('Não foi possível importar: '+err.message)}}
+function saveVisit(e){e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.id=uid();d.user=s.user;d.amount=Number(d.amount||0);s.visits.push(d);queue('visit',d);if(d.amount>0){alert('Atendimento registrado. O pedido por valor total não foi criado: novos pedidos exigem itens e preços da tabela do estado do cliente.')}if(d.next){let t={id:uid(),clientId:d.clientId,text:d.next,date:d.returnDate||d.date,user:s.user,status:'Aberta'};s.tasks.push(t);queue('task',t)}window.prefillId='';show('hoje')}
+function saveTask(e){e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.id=uid();d.status='Aberta';s.tasks.push(d);queue('task',d);show('hoje')}
+function saveGoal(e){e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.amount=Number(d.amount||0);d.id=d.month+'-'+d.user.toLowerCase().replace(/[^a-z0-9]+/g,'-');let i=s.goals.findIndex(x=>x.id===d.id);if(i<0)s.goals.push(d);else s.goals[i]=d;queue('goal',d);window.reportMonth=d.month;show('gestao')}
+function done(id){let t=s.tasks.find(x=>x.id===id);t.status='Concluída';queue('task',t);show('hoje')}
+function addRoute(id){let d=window.routeDay||today(),n=s.routes.filter(x=>x.date===d).length;if(n>=10){alert('A rota já tem 10 clientes. Retire um para adicionar outro.');return}let r={id:uid(),date:d,clientId:id,order:n+1,user:s.user};s.routes.push(r);queue('route',r);show('rota')}
+function removeRoute(id){s.routes=s.routes.filter(x=>x.id!==id);queue('delete_route',{id});show('rota')}
+function autoRoute(day=today(),replace=false){
+ window.routeAttemptedDay=day;
+ if(!['Ana Paula','Euler'].includes(s.user)){alert('A roteirização é restrita aos representantes Ana Paula e Euler.');window.routeBuilding=false;return}
+ const existing=s.routes.filter(r=>r.date===day);
+ if(replace){for(const r of existing){s.routes=s.routes.filter(x=>x.id!==r.id);s.pending.push({type:'delete_route',data:{id:r.id},changeId:uid()})}}
+ const picks=suggestedClients(day,8);
+ let order=s.routes.filter(r=>r.date===day).length;
+ for(const c of picks){let r={id:uid(),date:day,clientId:c.id,order:++order,user:s.user,suggested:true,location:locationLabel(c),reason:priority(c).reason};s.routes.push(r);s.pending.push({type:'route',data:structuredClone(r),changeId:uid()})}
+ window.routeBuilding=false;save();if(s.server&&navigator.onLine)sync();show('rota');
+}
+function changeOrder(id,status){
+ const o=s.orders.find(x=>x.id===id);
+ if(!o)return;
+ if(!Array.isArray(o.items)||!o.items.length){alert('Pedido antigo: alteração de status indisponível até a migração para pedidos por itens.');show('pedidos');return}
+ o.status=status;queue('order',o);show('pedidos')
+}
+function exportData(){let b=new Blob([JSON.stringify(s,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='L2_ONE_backup_'+today()+'.json';a.click();URL.revokeObjectURL(a.href)}
+async function importData(f){if(!f)return;try{let d=JSON.parse(await f.text());if(!Array.isArray(d.clients))throw Error('Arquivo inválido');if(confirm('Substituir os dados locais pelo backup?')){s={...defaults,...d,token:'',server:'',pending:[]};save();show('hoje')}}catch(e){alert(e.message)}}
+
+function renderPasswordChange(){
+ $('app').innerHTML=`<div class="box"><h2>Crie sua senha pessoal</h2><p>Olá, ${esc(s.user)}. Para liberar seu primeiro acesso, substitua a senha provisória.</p><form id="passwordChangeForm"><label>Senha provisória<input id="currentPassword" type="password" autocomplete="current-password" required></label><label>Nova senha (mínimo de 12 caracteres)<input id="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required></label><label>Confirme a nova senha<input id="confirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required></label><p id="passwordChangeError" role="alert"></p><button id="passwordChangeSubmit">Salvar senha pessoal</button></form><p><button class="secondary" onclick="logout()">Sair</button></p></div>`;
+ $('passwordChangeForm').onsubmit=submitPasswordChange;
+}
+async function submitPasswordChange(event){
+ event.preventDefault();
+ const currentPassword=$('currentPassword').value,newPassword=$('newPassword').value;
+ const error=$('passwordChangeError'),button=$('passwordChangeSubmit');
+ if(newPassword!==$('confirmPassword').value){error.textContent='As novas senhas não coincidem.';return}
+ button.disabled=true;error.textContent='';
+ try{
+  const r=await fetch(s.server+'/api/change-password',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+s.token},body:JSON.stringify({currentPassword,newPassword})});
+  const data=await r.json();
+  if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:'Não foi possível alterar a senha.');
+  s.token='';s.mustChangePassword=false;s.syncAt='';save();show('config');
+  alert('Senha alterada. Entre novamente com sua senha pessoal.');
+ }catch(e){error.textContent=e.message;button.disabled=false}
+}
+async function connect(){
+ const user=$('who').value, server=$('server').value.replace(/\/$/,'');
+ if(!server || (location.protocol==='https:' && !server.startsWith('https://'))){alert('Informe uma URL HTTPS válida.');return}
+ if(s.pending.length && (user!==s.user || server!==s.server)){alert('Sincronize ou exporte o backup das alterações pendentes antes de trocar usuário ou servidor.');return}
+ try{
+  const r=await fetch(server+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user,password:$('password').value})});
+  if(!r.ok)throw Error('Login não autorizado');
+  const session=await r.json(), token=session.token;
+  if(user!==s.user || server!==s.server){s={...defaults,user,server};}
+  s.user=user;s.server=server;s.token=token;s.mustChangePassword=!!session.mustChangePassword;save();if(s.mustChangePassword){show('config');return}await sync();show('config');
+ }catch(e){alert('Não foi possível conectar: '+e.message)}
+}
+function logout(){
+ if(!confirm('Sair deste aparelho? A senha será solicitada no próximo acesso.'))return;
+ s.token='';s.mustChangePassword=false;s.syncAt='';save();show('config');
+}
+async function sync(){
+ if(s.mustChangePassword||syncing||!s.server||!s.token||!navigator.onLine)return;
+ syncing=true;
+ const batch=s.pending.slice(0,500), user=s.user, server=s.server, token=s.token;
+ try{
+  const r=await fetch(server+'/api/sync',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({changes:batch})});
+  if(!r.ok){let detail='';try{const payload=await r.json();detail=typeof payload.detail==='string'?payload.detail:''}catch(_){}if(r.status===401){s.token='';save();alert('Sua sessão expirou. Entre novamente em Configurações.')}throw Error('Sincronização recusada ('+r.status+'): '+(detail||'verifique os dados enviados'))}
+  const data=await r.json();
+  if(user!==s.user||server!==s.server||token!==s.token)return;
+  const acknowledged=new Set(batch.map(x=>x.changeId));
+  s.pending=s.pending.filter(x=>!acknowledged.has(x.changeId));
+  for(const name of ['clients','visits','orders','tasks','routes','goals','prices','officeProcesses','officeActions','officeCommercial','officeAdministrative','officeRituals','officeRoles','officeFinance','officeBudget','officeMonthlyClose'])if(Array.isArray(data[name]))s[name]=data[name];
+  // Reaplica alterações criadas enquanto a solicitação estava em andamento.
+  for(const change of s.pending){const name={client:'clients',visit:'visits',order:'orders',task:'tasks',route:'routes',delete_route:'routes',office_action:'officeActions',office_commercial:'officeCommercial',office_administrative:'officeAdministrative',office_finance:'officeFinance',office_budget:'officeBudget',office_monthly_close:'officeMonthlyClose',office_process:'officeProcesses'}[change.type];if(!name)continue;s[name]=s[name].filter(x=>x.id!==change.data.id);if(change.type!=='delete_route')s[name].push(change.data)}
+  s.syncAt=new Date().toLocaleString('pt-BR');window.routeAttemptedDay='';save();show(tab);
+ }catch(e){console.warn(e);window.lastSyncError=e.message;network();if(batch.length)alert('Os dados foram salvos neste aparelho, mas NÃO foram enviados à nuvem. '+e.message)}finally{syncing=false;if(!s.mustChangePassword&&s.pending.length&&s.server&&s.token&&navigator.onLine)setTimeout(sync,3000)}
+}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(b.dataset.tab));
+window.addEventListener('online',()=>{network();sync()});window.addEventListener('offline',network);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});setInterval(sync,30000);
+(async()=>{if('serviceWorker'in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('./sw.js').catch(()=>{});if(!s.server&&location.protocol.startsWith('http'))s.server=location.origin;save();show('hoje');sync()})();
+,'Variação %','Ação/Justificativa']},
+ officeMonthlyClose:{kind:'office_monthly_close',fields:['ID','Mês','Receitas previstas','Receitas recebidas','Despesas previstas','Despesas pagas','Resultado realizado','A receber','A pagar','Vencidos a receber','Faturamento comercial','Comissão apurada','Margem operacional','Status fechamento','Observações/Decisões']}
+};
+function renderRecordEditor(collection){
+ if(collection.startsWith('officeFin')||collection==='officeBudget'||collection==='officeMonthlyClose'){if(!financeAllowed())return ''}
+ const cfg=editableRecords[collection],rows=s[collection]||[];
+ const selected=rows.find(x=>x.id===window.recordEditId&&window.recordEditCollection===collection)||{};
+ const fields=cfg.fields.map(name=>{let type=['Valor','Orçado mensal','Realizado no mês','Receitas recebidas','Despesas pagas','Resultado realizado'].includes(name)?'number':name==='Vencimento'||name==='Prazo'?'date':'text';return '<label>'+esc(name)+'<input name="'+esc(name)+'" type="'+type+'" '+(type==='number'?'step="0.01" min="0" ':'')+'value="'+esc(selected[name]??'')+'"></label>'}).join('');
+ return '<div class="box"><h3>'+(selected.id?'Editar registro':'Novo registro')+'</h3><p class="muted">As alterações ficam pendentes até a sincronização com a nuvem.</p><form id="recordForm" data-collection="'+collection+'"><div class="row">'+fields+'</div><button type="submit">Salvar alterações</button> <button type="button" class="secondary" onclick="clearRecordEditor()">Novo / limpar</button></form></div><div class="box"><h3>Registros existentes</h3>'+(rows.length?'<div class="scroll"><table><tr><th>Registro</th><th>Ação</th></tr>'+rows.map((x,i)=>'<tr><td>'+esc(x['Descrição']||x['Demanda ou problema']||x['Demanda']||x.Processo||x.Categoria||x['Mês']||x.ID||('Registro '+(i+1)))+'</td><td><button type="button" onclick="editRecord(\''+collection+'\','+i+')">Editar</button></td></tr>').join('')+'</table></div>':'Nenhum registro cadastrado.')+'</div>';
+}
+function editRecord(collection,index){
+ const row=(s[collection]||[])[index];if(!row)return;
+ window.recordEditCollection=collection;window.recordEditId=row.id||'';
+ if(!row.id){row.id=uid();save();window.recordEditId=row.id}
+ render();$('recordForm')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function clearRecordEditor(){window.recordEditId='';window.recordEditCollection='';render()}
+function saveRecord(e){
+ e.preventDefault();const collection=e.target.dataset.collection,cfg=editableRecords[collection];
+ if(!cfg||(collection==='officeFinance'||collection==='officeBudget'||collection==='officeMonthlyClose')&&!financeAllowed())return;
+ const data=Object.fromEntries(new FormData(e.target));
+ for(const name of ['Valor','Orçado mensal','Realizado no mês','Receitas recebidas','Despesas pagas','Resultado realizado'])if(name in data){let v=Number(data[name]);if(!Number.isFinite(v)||v<0){alert('Informe um valor válido para '+name);return}data[name]=v}
+ const existing=(s[collection]||[]).find(x=>x.id===window.recordEditId);
+ const merged={...(existing||{}),...data,id:existing?.id||uid()};
+ const i=(s[collection]||[]).findIndex(x=>x.id===merged.id);
+ if(i<0)s[collection].push(merged);else s[collection][i]=merged;
+ queue(cfg.kind,merged);window.recordEditId='';window.recordEditCollection='';render();
+}
+function queue(type,data){s.pending.push({type,data:structuredClone(data),changeId:uid()});save();if(s.server&&navigator.onLine)sync()}
+function digits(value){return String(value||'').replace(/\D/g,'')}
+function validCNPJ(value){
+ const n=digits(value);
+ if(n.length!==14||/^(\d)\1{13}$/.test(n))return false;
+ const check=len=>{let sum=0,weight=len-7;for(let i=0;i<len;i++){sum+=Number(n[i])*weight;weight=weight===2?9:weight-1}let mod=sum%11;return mod<2?0:11-mod};
+ return Number(n[12])===check(12)&&Number(n[13])===check(13);
+}
+function newClient(){show('clientes');$('clientForm').reset();$('cid').value='';$('clientFormTitle').textContent='Cadastrar novo cliente';$('c_name').focus()}
+function saveClient(e){
+ e.preventDefault();
+ const d=Object.fromEntries(new FormData(e.target));
+ d.name=d.name.trim();d.city=d.city.trim();d.state=stateCode(d);
+ if(!d.name||!d.city||!['PA','AP'].includes(d.state)){alert('Informe razão social, cidade e UF válida (PA ou AP).');return}
+ if(!validCNPJ(d.taxId)){alert('Informe um CNPJ válido, com 14 dígitos e dígitos verificadores corretos.');$('c_taxId').focus();return}
+ d.taxId=digits(d.taxId);
+ d.stateRegistration=(d.stateRegistration||'').trim().toUpperCase();
+ if(d.stateRegistration!=='ISENTO'&&!/^\d{7,14}$/.test(d.stateRegistration)){alert('Informe a inscrição estadual (7 a 14 dígitos) ou ISENTO.');$('c_stateRegistration').focus();return}
+ if(d.stateRegistration!=='ISENTO')d.stateRegistration=digits(d.stateRegistration);
+ const old=s.clients.findIndex(c=>c.id===d.id);
+ if(s.clients.some(c=>c.id!==d.id&&digits(c.taxId)===d.taxId)){alert('Já existe um cliente com este CNPJ. Confira o cadastro antes de salvar.');return}
+ d.id=d.id||uid();
+ const merged=old<0?d:{...s.clients[old],...d};
+ if(old<0)s.clients.push(merged);else s.clients[old]=merged;
+ queue('client',merged);show('clientes');
+}
+function editClient(id){
+ show('clientes');let c=client(id);$('cid').value=id;
+ for(let k of ['name','tradeName','taxId','stateRegistration','contact','phone','email','address','district','city','state','channel','brands','last_purchase'])$('c_'+k).value=c[k]||'';
+ $('c_state').value=stateCode(c)==='FORA'?'':stateCode(c);
+ $('clientFormTitle').textContent='Editar cadastro do cliente';
+ $('clientForm').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function prefill(id){window.prefillId=id;show('registro')}
+function priceCents(value){let n=Number(String(value??0).replace(',','.'));return Number.isFinite(n)?Math.round(n*100):0}
+function parseBRLCents(value){let t=String(value||'').replace(/R\$/gi,'').replace(/\s/g,'');if(t.includes(','))t=t.replace(/\./g,'').replace(',','.');let n=Number(t);return Number.isFinite(n)?Math.round(n*100):NaN}
+function pricesForTable(priceTable){return (s.prices||[]).filter(p=>p.state===priceTable)}
+function orderDraft(){if(!window.currentOrder){let clientId=window.prefillId||'';window.currentOrder={date:today(),clientId,priceTable:stateCode(client(clientId))||'',brand:'',quantities:{}}}return window.currentOrder}
+function newOrder(){window.currentOrder={date:today(),clientId:'',priceTable:'',brand:'',quantities:{}};show('pedidos')}
+function setOrderDate(value){orderDraft().date=value}
+function setOrderClient(value){let d=orderDraft();d.clientId=value;d.priceTable=stateCode(client(value))||'';d.brand='';d.quantities={};show('pedidos')}
+function setOrderTable(value){let d=orderDraft();d.priceTable=value;d.brand='';d.quantities={};show('pedidos')}
+function setOrderBrand(value){let d=orderDraft();d.brand=value;d.quantities={};show('pedidos')}
+function orderTotalCents(products,draft){return products.reduce((sum,p)=>sum+priceCents(p.price)*Number(draft.quantities[p.sku]||0),0)}
+function setOrderQuantity(sku,value){let d=orderDraft(),qty=Math.max(0,Math.floor(Number(value)||0));d.quantities[sku]=qty;let products=pricesForTable(d.priceTable).filter(p=>p.brand===d.brand),p=products.find(x=>x.sku===sku),cell=document.querySelector(`[data-subtotal="${CSS.escape(sku)}"]`);if(cell&&p)cell.textContent=money(priceCents(p.price)*qty/100);let total=$('orderTotal');if(total)total.textContent=money(orderTotalCents(products,d)/100)}
+function saveOrder(e){e.preventDefault();let d=orderDraft(),products=pricesForTable(d.priceTable).filter(p=>p.brand===d.brand),items=products.map(p=>({sku:p.sku,description:p.description||'',quantity:Number(d.quantities[p.sku]||0),unitPrice:(priceCents(p.price)/100).toFixed(2)})).filter(i=>i.quantity>0);if(!d.clientId||!d.priceTable||!d.brand){alert('Selecione o cliente, a tabela de preços e a marca.');return}if(!items.length){alert('Informe a quantidade de pelo menos um produto.');return}let total=products.reduce((sum,p)=>sum+priceCents(p.price)*Number(d.quantities[p.sku]||0),0),form=new FormData(e.target),finalized=e.submitter?.value==='finalize',order={id:uid(),date:d.date,clientId:d.clientId,priceTable:d.priceTable,brand:d.brand,items,status:finalized?'Confirmado':(form.get('status')||'Pendente'),amount:total/100,user:s.user};s.orders.push(order);queue('order',order);window.currentOrder=null;window.prefillId='';if(finalized)shareOrderPDF(order.id,true);show('pedidos')}
+function pdfText(value){return String(value??'').normalize('NFC').replace(/[–—]/g,'-').replace(/[“”]/g,'"').replace(/[‘’]/g,"'").replace(/[^\x20-\xFF]/g,'?').replace(/([\\()])/g,'\\$1')}
+function wrapPDF(text,size=88){let words=String(text||'').split(/\s+/),lines=[],line='';for(const word of words){if((line+' '+word).trim().length>size){if(line)lines.push(line);line=word}else line=(line+' '+word).trim()}if(line)lines.push(line);return lines.length?lines:['']}
+function orderPDFBlob(order){let c=client(order.clientId),lines=[`Pedido ${order.id}`,`Data: ${order.date}   Status: ${order.status}`,`Cliente: ${c.name||'Não informado'}`,`CNPJ: ${c.taxId||'Não informado'}`,`Cidade/UF: ${c.city||''} / ${c.state||''}`,`Tabela: ${order.priceTable||order.state||'-'}   Marca: ${order.brand||'-'}`,''];for(const item of order.items||[]){let unit=priceCents(item.unitPrice)/100,subtotal=unit*Number(item.quantity||0);lines.push(...wrapPDF(`${item.sku} - ${item.description||item.sku} | ${item.quantity} x ${money(unit)} = ${money(subtotal)}`))}lines.push('',`TOTAL DO PEDIDO: ${money(order.amount)}`,`Responsável: ${order.user||s.user}`);let chunks=[];for(let i=0;i<lines.length;i+=34)chunks.push(lines.slice(i,i+34));let objects=['','',''],fontId=3,pageIds=[],contentIds=[];for(let i=0;i<chunks.length;i++){pageIds.push(4+i*2);contentIds.push(5+i*2)}objects[0]='<< /Type /Catalog /Pages 2 0 R >>';objects[1]=`<< /Type /Pages /Kids [${pageIds.map(id=>id+' 0 R').join(' ')}] /Count ${pageIds.length} >>`;objects[2]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';for(let i=0;i<chunks.length;i++){let stream=`BT\n/F1 16 Tf\n50 800 Td\n(L2 ONE - PEDIDO) Tj\n/F1 10 Tf\n0 -24 Td\n`;chunks[i].forEach((line,n)=>{stream+=`(${pdfText(line)}) Tj\n0 -18 Td\n`});stream+=`0 -8 Td\n(Página ${i+1} de ${chunks.length}) Tj\nET`;objects[pageIds[i]-1]=`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentIds[i]} 0 R >>`;objects[contentIds[i]-1]=`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`}let pdf='%PDF-1.4\n%âãÏÓ\n',offsets=[0];for(let i=0;i<objects.length;i++){offsets[i+1]=pdf.length;pdf+=`${i+1} 0 obj\n${objects[i]}\nendobj\n`}let xref=pdf.length;pdf+=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n`;for(let i=1;i<=objects.length;i++)pdf+=String(offsets[i]).padStart(10,'0')+' 00000 n \n';pdf+=`trailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;let bytes=Uint8Array.from([...pdf].map(ch=>ch.charCodeAt(0)&255));return new Blob([bytes],{type:'application/pdf'})}
+function orderFileName(order){let name=(client(order.clientId).name||'cliente').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'').toLowerCase();return `pedido-${order.date}-${name||'cliente'}.pdf`}
+function downloadBlob(blob,name){let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+function downloadOrderPDF(id){let order=s.orders.find(x=>x.id===id);if(!order)return;downloadBlob(orderPDFBlob(order),orderFileName(order))}
+function orderShareText(order){let c=client(order.clientId),items=(order.items||[]).reduce((n,i)=>n+Number(i.quantity||0),0);return `Pedido L2 ONE\nCliente: ${c.name||'-'}\nTabela: ${order.priceTable||order.state||'-'}\nMarca: ${order.brand||'-'}\nItens: ${items}\nTotal: ${money(order.amount)}`}
+async function shareOrderPDF(id,automatic=false){let order=s.orders.find(x=>x.id===id);if(!order)return;let blob=orderPDFBlob(order),name=orderFileName(order);downloadBlob(blob,name);let file=new File([blob],name,{type:'application/pdf'}),data={title:'Pedido L2 ONE',text:orderShareText(order),files:[file]};if(navigator.share&&navigator.canShare?.(data)){try{await navigator.share(data);return}catch(err){if(err.name==='AbortError')return}}let phone=digits(client(order.clientId).phone);if(phone.length===10||phone.length===11)phone='55'+phone;window.open(`https://wa.me/${phone}?text=${encodeURIComponent(orderShareText(order)+'\n\nO PDF foi baixado. Anexe o arquivo '+name+' nesta conversa.')}`,'_blank','noopener');if(automatic)alert('Pedido finalizado. O PDF foi salvo e o WhatsApp foi aberto para o envio.')}
+async function importPrices(e){e.preventDefault();if(!s.server||!s.token){alert('Conecte o sistema ao servidor antes de importar preços.');return}let lines=new FormData(e.target).get('prices').split(/\r?\n/).map(x=>x.trim()).filter(Boolean),prices=[];for(let i=0;i<lines.length;i++){let parts=lines[i].split(';').map(x=>x.trim());if(i===0&&/marca/i.test(parts[0])&&/sku/i.test(parts[1]||''))continue;if(parts.length<5){alert(`Linha ${i+1}: use Marca; SKU; Descrição; UF; Preço.`);return}let [brand,sku,description,state,value]=parts,cents=parseBRLCents(value);state=state.toUpperCase();if(!brand||!sku||!['PA','AP'].includes(state)||!Number.isFinite(cents)||cents<=0){alert(`Linha ${i+1}: confira marca, SKU, UF e preço.`);return}prices.push({brand,sku,description,state,price:(cents/100).toFixed(2)})}try{let r=await fetch(s.server+'/api/prices/import',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+s.token},body:JSON.stringify({prices})}),data=await r.json();if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:'Importação recusada.');alert(`${data.imported} preço(s) importado(s) com sucesso.`);await sync();show('marcas')}catch(err){alert('Não foi possível importar: '+err.message)}}
+function saveVisit(e){e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.id=uid();d.user=s.user;d.amount=Number(d.amount||0);s.visits.push(d);queue('visit',d);if(d.amount>0){alert('Atendimento registrado. O pedido por valor total não foi criado: novos pedidos exigem itens e preços da tabela do estado do cliente.')}if(d.next){let t={id:uid(),clientId:d.clientId,text:d.next,date:d.returnDate||d.date,user:s.user,status:'Aberta'};s.tasks.push(t);queue('task',t)}window.prefillId='';show('hoje')}
+function saveTask(e){e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.id=uid();d.status='Aberta';s.tasks.push(d);queue('task',d);show('hoje')}
+function saveGoal(e){e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.amount=Number(d.amount||0);d.id=d.month+'-'+d.user.toLowerCase().replace(/[^a-z0-9]+/g,'-');let i=s.goals.findIndex(x=>x.id===d.id);if(i<0)s.goals.push(d);else s.goals[i]=d;queue('goal',d);window.reportMonth=d.month;show('gestao')}
+function done(id){let t=s.tasks.find(x=>x.id===id);t.status='Concluída';queue('task',t);show('hoje')}
+function addRoute(id){let d=window.routeDay||today(),n=s.routes.filter(x=>x.date===d).length;if(n>=10){alert('A rota já tem 10 clientes. Retire um para adicionar outro.');return}let r={id:uid(),date:d,clientId:id,order:n+1,user:s.user};s.routes.push(r);queue('route',r);show('rota')}
+function removeRoute(id){s.routes=s.routes.filter(x=>x.id!==id);queue('delete_route',{id});show('rota')}
+function autoRoute(day=today(),replace=false){
+ window.routeAttemptedDay=day;
+ if(!['Ana Paula','Euler'].includes(s.user)){alert('A roteirização é restrita aos representantes Ana Paula e Euler.');window.routeBuilding=false;return}
+ const existing=s.routes.filter(r=>r.date===day);
+ if(replace){for(const r of existing){s.routes=s.routes.filter(x=>x.id!==r.id);s.pending.push({type:'delete_route',data:{id:r.id},changeId:uid()})}}
+ const picks=suggestedClients(day,8);
+ let order=s.routes.filter(r=>r.date===day).length;
+ for(const c of picks){let r={id:uid(),date:day,clientId:c.id,order:++order,user:s.user,suggested:true,location:locationLabel(c),reason:priority(c).reason};s.routes.push(r);s.pending.push({type:'route',data:structuredClone(r),changeId:uid()})}
+ window.routeBuilding=false;save();if(s.server&&navigator.onLine)sync();show('rota');
+}
+function changeOrder(id,status){
+ const o=s.orders.find(x=>x.id===id);
+ if(!o)return;
+ if(!Array.isArray(o.items)||!o.items.length){alert('Pedido antigo: alteração de status indisponível até a migração para pedidos por itens.');show('pedidos');return}
+ o.status=status;queue('order',o);show('pedidos')
+}
+function exportData(){let b=new Blob([JSON.stringify(s,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='L2_ONE_backup_'+today()+'.json';a.click();URL.revokeObjectURL(a.href)}
+async function importData(f){if(!f)return;try{let d=JSON.parse(await f.text());if(!Array.isArray(d.clients))throw Error('Arquivo inválido');if(confirm('Substituir os dados locais pelo backup?')){s={...defaults,...d,token:'',server:'',pending:[]};save();show('hoje')}}catch(e){alert(e.message)}}
+
+function renderPasswordChange(){
+ $('app').innerHTML=`<div class="box"><h2>Crie sua senha pessoal</h2><p>Olá, ${esc(s.user)}. Para liberar seu primeiro acesso, substitua a senha provisória.</p><form id="passwordChangeForm"><label>Senha provisória<input id="currentPassword" type="password" autocomplete="current-password" required></label><label>Nova senha (mínimo de 12 caracteres)<input id="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required></label><label>Confirme a nova senha<input id="confirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required></label><p id="passwordChangeError" role="alert"></p><button id="passwordChangeSubmit">Salvar senha pessoal</button></form><p><button class="secondary" onclick="logout()">Sair</button></p></div>`;
+ $('passwordChangeForm').onsubmit=submitPasswordChange;
+}
+async function submitPasswordChange(event){
+ event.preventDefault();
+ const currentPassword=$('currentPassword').value,newPassword=$('newPassword').value;
+ const error=$('passwordChangeError'),button=$('passwordChangeSubmit');
+ if(newPassword!==$('confirmPassword').value){error.textContent='As novas senhas não coincidem.';return}
+ button.disabled=true;error.textContent='';
+ try{
+  const r=await fetch(s.server+'/api/change-password',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+s.token},body:JSON.stringify({currentPassword,newPassword})});
+  const data=await r.json();
+  if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:'Não foi possível alterar a senha.');
+  s.token='';s.mustChangePassword=false;s.syncAt='';save();show('config');
+  alert('Senha alterada. Entre novamente com sua senha pessoal.');
+ }catch(e){error.textContent=e.message;button.disabled=false}
+}
+async function connect(){
+ const user=$('who').value, server=$('server').value.replace(/\/$/,'');
+ if(!server || (location.protocol==='https:' && !server.startsWith('https://'))){alert('Informe uma URL HTTPS válida.');return}
+ if(s.pending.length && (user!==s.user || server!==s.server)){alert('Sincronize ou exporte o backup das alterações pendentes antes de trocar usuário ou servidor.');return}
+ try{
+  const r=await fetch(server+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user,password:$('password').value})});
+  if(!r.ok)throw Error('Login não autorizado');
+  const session=await r.json(), token=session.token;
+  if(user!==s.user || server!==s.server){s={...defaults,user,server};}
+  s.user=user;s.server=server;s.token=token;s.mustChangePassword=!!session.mustChangePassword;save();if(s.mustChangePassword){show('config');return}await sync();show('config');
+ }catch(e){alert('Não foi possível conectar: '+e.message)}
+}
+function logout(){
+ if(!confirm('Sair deste aparelho? A senha será solicitada no próximo acesso.'))return;
+ s.token='';s.mustChangePassword=false;s.syncAt='';save();show('config');
+}
+async function sync(){
+ if(s.mustChangePassword||syncing||!s.server||!s.token||!navigator.onLine)return;
+ syncing=true;
+ const batch=s.pending.slice(0,500), user=s.user, server=s.server, token=s.token;
+ try{
+  const r=await fetch(server+'/api/sync',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({changes:batch})});
+  if(!r.ok){let detail='';try{const payload=await r.json();detail=typeof payload.detail==='string'?payload.detail:''}catch(_){}if(r.status===401){s.token='';save();alert('Sua sessão expirou. Entre novamente em Configurações.')}throw Error('Sincronização recusada ('+r.status+'): '+(detail||'verifique os dados enviados'))}
+  const data=await r.json();
+  if(user!==s.user||server!==s.server||token!==s.token)return;
+  const acknowledged=new Set(batch.map(x=>x.changeId));
+  s.pending=s.pending.filter(x=>!acknowledged.has(x.changeId));
+  for(const name of ['clients','visits','orders','tasks','routes','goals','prices','officeProcesses','officeActions','officeCommercial','officeAdministrative','officeRituals','officeRoles','officeFinance','officeBudget','officeMonthlyClose'])if(Array.isArray(data[name]))s[name]=data[name];
+  // Reaplica alterações criadas enquanto a solicitação estava em andamento.
+  for(const change of s.pending){const name={client:'clients',visit:'visits',order:'orders',task:'tasks',route:'routes',delete_route:'routes',office_action:'officeActions',office_commercial:'officeCommercial',office_administrative:'officeAdministrative',office_finance:'officeFinance',office_budget:'officeBudget',office_monthly_close:'officeMonthlyClose',office_process:'officeProcesses'}[change.type];if(!name)continue;s[name]=s[name].filter(x=>x.id!==change.data.id);if(change.type!=='delete_route')s[name].push(change.data)}
+  s.syncAt=new Date().toLocaleString('pt-BR');window.routeAttemptedDay='';save();show(tab);
+ }catch(e){console.warn(e);window.lastSyncError=e.message;network();if(batch.length)alert('Os dados foram salvos neste aparelho, mas NÃO foram enviados à nuvem. '+e.message)}finally{syncing=false;if(!s.mustChangePassword&&s.pending.length&&s.server&&s.token&&navigator.onLine)setTimeout(sync,3000)}
+}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(b.dataset.tab));
+window.addEventListener('online',()=>{network();sync()});window.addEventListener('offline',network);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});setInterval(sync,30000);
+(async()=>{if('serviceWorker'in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('./sw.js').catch(()=>{});if(!s.server&&location.protocol.startsWith('http'))s.server=location.origin;save();show('hoje');sync()})();
+,'Variação %','Saldo acumulado'].includes(name)?'number':name==='Vencimento'||name==='Prazo'?'date':'text';return '<label>'+esc(name)+'<input name="'+esc(name)+'" type="'+type+'" '+(type==='number'?'step="0.01" min="0" ':'')+'value="'+esc(selected[name]??'')+'"></label>'}).join('');
+ return '<div class="box"><h3>'+(selected.id?'Editar registro':'Novo registro')+'</h3><p class="muted">As alterações ficam pendentes até a sincronização com a nuvem.</p><form id="recordForm" data-collection="'+collection+'"><div class="row">'+fields+'</div><button type="submit">Salvar alterações</button> <button type="button" class="secondary" onclick="clearRecordEditor()">Novo / limpar</button></form></div><div class="box"><h3>Registros existentes</h3>'+(rows.length?'<div class="scroll"><table><tr><th>Registro</th><th>Ação</th></tr>'+rows.map((x,i)=>'<tr><td>'+esc(x['Descrição']||x['Demanda ou problema']||x['Demanda']||x.Processo||x.Categoria||x['Mês']||x.ID||('Registro '+(i+1)))+'</td><td><button type="button" onclick="editRecord(\''+collection+'\','+i+')">Editar</button></td></tr>').join('')+'</table></div>':'Nenhum registro cadastrado.')+'</div>';
+}
+function editRecord(collection,index){
+ const row=(s[collection]||[])[index];if(!row)return;
+ window.recordEditCollection=collection;window.recordEditId=row.id||'';
+ if(!row.id){row.id=uid();save();window.recordEditId=row.id}
+ render();$('recordForm')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function clearRecordEditor(){window.recordEditId='';window.recordEditCollection='';render()}
+function saveRecord(e){
+ e.preventDefault();const collection=e.target.dataset.collection,cfg=editableRecords[collection];
+ if(!cfg||(collection==='officeFinance'||collection==='officeBudget'||collection==='officeMonthlyClose')&&!financeAllowed())return;
+ const data=Object.fromEntries(new FormData(e.target));
+ for(const name of ['Valor','Orçado mensal','Realizado no mês','Receitas recebidas','Despesas pagas','Resultado realizado'])if(name in data){let v=Number(data[name]);if(!Number.isFinite(v)||v<0){alert('Informe um valor válido para '+name);return}data[name]=v}
+ const existing=(s[collection]||[]).find(x=>x.id===window.recordEditId);
+ const merged={...(existing||{}),...data,id:existing?.id||uid()};
+ const i=(s[collection]||[]).findIndex(x=>x.id===merged.id);
+ if(i<0)s[collection].push(merged);else s[collection][i]=merged;
+ queue(cfg.kind,merged);window.recordEditId='';window.recordEditCollection='';render();
+}
+function queue(type,data){s.pending.push({type,data:structuredClone(data),changeId:uid()});save();if(s.server&&navigator.onLine)sync()}
+function digits(value){return String(value||'').replace(/\D/g,'')}
+function validCNPJ(value){
+ const n=digits(value);
+ if(n.length!==14||/^(\d)\1{13}$/.test(n))return false;
+ const check=len=>{let sum=0,weight=len-7;for(let i=0;i<len;i++){sum+=Number(n[i])*weight;weight=weight===2?9:weight-1}let mod=sum%11;return mod<2?0:11-mod};
+ return Number(n[12])===check(12)&&Number(n[13])===check(13);
+}
+function newClient(){show('clientes');$('clientForm').reset();$('cid').value='';$('clientFormTitle').textContent='Cadastrar novo cliente';$('c_name').focus()}
+function saveClient(e){
+ e.preventDefault();
+ const d=Object.fromEntries(new FormData(e.target));
+ d.name=d.name.trim();d.city=d.city.trim();d.state=stateCode(d);
+ if(!d.name||!d.city||!['PA','AP'].includes(d.state)){alert('Informe razão social, cidade e UF válida (PA ou AP).');return}
+ if(!validCNPJ(d.taxId)){alert('Informe um CNPJ válido, com 14 dígitos e dígitos verificadores corretos.');$('c_taxId').focus();return}
+ d.taxId=digits(d.taxId);
+ d.stateRegistration=(d.stateRegistration||'').trim().toUpperCase();
+ if(d.stateRegistration!=='ISENTO'&&!/^\d{7,14}$/.test(d.stateRegistration)){alert('Informe a inscrição estadual (7 a 14 dígitos) ou ISENTO.');$('c_stateRegistration').focus();return}
+ if(d.stateRegistration!=='ISENTO')d.stateRegistration=digits(d.stateRegistration);
+ const old=s.clients.findIndex(c=>c.id===d.id);
+ if(s.clients.some(c=>c.id!==d.id&&digits(c.taxId)===d.taxId)){alert('Já existe um cliente com este CNPJ. Confira o cadastro antes de salvar.');return}
+ d.id=d.id||uid();
+ const merged=old<0?d:{...s.clients[old],...d};
+ if(old<0)s.clients.push(merged);else s.clients[old]=merged;
+ queue('client',merged);show('clientes');
+}
+function editClient(id){
+ show('clientes');let c=client(id);$('cid').value=id;
+ for(let k of ['name','tradeName','taxId','stateRegistration','contact','phone','email','address','district','city','state','channel','brands','last_purchase'])$('c_'+k).value=c[k]||'';
+ $('c_state').value=stateCode(c)==='FORA'?'':stateCode(c);
+ $('clientFormTitle').textContent='Editar cadastro do cliente';
+ $('clientForm').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function prefill(id){window.prefillId=id;show('registro')}
+function priceCents(value){let n=Number(String(value??0).replace(',','.'));return Number.isFinite(n)?Math.round(n*100):0}
+function parseBRLCents(value){let t=String(value||'').replace(/R\$/gi,'').replace(/\s/g,'');if(t.includes(','))t=t.replace(/\./g,'').replace(',','.');let n=Number(t);return Number.isFinite(n)?Math.round(n*100):NaN}
+function pricesForTable(priceTable){return (s.prices||[]).filter(p=>p.state===priceTable)}
+function orderDraft(){if(!window.currentOrder){let clientId=window.prefillId||'';window.currentOrder={date:today(),clientId,priceTable:stateCode(client(clientId))||'',brand:'',quantities:{}}}return window.currentOrder}
+function newOrder(){window.currentOrder={date:today(),clientId:'',priceTable:'',brand:'',quantities:{}};show('pedidos')}
+function setOrderDate(value){orderDraft().date=value}
+function setOrderClient(value){let d=orderDraft();d.clientId=value;d.priceTable=stateCode(client(value))||'';d.brand='';d.quantities={};show('pedidos')}
+function setOrderTable(value){let d=orderDraft();d.priceTable=value;d.brand='';d.quantities={};show('pedidos')}
+function setOrderBrand(value){let d=orderDraft();d.brand=value;d.quantities={};show('pedidos')}
+function orderTotalCents(products,draft){return products.reduce((sum,p)=>sum+priceCents(p.price)*Number(draft.quantities[p.sku]||0),0)}
+function setOrderQuantity(sku,value){let d=orderDraft(),qty=Math.max(0,Math.floor(Number(value)||0));d.quantities[sku]=qty;let products=pricesForTable(d.priceTable).filter(p=>p.brand===d.brand),p=products.find(x=>x.sku===sku),cell=document.querySelector(`[data-subtotal="${CSS.escape(sku)}"]`);if(cell&&p)cell.textContent=money(priceCents(p.price)*qty/100);let total=$('orderTotal');if(total)total.textContent=money(orderTotalCents(products,d)/100)}
+function saveOrder(e){e.preventDefault();let d=orderDraft(),products=pricesForTable(d.priceTable).filter(p=>p.brand===d.brand),items=products.map(p=>({sku:p.sku,description:p.description||'',quantity:Number(d.quantities[p.sku]||0),unitPrice:(priceCents(p.price)/100).toFixed(2)})).filter(i=>i.quantity>0);if(!d.clientId||!d.priceTable||!d.brand){alert('Selecione o cliente, a tabela de preços e a marca.');return}if(!items.length){alert('Informe a quantidade de pelo menos um produto.');return}let total=products.reduce((sum,p)=>sum+priceCents(p.price)*Number(d.quantities[p.sku]||0),0),form=new FormData(e.target),finalized=e.submitter?.value==='finalize',order={id:uid(),date:d.date,clientId:d.clientId,priceTable:d.priceTable,brand:d.brand,items,status:finalized?'Confirmado':(form.get('status')||'Pendente'),amount:total/100,user:s.user};s.orders.push(order);queue('order',order);window.currentOrder=null;window.prefillId='';if(finalized)shareOrderPDF(order.id,true);show('pedidos')}
+function pdfText(value){return String(value??'').normalize('NFC').replace(/[–—]/g,'-').replace(/[“”]/g,'"').replace(/[‘’]/g,"'").replace(/[^\x20-\xFF]/g,'?').replace(/([\\()])/g,'\\$1')}
+function wrapPDF(text,size=88){let words=String(text||'').split(/\s+/),lines=[],line='';for(const word of words){if((line+' '+word).trim().length>size){if(line)lines.push(line);line=word}else line=(line+' '+word).trim()}if(line)lines.push(line);return lines.length?lines:['']}
+function orderPDFBlob(order){let c=client(order.clientId),lines=[`Pedido ${order.id}`,`Data: ${order.date}   Status: ${order.status}`,`Cliente: ${c.name||'Não informado'}`,`CNPJ: ${c.taxId||'Não informado'}`,`Cidade/UF: ${c.city||''} / ${c.state||''}`,`Tabela: ${order.priceTable||order.state||'-'}   Marca: ${order.brand||'-'}`,''];for(const item of order.items||[]){let unit=priceCents(item.unitPrice)/100,subtotal=unit*Number(item.quantity||0);lines.push(...wrapPDF(`${item.sku} - ${item.description||item.sku} | ${item.quantity} x ${money(unit)} = ${money(subtotal)}`))}lines.push('',`TOTAL DO PEDIDO: ${money(order.amount)}`,`Responsável: ${order.user||s.user}`);let chunks=[];for(let i=0;i<lines.length;i+=34)chunks.push(lines.slice(i,i+34));let objects=['','',''],fontId=3,pageIds=[],contentIds=[];for(let i=0;i<chunks.length;i++){pageIds.push(4+i*2);contentIds.push(5+i*2)}objects[0]='<< /Type /Catalog /Pages 2 0 R >>';objects[1]=`<< /Type /Pages /Kids [${pageIds.map(id=>id+' 0 R').join(' ')}] /Count ${pageIds.length} >>`;objects[2]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';for(let i=0;i<chunks.length;i++){let stream=`BT\n/F1 16 Tf\n50 800 Td\n(L2 ONE - PEDIDO) Tj\n/F1 10 Tf\n0 -24 Td\n`;chunks[i].forEach((line,n)=>{stream+=`(${pdfText(line)}) Tj\n0 -18 Td\n`});stream+=`0 -8 Td\n(Página ${i+1} de ${chunks.length}) Tj\nET`;objects[pageIds[i]-1]=`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentIds[i]} 0 R >>`;objects[contentIds[i]-1]=`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`}let pdf='%PDF-1.4\n%âãÏÓ\n',offsets=[0];for(let i=0;i<objects.length;i++){offsets[i+1]=pdf.length;pdf+=`${i+1} 0 obj\n${objects[i]}\nendobj\n`}let xref=pdf.length;pdf+=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n`;for(let i=1;i<=objects.length;i++)pdf+=String(offsets[i]).padStart(10,'0')+' 00000 n \n';pdf+=`trailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;let bytes=Uint8Array.from([...pdf].map(ch=>ch.charCodeAt(0)&255));return new Blob([bytes],{type:'application/pdf'})}
+function orderFileName(order){let name=(client(order.clientId).name||'cliente').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'').toLowerCase();return `pedido-${order.date}-${name||'cliente'}.pdf`}
+function downloadBlob(blob,name){let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+function downloadOrderPDF(id){let order=s.orders.find(x=>x.id===id);if(!order)return;downloadBlob(orderPDFBlob(order),orderFileName(order))}
+function orderShareText(order){let c=client(order.clientId),items=(order.items||[]).reduce((n,i)=>n+Number(i.quantity||0),0);return `Pedido L2 ONE\nCliente: ${c.name||'-'}\nTabela: ${order.priceTable||order.state||'-'}\nMarca: ${order.brand||'-'}\nItens: ${items}\nTotal: ${money(order.amount)}`}
+async function shareOrderPDF(id,automatic=false){let order=s.orders.find(x=>x.id===id);if(!order)return;let blob=orderPDFBlob(order),name=orderFileName(order);downloadBlob(blob,name);let file=new File([blob],name,{type:'application/pdf'}),data={title:'Pedido L2 ONE',text:orderShareText(order),files:[file]};if(navigator.share&&navigator.canShare?.(data)){try{await navigator.share(data);return}catch(err){if(err.name==='AbortError')return}}let phone=digits(client(order.clientId).phone);if(phone.length===10||phone.length===11)phone='55'+phone;window.open(`https://wa.me/${phone}?text=${encodeURIComponent(orderShareText(order)+'\n\nO PDF foi baixado. Anexe o arquivo '+name+' nesta conversa.')}`,'_blank','noopener');if(automatic)alert('Pedido finalizado. O PDF foi salvo e o WhatsApp foi aberto para o envio.')}
+async function importPrices(e){e.preventDefault();if(!s.server||!s.token){alert('Conecte o sistema ao servidor antes de importar preços.');return}let lines=new FormData(e.target).get('prices').split(/\r?\n/).map(x=>x.trim()).filter(Boolean),prices=[];for(let i=0;i<lines.length;i++){let parts=lines[i].split(';').map(x=>x.trim());if(i===0&&/marca/i.test(parts[0])&&/sku/i.test(parts[1]||''))continue;if(parts.length<5){alert(`Linha ${i+1}: use Marca; SKU; Descrição; UF; Preço.`);return}let [brand,sku,description,state,value]=parts,cents=parseBRLCents(value);state=state.toUpperCase();if(!brand||!sku||!['PA','AP'].includes(state)||!Number.isFinite(cents)||cents<=0){alert(`Linha ${i+1}: confira marca, SKU, UF e preço.`);return}prices.push({brand,sku,description,state,price:(cents/100).toFixed(2)})}try{let r=await fetch(s.server+'/api/prices/import',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+s.token},body:JSON.stringify({prices})}),data=await r.json();if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:'Importação recusada.');alert(`${data.imported} preço(s) importado(s) com sucesso.`);await sync();show('marcas')}catch(err){alert('Não foi possível importar: '+err.message)}}
+function saveVisit(e){e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.id=uid();d.user=s.user;d.amount=Number(d.amount||0);s.visits.push(d);queue('visit',d);if(d.amount>0){alert('Atendimento registrado. O pedido por valor total não foi criado: novos pedidos exigem itens e preços da tabela do estado do cliente.')}if(d.next){let t={id:uid(),clientId:d.clientId,text:d.next,date:d.returnDate||d.date,user:s.user,status:'Aberta'};s.tasks.push(t);queue('task',t)}window.prefillId='';show('hoje')}
+function saveTask(e){e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.id=uid();d.status='Aberta';s.tasks.push(d);queue('task',d);show('hoje')}
+function saveGoal(e){e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.amount=Number(d.amount||0);d.id=d.month+'-'+d.user.toLowerCase().replace(/[^a-z0-9]+/g,'-');let i=s.goals.findIndex(x=>x.id===d.id);if(i<0)s.goals.push(d);else s.goals[i]=d;queue('goal',d);window.reportMonth=d.month;show('gestao')}
+function done(id){let t=s.tasks.find(x=>x.id===id);t.status='Concluída';queue('task',t);show('hoje')}
+function addRoute(id){let d=window.routeDay||today(),n=s.routes.filter(x=>x.date===d).length;if(n>=10){alert('A rota já tem 10 clientes. Retire um para adicionar outro.');return}let r={id:uid(),date:d,clientId:id,order:n+1,user:s.user};s.routes.push(r);queue('route',r);show('rota')}
+function removeRoute(id){s.routes=s.routes.filter(x=>x.id!==id);queue('delete_route',{id});show('rota')}
+function autoRoute(day=today(),replace=false){
+ window.routeAttemptedDay=day;
+ if(!['Ana Paula','Euler'].includes(s.user)){alert('A roteirização é restrita aos representantes Ana Paula e Euler.');window.routeBuilding=false;return}
+ const existing=s.routes.filter(r=>r.date===day);
+ if(replace){for(const r of existing){s.routes=s.routes.filter(x=>x.id!==r.id);s.pending.push({type:'delete_route',data:{id:r.id},changeId:uid()})}}
+ const picks=suggestedClients(day,8);
+ let order=s.routes.filter(r=>r.date===day).length;
+ for(const c of picks){let r={id:uid(),date:day,clientId:c.id,order:++order,user:s.user,suggested:true,location:locationLabel(c),reason:priority(c).reason};s.routes.push(r);s.pending.push({type:'route',data:structuredClone(r),changeId:uid()})}
+ window.routeBuilding=false;save();if(s.server&&navigator.onLine)sync();show('rota');
+}
+function changeOrder(id,status){
+ const o=s.orders.find(x=>x.id===id);
+ if(!o)return;
+ if(!Array.isArray(o.items)||!o.items.length){alert('Pedido antigo: alteração de status indisponível até a migração para pedidos por itens.');show('pedidos');return}
+ o.status=status;queue('order',o);show('pedidos')
+}
+function exportData(){let b=new Blob([JSON.stringify(s,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='L2_ONE_backup_'+today()+'.json';a.click();URL.revokeObjectURL(a.href)}
+async function importData(f){if(!f)return;try{let d=JSON.parse(await f.text());if(!Array.isArray(d.clients))throw Error('Arquivo inválido');if(confirm('Substituir os dados locais pelo backup?')){s={...defaults,...d,token:'',server:'',pending:[]};save();show('hoje')}}catch(e){alert(e.message)}}
+
+function renderPasswordChange(){
+ $('app').innerHTML=`<div class="box"><h2>Crie sua senha pessoal</h2><p>Olá, ${esc(s.user)}. Para liberar seu primeiro acesso, substitua a senha provisória.</p><form id="passwordChangeForm"><label>Senha provisória<input id="currentPassword" type="password" autocomplete="current-password" required></label><label>Nova senha (mínimo de 12 caracteres)<input id="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required></label><label>Confirme a nova senha<input id="confirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required></label><p id="passwordChangeError" role="alert"></p><button id="passwordChangeSubmit">Salvar senha pessoal</button></form><p><button class="secondary" onclick="logout()">Sair</button></p></div>`;
+ $('passwordChangeForm').onsubmit=submitPasswordChange;
+}
+async function submitPasswordChange(event){
+ event.preventDefault();
+ const currentPassword=$('currentPassword').value,newPassword=$('newPassword').value;
+ const error=$('passwordChangeError'),button=$('passwordChangeSubmit');
+ if(newPassword!==$('confirmPassword').value){error.textContent='As novas senhas não coincidem.';return}
+ button.disabled=true;error.textContent='';
+ try{
+  const r=await fetch(s.server+'/api/change-password',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+s.token},body:JSON.stringify({currentPassword,newPassword})});
+  const data=await r.json();
+  if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:'Não foi possível alterar a senha.');
+  s.token='';s.mustChangePassword=false;s.syncAt='';save();show('config');
+  alert('Senha alterada. Entre novamente com sua senha pessoal.');
+ }catch(e){error.textContent=e.message;button.disabled=false}
+}
+async function connect(){
+ const user=$('who').value, server=$('server').value.replace(/\/$/,'');
+ if(!server || (location.protocol==='https:' && !server.startsWith('https://'))){alert('Informe uma URL HTTPS válida.');return}
+ if(s.pending.length && (user!==s.user || server!==s.server)){alert('Sincronize ou exporte o backup das alterações pendentes antes de trocar usuário ou servidor.');return}
+ try{
+  const r=await fetch(server+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user,password:$('password').value})});
+  if(!r.ok)throw Error('Login não autorizado');
+  const session=await r.json(), token=session.token;
+  if(user!==s.user || server!==s.server){s={...defaults,user,server};}
+  s.user=user;s.server=server;s.token=token;s.mustChangePassword=!!session.mustChangePassword;save();if(s.mustChangePassword){show('config');return}await sync();show('config');
+ }catch(e){alert('Não foi possível conectar: '+e.message)}
+}
+function logout(){
+ if(!confirm('Sair deste aparelho? A senha será solicitada no próximo acesso.'))return;
+ s.token='';s.mustChangePassword=false;s.syncAt='';save();show('config');
+}
+async function sync(){
+ if(s.mustChangePassword||syncing||!s.server||!s.token||!navigator.onLine)return;
+ syncing=true;
+ const batch=s.pending.slice(0,500), user=s.user, server=s.server, token=s.token;
+ try{
+  const r=await fetch(server+'/api/sync',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({changes:batch})});
+  if(!r.ok){let detail='';try{const payload=await r.json();detail=typeof payload.detail==='string'?payload.detail:''}catch(_){}if(r.status===401){s.token='';save();alert('Sua sessão expirou. Entre novamente em Configurações.')}throw Error('Sincronização recusada ('+r.status+'): '+(detail||'verifique os dados enviados'))}
+  const data=await r.json();
+  if(user!==s.user||server!==s.server||token!==s.token)return;
+  const acknowledged=new Set(batch.map(x=>x.changeId));
+  s.pending=s.pending.filter(x=>!acknowledged.has(x.changeId));
+  for(const name of ['clients','visits','orders','tasks','routes','goals','prices','officeProcesses','officeActions','officeCommercial','officeAdministrative','officeRituals','officeRoles','officeFinance','officeBudget','officeMonthlyClose'])if(Array.isArray(data[name]))s[name]=data[name];
+  // Reaplica alterações criadas enquanto a solicitação estava em andamento.
+  for(const change of s.pending){const name={client:'clients',visit:'visits',order:'orders',task:'tasks',route:'routes',delete_route:'routes',office_action:'officeActions',office_commercial:'officeCommercial',office_administrative:'officeAdministrative',office_finance:'officeFinance',office_budget:'officeBudget',office_monthly_close:'officeMonthlyClose',office_process:'officeProcesses'}[change.type];if(!name)continue;s[name]=s[name].filter(x=>x.id!==change.data.id);if(change.type!=='delete_route')s[name].push(change.data)}
+  s.syncAt=new Date().toLocaleString('pt-BR');window.routeAttemptedDay='';save();show(tab);
+ }catch(e){console.warn(e);window.lastSyncError=e.message;network();if(batch.length)alert('Os dados foram salvos neste aparelho, mas NÃO foram enviados à nuvem. '+e.message)}finally{syncing=false;if(!s.mustChangePassword&&s.pending.length&&s.server&&s.token&&navigator.onLine)setTimeout(sync,3000)}
+}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(b.dataset.tab));
+window.addEventListener('online',()=>{network();sync()});window.addEventListener('offline',network);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});setInterval(sync,30000);
+(async()=>{if('serviceWorker'in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('./sw.js').catch(()=>{});if(!s.server&&location.protocol.startsWith('http'))s.server=location.origin;save();show('hoje');sync()})();
+,'Variação %','Ação/Justificativa']},
+ officeMonthlyClose:{kind:'office_monthly_close',fields:['ID','Mês','Receitas previstas','Receitas recebidas','Despesas previstas','Despesas pagas','Resultado realizado','A receber','A pagar','Vencidos a receber','Faturamento comercial','Comissão apurada','Margem operacional','Status fechamento','Observações/Decisões']}
+};
+function renderRecordEditor(collection){
+ if(collection.startsWith('officeFin')||collection==='officeBudget'||collection==='officeMonthlyClose'){if(!financeAllowed())return ''}
+ const cfg=editableRecords[collection],rows=s[collection]||[];
+ const selected=rows.find(x=>x.id===window.recordEditId&&window.recordEditCollection===collection)||{};
+ const fields=cfg.fields.map(name=>{let type=['Valor','Orçado mensal','Realizado no mês','Receitas recebidas','Despesas pagas','Resultado realizado'].includes(name)?'number':name==='Vencimento'||name==='Prazo'?'date':'text';return '<label>'+esc(name)+'<input name="'+esc(name)+'" type="'+type+'" '+(type==='number'?'step="0.01" min="0" ':'')+'value="'+esc(selected[name]??'')+'"></label>'}).join('');
+ return '<div class="box"><h3>'+(selected.id?'Editar registro':'Novo registro')+'</h3><p class="muted">As alterações ficam pendentes até a sincronização com a nuvem.</p><form id="recordForm" data-collection="'+collection+'"><div class="row">'+fields+'</div><button type="submit">Salvar alterações</button> <button type="button" class="secondary" onclick="clearRecordEditor()">Novo / limpar</button></form></div><div class="box"><h3>Registros existentes</h3>'+(rows.length?'<div class="scroll"><table><tr><th>Registro</th><th>Ação</th></tr>'+rows.map((x,i)=>'<tr><td>'+esc(x['Descrição']||x['Demanda ou problema']||x['Demanda']||x.Processo||x.Categoria||x['Mês']||x.ID||('Registro '+(i+1)))+'</td><td><button type="button" onclick="editRecord(\''+collection+'\','+i+')">Editar</button></td></tr>').join('')+'</table></div>':'Nenhum registro cadastrado.')+'</div>';
+}
+function editRecord(collection,index){
+ const row=(s[collection]||[])[index];if(!row)return;
+ window.recordEditCollection=collection;window.recordEditId=row.id||'';
+ if(!row.id){row.id=uid();save();window.recordEditId=row.id}
+ render();$('recordForm')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function clearRecordEditor(){window.recordEditId='';window.recordEditCollection='';render()}
+function saveRecord(e){
+ e.preventDefault();const collection=e.target.dataset.collection,cfg=editableRecords[collection];
+ if(!cfg||(collection==='officeFinance'||collection==='officeBudget'||collection==='officeMonthlyClose')&&!financeAllowed())return;
+ const data=Object.fromEntries(new FormData(e.target));
+ for(const name of ['Valor','Orçado mensal','Realizado no mês','Receitas recebidas','Despesas pagas','Resultado realizado'])if(name in data){let v=Number(data[name]);if(!Number.isFinite(v)||v<0){alert('Informe um valor válido para '+name);return}data[name]=v}
+ const existing=(s[collection]||[]).find(x=>x.id===window.recordEditId);
+ const merged={...(existing||{}),...data,id:existing?.id||uid()};
+ const i=(s[collection]||[]).findIndex(x=>x.id===merged.id);
+ if(i<0)s[collection].push(merged);else s[collection][i]=merged;
+ queue(cfg.kind,merged);window.recordEditId='';window.recordEditCollection='';render();
+}
+function queue(type,data){s.pending.push({type,data:structuredClone(data),changeId:uid()});save();if(s.server&&navigator.onLine)sync()}
+function digits(value){return String(value||'').replace(/\D/g,'')}
+function validCNPJ(value){
+ const n=digits(value);
+ if(n.length!==14||/^(\d)\1{13}$/.test(n))return false;
+ const check=len=>{let sum=0,weight=len-7;for(let i=0;i<len;i++){sum+=Number(n[i])*weight;weight=weight===2?9:weight-1}let mod=sum%11;return mod<2?0:11-mod};
+ return Number(n[12])===check(12)&&Number(n[13])===check(13);
+}
+function newClient(){show('clientes');$('clientForm').reset();$('cid').value='';$('clientFormTitle').textContent='Cadastrar novo cliente';$('c_name').focus()}
+function saveClient(e){
+ e.preventDefault();
+ const d=Object.fromEntries(new FormData(e.target));
+ d.name=d.name.trim();d.city=d.city.trim();d.state=stateCode(d);
+ if(!d.name||!d.city||!['PA','AP'].includes(d.state)){alert('Informe razão social, cidade e UF válida (PA ou AP).');return}
+ if(!validCNPJ(d.taxId)){alert('Informe um CNPJ válido, com 14 dígitos e dígitos verificadores corretos.');$('c_taxId').focus();return}
+ d.taxId=digits(d.taxId);
+ d.stateRegistration=(d.stateRegistration||'').trim().toUpperCase();
+ if(d.stateRegistration!=='ISENTO'&&!/^\d{7,14}$/.test(d.stateRegistration)){alert('Informe a inscrição estadual (7 a 14 dígitos) ou ISENTO.');$('c_stateRegistration').focus();return}
+ if(d.stateRegistration!=='ISENTO')d.stateRegistration=digits(d.stateRegistration);
+ const old=s.clients.findIndex(c=>c.id===d.id);
+ if(s.clients.some(c=>c.id!==d.id&&digits(c.taxId)===d.taxId)){alert('Já existe um cliente com este CNPJ. Confira o cadastro antes de salvar.');return}
+ d.id=d.id||uid();
+ const merged=old<0?d:{...s.clients[old],...d};
+ if(old<0)s.clients.push(merged);else s.clients[old]=merged;
+ queue('client',merged);show('clientes');
+}
+function editClient(id){
+ show('clientes');let c=client(id);$('cid').value=id;
+ for(let k of ['name','tradeName','taxId','stateRegistration','contact','phone','email','address','district','city','state','channel','brands','last_purchase'])$('c_'+k).value=c[k]||'';
+ $('c_state').value=stateCode(c)==='FORA'?'':stateCode(c);
+ $('clientFormTitle').textContent='Editar cadastro do cliente';
+ $('clientForm').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function prefill(id){window.prefillId=id;show('registro')}
+function priceCents(value){let n=Number(String(value??0).replace(',','.'));return Number.isFinite(n)?Math.round(n*100):0}
+function parseBRLCents(value){let t=String(value||'').replace(/R\$/gi,'').replace(/\s/g,'');if(t.includes(','))t=t.replace(/\./g,'').replace(',','.');let n=Number(t);return Number.isFinite(n)?Math.round(n*100):NaN}
+function pricesForTable(priceTable){return (s.prices||[]).filter(p=>p.state===priceTable)}
+function orderDraft(){if(!window.currentOrder){let clientId=window.prefillId||'';window.currentOrder={date:today(),clientId,priceTable:stateCode(client(clientId))||'',brand:'',quantities:{}}}return window.currentOrder}
+function newOrder(){window.currentOrder={date:today(),clientId:'',priceTable:'',brand:'',quantities:{}};show('pedidos')}
+function setOrderDate(value){orderDraft().date=value}
+function setOrderClient(value){let d=orderDraft();d.clientId=value;d.priceTable=stateCode(client(value))||'';d.brand='';d.quantities={};show('pedidos')}
+function setOrderTable(value){let d=orderDraft();d.priceTable=value;d.brand='';d.quantities={};show('pedidos')}
+function setOrderBrand(value){let d=orderDraft();d.brand=value;d.quantities={};show('pedidos')}
+function orderTotalCents(products,draft){return products.reduce((sum,p)=>sum+priceCents(p.price)*Number(draft.quantities[p.sku]||0),0)}
+function setOrderQuantity(sku,value){let d=orderDraft(),qty=Math.max(0,Math.floor(Number(value)||0));d.quantities[sku]=qty;let products=pricesForTable(d.priceTable).filter(p=>p.brand===d.brand),p=products.find(x=>x.sku===sku),cell=document.querySelector(`[data-subtotal="${CSS.escape(sku)}"]`);if(cell&&p)cell.textContent=money(priceCents(p.price)*qty/100);let total=$('orderTotal');if(total)total.textContent=money(orderTotalCents(products,d)/100)}
+function saveOrder(e){e.preventDefault();let d=orderDraft(),products=pricesForTable(d.priceTable).filter(p=>p.brand===d.brand),items=products.map(p=>({sku:p.sku,description:p.description||'',quantity:Number(d.quantities[p.sku]||0),unitPrice:(priceCents(p.price)/100).toFixed(2)})).filter(i=>i.quantity>0);if(!d.clientId||!d.priceTable||!d.brand){alert('Selecione o cliente, a tabela de preços e a marca.');return}if(!items.length){alert('Informe a quantidade de pelo menos um produto.');return}let total=products.reduce((sum,p)=>sum+priceCents(p.price)*Number(d.quantities[p.sku]||0),0),form=new FormData(e.target),finalized=e.submitter?.value==='finalize',order={id:uid(),date:d.date,clientId:d.clientId,priceTable:d.priceTable,brand:d.brand,items,status:finalized?'Confirmado':(form.get('status')||'Pendente'),amount:total/100,user:s.user};s.orders.push(order);queue('order',order);window.currentOrder=null;window.prefillId='';if(finalized)shareOrderPDF(order.id,true);show('pedidos')}
+function pdfText(value){return String(value??'').normalize('NFC').replace(/[–—]/g,'-').replace(/[“”]/g,'"').replace(/[‘’]/g,"'").replace(/[^\x20-\xFF]/g,'?').replace(/([\\()])/g,'\\$1')}
+function wrapPDF(text,size=88){let words=String(text||'').split(/\s+/),lines=[],line='';for(const word of words){if((line+' '+word).trim().length>size){if(line)lines.push(line);line=word}else line=(line+' '+word).trim()}if(line)lines.push(line);return lines.length?lines:['']}
+function orderPDFBlob(order){let c=client(order.clientId),lines=[`Pedido ${order.id}`,`Data: ${order.date}   Status: ${order.status}`,`Cliente: ${c.name||'Não informado'}`,`CNPJ: ${c.taxId||'Não informado'}`,`Cidade/UF: ${c.city||''} / ${c.state||''}`,`Tabela: ${order.priceTable||order.state||'-'}   Marca: ${order.brand||'-'}`,''];for(const item of order.items||[]){let unit=priceCents(item.unitPrice)/100,subtotal=unit*Number(item.quantity||0);lines.push(...wrapPDF(`${item.sku} - ${item.description||item.sku} | ${item.quantity} x ${money(unit)} = ${money(subtotal)}`))}lines.push('',`TOTAL DO PEDIDO: ${money(order.amount)}`,`Responsável: ${order.user||s.user}`);let chunks=[];for(let i=0;i<lines.length;i+=34)chunks.push(lines.slice(i,i+34));let objects=['','',''],fontId=3,pageIds=[],contentIds=[];for(let i=0;i<chunks.length;i++){pageIds.push(4+i*2);contentIds.push(5+i*2)}objects[0]='<< /Type /Catalog /Pages 2 0 R >>';objects[1]=`<< /Type /Pages /Kids [${pageIds.map(id=>id+' 0 R').join(' ')}] /Count ${pageIds.length} >>`;objects[2]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';for(let i=0;i<chunks.length;i++){let stream=`BT\n/F1 16 Tf\n50 800 Td\n(L2 ONE - PEDIDO) Tj\n/F1 10 Tf\n0 -24 Td\n`;chunks[i].forEach((line,n)=>{stream+=`(${pdfText(line)}) Tj\n0 -18 Td\n`});stream+=`0 -8 Td\n(Página ${i+1} de ${chunks.length}) Tj\nET`;objects[pageIds[i]-1]=`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentIds[i]} 0 R >>`;objects[contentIds[i]-1]=`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`}let pdf='%PDF-1.4\n%âãÏÓ\n',offsets=[0];for(let i=0;i<objects.length;i++){offsets[i+1]=pdf.length;pdf+=`${i+1} 0 obj\n${objects[i]}\nendobj\n`}let xref=pdf.length;pdf+=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n`;for(let i=1;i<=objects.length;i++)pdf+=String(offsets[i]).padStart(10,'0')+' 00000 n \n';pdf+=`trailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;let bytes=Uint8Array.from([...pdf].map(ch=>ch.charCodeAt(0)&255));return new Blob([bytes],{type:'application/pdf'})}
+function orderFileName(order){let name=(client(order.clientId).name||'cliente').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'').toLowerCase();return `pedido-${order.date}-${name||'cliente'}.pdf`}
+function downloadBlob(blob,name){let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+function downloadOrderPDF(id){let order=s.orders.find(x=>x.id===id);if(!order)return;downloadBlob(orderPDFBlob(order),orderFileName(order))}
+function orderShareText(order){let c=client(order.clientId),items=(order.items||[]).reduce((n,i)=>n+Number(i.quantity||0),0);return `Pedido L2 ONE\nCliente: ${c.name||'-'}\nTabela: ${order.priceTable||order.state||'-'}\nMarca: ${order.brand||'-'}\nItens: ${items}\nTotal: ${money(order.amount)}`}
+async function shareOrderPDF(id,automatic=false){let order=s.orders.find(x=>x.id===id);if(!order)return;let blob=orderPDFBlob(order),name=orderFileName(order);downloadBlob(blob,name);let file=new File([blob],name,{type:'application/pdf'}),data={title:'Pedido L2 ONE',text:orderShareText(order),files:[file]};if(navigator.share&&navigator.canShare?.(data)){try{await navigator.share(data);return}catch(err){if(err.name==='AbortError')return}}let phone=digits(client(order.clientId).phone);if(phone.length===10||phone.length===11)phone='55'+phone;window.open(`https://wa.me/${phone}?text=${encodeURIComponent(orderShareText(order)+'\n\nO PDF foi baixado. Anexe o arquivo '+name+' nesta conversa.')}`,'_blank','noopener');if(automatic)alert('Pedido finalizado. O PDF foi salvo e o WhatsApp foi aberto para o envio.')}
+async function importPrices(e){e.preventDefault();if(!s.server||!s.token){alert('Conecte o sistema ao servidor antes de importar preços.');return}let lines=new FormData(e.target).get('prices').split(/\r?\n/).map(x=>x.trim()).filter(Boolean),prices=[];for(let i=0;i<lines.length;i++){let parts=lines[i].split(';').map(x=>x.trim());if(i===0&&/marca/i.test(parts[0])&&/sku/i.test(parts[1]||''))continue;if(parts.length<5){alert(`Linha ${i+1}: use Marca; SKU; Descrição; UF; Preço.`);return}let [brand,sku,description,state,value]=parts,cents=parseBRLCents(value);state=state.toUpperCase();if(!brand||!sku||!['PA','AP'].includes(state)||!Number.isFinite(cents)||cents<=0){alert(`Linha ${i+1}: confira marca, SKU, UF e preço.`);return}prices.push({brand,sku,description,state,price:(cents/100).toFixed(2)})}try{let r=await fetch(s.server+'/api/prices/import',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+s.token},body:JSON.stringify({prices})}),data=await r.json();if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:'Importação recusada.');alert(`${data.imported} preço(s) importado(s) com sucesso.`);await sync();show('marcas')}catch(err){alert('Não foi possível importar: '+err.message)}}
+function saveVisit(e){e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.id=uid();d.user=s.user;d.amount=Number(d.amount||0);s.visits.push(d);queue('visit',d);if(d.amount>0){alert('Atendimento registrado. O pedido por valor total não foi criado: novos pedidos exigem itens e preços da tabela do estado do cliente.')}if(d.next){let t={id:uid(),clientId:d.clientId,text:d.next,date:d.returnDate||d.date,user:s.user,status:'Aberta'};s.tasks.push(t);queue('task',t)}window.prefillId='';show('hoje')}
+function saveTask(e){e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.id=uid();d.status='Aberta';s.tasks.push(d);queue('task',d);show('hoje')}
+function saveGoal(e){e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.amount=Number(d.amount||0);d.id=d.month+'-'+d.user.toLowerCase().replace(/[^a-z0-9]+/g,'-');let i=s.goals.findIndex(x=>x.id===d.id);if(i<0)s.goals.push(d);else s.goals[i]=d;queue('goal',d);window.reportMonth=d.month;show('gestao')}
+function done(id){let t=s.tasks.find(x=>x.id===id);t.status='Concluída';queue('task',t);show('hoje')}
+function addRoute(id){let d=window.routeDay||today(),n=s.routes.filter(x=>x.date===d).length;if(n>=10){alert('A rota já tem 10 clientes. Retire um para adicionar outro.');return}let r={id:uid(),date:d,clientId:id,order:n+1,user:s.user};s.routes.push(r);queue('route',r);show('rota')}
+function removeRoute(id){s.routes=s.routes.filter(x=>x.id!==id);queue('delete_route',{id});show('rota')}
+function autoRoute(day=today(),replace=false){
+ window.routeAttemptedDay=day;
+ if(!['Ana Paula','Euler'].includes(s.user)){alert('A roteirização é restrita aos representantes Ana Paula e Euler.');window.routeBuilding=false;return}
+ const existing=s.routes.filter(r=>r.date===day);
+ if(replace){for(const r of existing){s.routes=s.routes.filter(x=>x.id!==r.id);s.pending.push({type:'delete_route',data:{id:r.id},changeId:uid()})}}
+ const picks=suggestedClients(day,8);
+ let order=s.routes.filter(r=>r.date===day).length;
+ for(const c of picks){let r={id:uid(),date:day,clientId:c.id,order:++order,user:s.user,suggested:true,location:locationLabel(c),reason:priority(c).reason};s.routes.push(r);s.pending.push({type:'route',data:structuredClone(r),changeId:uid()})}
+ window.routeBuilding=false;save();if(s.server&&navigator.onLine)sync();show('rota');
+}
+function changeOrder(id,status){
+ const o=s.orders.find(x=>x.id===id);
+ if(!o)return;
+ if(!Array.isArray(o.items)||!o.items.length){alert('Pedido antigo: alteração de status indisponível até a migração para pedidos por itens.');show('pedidos');return}
+ o.status=status;queue('order',o);show('pedidos')
+}
+function exportData(){let b=new Blob([JSON.stringify(s,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='L2_ONE_backup_'+today()+'.json';a.click();URL.revokeObjectURL(a.href)}
+async function importData(f){if(!f)return;try{let d=JSON.parse(await f.text());if(!Array.isArray(d.clients))throw Error('Arquivo inválido');if(confirm('Substituir os dados locais pelo backup?')){s={...defaults,...d,token:'',server:'',pending:[]};save();show('hoje')}}catch(e){alert(e.message)}}
+
+function renderPasswordChange(){
+ $('app').innerHTML=`<div class="box"><h2>Crie sua senha pessoal</h2><p>Olá, ${esc(s.user)}. Para liberar seu primeiro acesso, substitua a senha provisória.</p><form id="passwordChangeForm"><label>Senha provisória<input id="currentPassword" type="password" autocomplete="current-password" required></label><label>Nova senha (mínimo de 12 caracteres)<input id="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required></label><label>Confirme a nova senha<input id="confirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required></label><p id="passwordChangeError" role="alert"></p><button id="passwordChangeSubmit">Salvar senha pessoal</button></form><p><button class="secondary" onclick="logout()">Sair</button></p></div>`;
+ $('passwordChangeForm').onsubmit=submitPasswordChange;
+}
+async function submitPasswordChange(event){
+ event.preventDefault();
+ const currentPassword=$('currentPassword').value,newPassword=$('newPassword').value;
+ const error=$('passwordChangeError'),button=$('passwordChangeSubmit');
+ if(newPassword!==$('confirmPassword').value){error.textContent='As novas senhas não coincidem.';return}
+ button.disabled=true;error.textContent='';
+ try{
+  const r=await fetch(s.server+'/api/change-password',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+s.token},body:JSON.stringify({currentPassword,newPassword})});
+  const data=await r.json();
+  if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:'Não foi possível alterar a senha.');
+  s.token='';s.mustChangePassword=false;s.syncAt='';save();show('config');
+  alert('Senha alterada. Entre novamente com sua senha pessoal.');
+ }catch(e){error.textContent=e.message;button.disabled=false}
+}
+async function connect(){
+ const user=$('who').value, server=$('server').value.replace(/\/$/,'');
+ if(!server || (location.protocol==='https:' && !server.startsWith('https://'))){alert('Informe uma URL HTTPS válida.');return}
+ if(s.pending.length && (user!==s.user || server!==s.server)){alert('Sincronize ou exporte o backup das alterações pendentes antes de trocar usuário ou servidor.');return}
+ try{
+  const r=await fetch(server+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user,password:$('password').value})});
+  if(!r.ok)throw Error('Login não autorizado');
+  const session=await r.json(), token=session.token;
+  if(user!==s.user || server!==s.server){s={...defaults,user,server};}
+  s.user=user;s.server=server;s.token=token;s.mustChangePassword=!!session.mustChangePassword;save();if(s.mustChangePassword){show('config');return}await sync();show('config');
+ }catch(e){alert('Não foi possível conectar: '+e.message)}
+}
+function logout(){
+ if(!confirm('Sair deste aparelho? A senha será solicitada no próximo acesso.'))return;
+ s.token='';s.mustChangePassword=false;s.syncAt='';save();show('config');
+}
+async function sync(){
+ if(s.mustChangePassword||syncing||!s.server||!s.token||!navigator.onLine)return;
+ syncing=true;
+ const batch=s.pending.slice(0,500), user=s.user, server=s.server, token=s.token;
+ try{
+  const r=await fetch(server+'/api/sync',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({changes:batch})});
+  if(!r.ok){let detail='';try{const payload=await r.json();detail=typeof payload.detail==='string'?payload.detail:''}catch(_){}if(r.status===401){s.token='';save();alert('Sua sessão expirou. Entre novamente em Configurações.')}throw Error('Sincronização recusada ('+r.status+'): '+(detail||'verifique os dados enviados'))}
+  const data=await r.json();
+  if(user!==s.user||server!==s.server||token!==s.token)return;
+  const acknowledged=new Set(batch.map(x=>x.changeId));
+  s.pending=s.pending.filter(x=>!acknowledged.has(x.changeId));
+  for(const name of ['clients','visits','orders','tasks','routes','goals','prices','officeProcesses','officeActions','officeCommercial','officeAdministrative','officeRituals','officeRoles','officeFinance','officeBudget','officeMonthlyClose'])if(Array.isArray(data[name]))s[name]=data[name];
+  // Reaplica alterações criadas enquanto a solicitação estava em andamento.
+  for(const change of s.pending){const name={client:'clients',visit:'visits',order:'orders',task:'tasks',route:'routes',delete_route:'routes',office_action:'officeActions',office_commercial:'officeCommercial',office_administrative:'officeAdministrative',office_finance:'officeFinance',office_budget:'officeBudget',office_monthly_close:'officeMonthlyClose',office_process:'officeProcesses'}[change.type];if(!name)continue;s[name]=s[name].filter(x=>x.id!==change.data.id);if(change.type!=='delete_route')s[name].push(change.data)}
+  s.syncAt=new Date().toLocaleString('pt-BR');window.routeAttemptedDay='';save();show(tab);
+ }catch(e){console.warn(e);window.lastSyncError=e.message;network();if(batch.length)alert('Os dados foram salvos neste aparelho, mas NÃO foram enviados à nuvem. '+e.message)}finally{syncing=false;if(!s.mustChangePassword&&s.pending.length&&s.server&&s.token&&navigator.onLine)setTimeout(sync,3000)}
+}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(b.dataset.tab));
+window.addEventListener('online',()=>{network();sync()});window.addEventListener('offline',network);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});setInterval(sync,30000);
+(async()=>{if('serviceWorker'in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('./sw.js').catch(()=>{});if(!s.server&&location.protocol.startsWith('http'))s.server=location.origin;save();show('hoje');sync()})();
+,'Variação %','Saldo acumulado'])if(name in data){let v=Number(data[name]);if(!Number.isFinite(v)||v<0){alert('Informe um valor válido para '+name);return}data[name]=v}
+ const existing=(s[collection]||[]).find(x=>x.id===window.recordEditId);
+ const merged={...(existing||{}),...data,id:existing?.id||uid()};
+ const i=(s[collection]||[]).findIndex(x=>x.id===merged.id);
+ if(i<0)s[collection].push(merged);else s[collection][i]=merged;
+ queue(cfg.kind,merged);window.recordEditId='';window.recordEditCollection='';render();
+}
+function queue(type,data){s.pending.push({type,data:structuredClone(data),changeId:uid()});save();if(s.server&&navigator.onLine)sync()}
+function digits(value){return String(value||'').replace(/\D/g,'')}
+function validCNPJ(value){
+ const n=digits(value);
+ if(n.length!==14||/^(\d)\1{13}$/.test(n))return false;
+ const check=len=>{let sum=0,weight=len-7;for(let i=0;i<len;i++){sum+=Number(n[i])*weight;weight=weight===2?9:weight-1}let mod=sum%11;return mod<2?0:11-mod};
+ return Number(n[12])===check(12)&&Number(n[13])===check(13);
+}
+function newClient(){show('clientes');$('clientForm').reset();$('cid').value='';$('clientFormTitle').textContent='Cadastrar novo cliente';$('c_name').focus()}
+function saveClient(e){
+ e.preventDefault();
+ const d=Object.fromEntries(new FormData(e.target));
+ d.name=d.name.trim();d.city=d.city.trim();d.state=stateCode(d);
+ if(!d.name||!d.city||!['PA','AP'].includes(d.state)){alert('Informe razão social, cidade e UF válida (PA ou AP).');return}
+ if(!validCNPJ(d.taxId)){alert('Informe um CNPJ válido, com 14 dígitos e dígitos verificadores corretos.');$('c_taxId').focus();return}
+ d.taxId=digits(d.taxId);
+ d.stateRegistration=(d.stateRegistration||'').trim().toUpperCase();
+ if(d.stateRegistration!=='ISENTO'&&!/^\d{7,14}$/.test(d.stateRegistration)){alert('Informe a inscrição estadual (7 a 14 dígitos) ou ISENTO.');$('c_stateRegistration').focus();return}
+ if(d.stateRegistration!=='ISENTO')d.stateRegistration=digits(d.stateRegistration);
+ const old=s.clients.findIndex(c=>c.id===d.id);
+ if(s.clients.some(c=>c.id!==d.id&&digits(c.taxId)===d.taxId)){alert('Já existe um cliente com este CNPJ. Confira o cadastro antes de salvar.');return}
+ d.id=d.id||uid();
+ const merged=old<0?d:{...s.clients[old],...d};
+ if(old<0)s.clients.push(merged);else s.clients[old]=merged;
+ queue('client',merged);show('clientes');
+}
+function editClient(id){
+ show('clientes');let c=client(id);$('cid').value=id;
+ for(let k of ['name','tradeName','taxId','stateRegistration','contact','phone','email','address','district','city','state','channel','brands','last_purchase'])$('c_'+k).value=c[k]||'';
+ $('c_state').value=stateCode(c)==='FORA'?'':stateCode(c);
+ $('clientFormTitle').textContent='Editar cadastro do cliente';
+ $('clientForm').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function prefill(id){window.prefillId=id;show('registro')}
+function priceCents(value){let n=Number(String(value??0).replace(',','.'));return Number.isFinite(n)?Math.round(n*100):0}
+function parseBRLCents(value){let t=String(value||'').replace(/R\$/gi,'').replace(/\s/g,'');if(t.includes(','))t=t.replace(/\./g,'').replace(',','.');let n=Number(t);return Number.isFinite(n)?Math.round(n*100):NaN}
+function pricesForTable(priceTable){return (s.prices||[]).filter(p=>p.state===priceTable)}
+function orderDraft(){if(!window.currentOrder){let clientId=window.prefillId||'';window.currentOrder={date:today(),clientId,priceTable:stateCode(client(clientId))||'',brand:'',quantities:{}}}return window.currentOrder}
+function newOrder(){window.currentOrder={date:today(),clientId:'',priceTable:'',brand:'',quantities:{}};show('pedidos')}
+function setOrderDate(value){orderDraft().date=value}
+function setOrderClient(value){let d=orderDraft();d.clientId=value;d.priceTable=stateCode(client(value))||'';d.brand='';d.quantities={};show('pedidos')}
+function setOrderTable(value){let d=orderDraft();d.priceTable=value;d.brand='';d.quantities={};show('pedidos')}
+function setOrderBrand(value){let d=orderDraft();d.brand=value;d.quantities={};show('pedidos')}
+function orderTotalCents(products,draft){return products.reduce((sum,p)=>sum+priceCents(p.price)*Number(draft.quantities[p.sku]||0),0)}
+function setOrderQuantity(sku,value){let d=orderDraft(),qty=Math.max(0,Math.floor(Number(value)||0));d.quantities[sku]=qty;let products=pricesForTable(d.priceTable).filter(p=>p.brand===d.brand),p=products.find(x=>x.sku===sku),cell=document.querySelector(`[data-subtotal="${CSS.escape(sku)}"]`);if(cell&&p)cell.textContent=money(priceCents(p.price)*qty/100);let total=$('orderTotal');if(total)total.textContent=money(orderTotalCents(products,d)/100)}
+function saveOrder(e){e.preventDefault();let d=orderDraft(),products=pricesForTable(d.priceTable).filter(p=>p.brand===d.brand),items=products.map(p=>({sku:p.sku,description:p.description||'',quantity:Number(d.quantities[p.sku]||0),unitPrice:(priceCents(p.price)/100).toFixed(2)})).filter(i=>i.quantity>0);if(!d.clientId||!d.priceTable||!d.brand){alert('Selecione o cliente, a tabela de preços e a marca.');return}if(!items.length){alert('Informe a quantidade de pelo menos um produto.');return}let total=products.reduce((sum,p)=>sum+priceCents(p.price)*Number(d.quantities[p.sku]||0),0),form=new FormData(e.target),finalized=e.submitter?.value==='finalize',order={id:uid(),date:d.date,clientId:d.clientId,priceTable:d.priceTable,brand:d.brand,items,status:finalized?'Confirmado':(form.get('status')||'Pendente'),amount:total/100,user:s.user};s.orders.push(order);queue('order',order);window.currentOrder=null;window.prefillId='';if(finalized)shareOrderPDF(order.id,true);show('pedidos')}
+function pdfText(value){return String(value??'').normalize('NFC').replace(/[–—]/g,'-').replace(/[“”]/g,'"').replace(/[‘’]/g,"'").replace(/[^\x20-\xFF]/g,'?').replace(/([\\()])/g,'\\$1')}
+function wrapPDF(text,size=88){let words=String(text||'').split(/\s+/),lines=[],line='';for(const word of words){if((line+' '+word).trim().length>size){if(line)lines.push(line);line=word}else line=(line+' '+word).trim()}if(line)lines.push(line);return lines.length?lines:['']}
+function orderPDFBlob(order){let c=client(order.clientId),lines=[`Pedido ${order.id}`,`Data: ${order.date}   Status: ${order.status}`,`Cliente: ${c.name||'Não informado'}`,`CNPJ: ${c.taxId||'Não informado'}`,`Cidade/UF: ${c.city||''} / ${c.state||''}`,`Tabela: ${order.priceTable||order.state||'-'}   Marca: ${order.brand||'-'}`,''];for(const item of order.items||[]){let unit=priceCents(item.unitPrice)/100,subtotal=unit*Number(item.quantity||0);lines.push(...wrapPDF(`${item.sku} - ${item.description||item.sku} | ${item.quantity} x ${money(unit)} = ${money(subtotal)}`))}lines.push('',`TOTAL DO PEDIDO: ${money(order.amount)}`,`Responsável: ${order.user||s.user}`);let chunks=[];for(let i=0;i<lines.length;i+=34)chunks.push(lines.slice(i,i+34));let objects=['','',''],fontId=3,pageIds=[],contentIds=[];for(let i=0;i<chunks.length;i++){pageIds.push(4+i*2);contentIds.push(5+i*2)}objects[0]='<< /Type /Catalog /Pages 2 0 R >>';objects[1]=`<< /Type /Pages /Kids [${pageIds.map(id=>id+' 0 R').join(' ')}] /Count ${pageIds.length} >>`;objects[2]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';for(let i=0;i<chunks.length;i++){let stream=`BT\n/F1 16 Tf\n50 800 Td\n(L2 ONE - PEDIDO) Tj\n/F1 10 Tf\n0 -24 Td\n`;chunks[i].forEach((line,n)=>{stream+=`(${pdfText(line)}) Tj\n0 -18 Td\n`});stream+=`0 -8 Td\n(Página ${i+1} de ${chunks.length}) Tj\nET`;objects[pageIds[i]-1]=`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentIds[i]} 0 R >>`;objects[contentIds[i]-1]=`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`}let pdf='%PDF-1.4\n%âãÏÓ\n',offsets=[0];for(let i=0;i<objects.length;i++){offsets[i+1]=pdf.length;pdf+=`${i+1} 0 obj\n${objects[i]}\nendobj\n`}let xref=pdf.length;pdf+=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n`;for(let i=1;i<=objects.length;i++)pdf+=String(offsets[i]).padStart(10,'0')+' 00000 n \n';pdf+=`trailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;let bytes=Uint8Array.from([...pdf].map(ch=>ch.charCodeAt(0)&255));return new Blob([bytes],{type:'application/pdf'})}
+function orderFileName(order){let name=(client(order.clientId).name||'cliente').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'').toLowerCase();return `pedido-${order.date}-${name||'cliente'}.pdf`}
+function downloadBlob(blob,name){let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+function downloadOrderPDF(id){let order=s.orders.find(x=>x.id===id);if(!order)return;downloadBlob(orderPDFBlob(order),orderFileName(order))}
+function orderShareText(order){let c=client(order.clientId),items=(order.items||[]).reduce((n,i)=>n+Number(i.quantity||0),0);return `Pedido L2 ONE\nCliente: ${c.name||'-'}\nTabela: ${order.priceTable||order.state||'-'}\nMarca: ${order.brand||'-'}\nItens: ${items}\nTotal: ${money(order.amount)}`}
+async function shareOrderPDF(id,automatic=false){let order=s.orders.find(x=>x.id===id);if(!order)return;let blob=orderPDFBlob(order),name=orderFileName(order);downloadBlob(blob,name);let file=new File([blob],name,{type:'application/pdf'}),data={title:'Pedido L2 ONE',text:orderShareText(order),files:[file]};if(navigator.share&&navigator.canShare?.(data)){try{await navigator.share(data);return}catch(err){if(err.name==='AbortError')return}}let phone=digits(client(order.clientId).phone);if(phone.length===10||phone.length===11)phone='55'+phone;window.open(`https://wa.me/${phone}?text=${encodeURIComponent(orderShareText(order)+'\n\nO PDF foi baixado. Anexe o arquivo '+name+' nesta conversa.')}`,'_blank','noopener');if(automatic)alert('Pedido finalizado. O PDF foi salvo e o WhatsApp foi aberto para o envio.')}
+async function importPrices(e){e.preventDefault();if(!s.server||!s.token){alert('Conecte o sistema ao servidor antes de importar preços.');return}let lines=new FormData(e.target).get('prices').split(/\r?\n/).map(x=>x.trim()).filter(Boolean),prices=[];for(let i=0;i<lines.length;i++){let parts=lines[i].split(';').map(x=>x.trim());if(i===0&&/marca/i.test(parts[0])&&/sku/i.test(parts[1]||''))continue;if(parts.length<5){alert(`Linha ${i+1}: use Marca; SKU; Descrição; UF; Preço.`);return}let [brand,sku,description,state,value]=parts,cents=parseBRLCents(value);state=state.toUpperCase();if(!brand||!sku||!['PA','AP'].includes(state)||!Number.isFinite(cents)||cents<=0){alert(`Linha ${i+1}: confira marca, SKU, UF e preço.`);return}prices.push({brand,sku,description,state,price:(cents/100).toFixed(2)})}try{let r=await fetch(s.server+'/api/prices/import',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+s.token},body:JSON.stringify({prices})}),data=await r.json();if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:'Importação recusada.');alert(`${data.imported} preço(s) importado(s) com sucesso.`);await sync();show('marcas')}catch(err){alert('Não foi possível importar: '+err.message)}}
+function saveVisit(e){e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.id=uid();d.user=s.user;d.amount=Number(d.amount||0);s.visits.push(d);queue('visit',d);if(d.amount>0){alert('Atendimento registrado. O pedido por valor total não foi criado: novos pedidos exigem itens e preços da tabela do estado do cliente.')}if(d.next){let t={id:uid(),clientId:d.clientId,text:d.next,date:d.returnDate||d.date,user:s.user,status:'Aberta'};s.tasks.push(t);queue('task',t)}window.prefillId='';show('hoje')}
+function saveTask(e){e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.id=uid();d.status='Aberta';s.tasks.push(d);queue('task',d);show('hoje')}
+function saveGoal(e){e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.amount=Number(d.amount||0);d.id=d.month+'-'+d.user.toLowerCase().replace(/[^a-z0-9]+/g,'-');let i=s.goals.findIndex(x=>x.id===d.id);if(i<0)s.goals.push(d);else s.goals[i]=d;queue('goal',d);window.reportMonth=d.month;show('gestao')}
+function done(id){let t=s.tasks.find(x=>x.id===id);t.status='Concluída';queue('task',t);show('hoje')}
+function addRoute(id){let d=window.routeDay||today(),n=s.routes.filter(x=>x.date===d).length;if(n>=10){alert('A rota já tem 10 clientes. Retire um para adicionar outro.');return}let r={id:uid(),date:d,clientId:id,order:n+1,user:s.user};s.routes.push(r);queue('route',r);show('rota')}
+function removeRoute(id){s.routes=s.routes.filter(x=>x.id!==id);queue('delete_route',{id});show('rota')}
+function autoRoute(day=today(),replace=false){
+ window.routeAttemptedDay=day;
+ if(!['Ana Paula','Euler'].includes(s.user)){alert('A roteirização é restrita aos representantes Ana Paula e Euler.');window.routeBuilding=false;return}
+ const existing=s.routes.filter(r=>r.date===day);
+ if(replace){for(const r of existing){s.routes=s.routes.filter(x=>x.id!==r.id);s.pending.push({type:'delete_route',data:{id:r.id},changeId:uid()})}}
+ const picks=suggestedClients(day,8);
+ let order=s.routes.filter(r=>r.date===day).length;
+ for(const c of picks){let r={id:uid(),date:day,clientId:c.id,order:++order,user:s.user,suggested:true,location:locationLabel(c),reason:priority(c).reason};s.routes.push(r);s.pending.push({type:'route',data:structuredClone(r),changeId:uid()})}
+ window.routeBuilding=false;save();if(s.server&&navigator.onLine)sync();show('rota');
+}
+function changeOrder(id,status){
+ const o=s.orders.find(x=>x.id===id);
+ if(!o)return;
+ if(!Array.isArray(o.items)||!o.items.length){alert('Pedido antigo: alteração de status indisponível até a migração para pedidos por itens.');show('pedidos');return}
+ o.status=status;queue('order',o);show('pedidos')
+}
+function exportData(){let b=new Blob([JSON.stringify(s,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='L2_ONE_backup_'+today()+'.json';a.click();URL.revokeObjectURL(a.href)}
+async function importData(f){if(!f)return;try{let d=JSON.parse(await f.text());if(!Array.isArray(d.clients))throw Error('Arquivo inválido');if(confirm('Substituir os dados locais pelo backup?')){s={...defaults,...d,token:'',server:'',pending:[]};save();show('hoje')}}catch(e){alert(e.message)}}
+
+function renderPasswordChange(){
+ $('app').innerHTML=`<div class="box"><h2>Crie sua senha pessoal</h2><p>Olá, ${esc(s.user)}. Para liberar seu primeiro acesso, substitua a senha provisória.</p><form id="passwordChangeForm"><label>Senha provisória<input id="currentPassword" type="password" autocomplete="current-password" required></label><label>Nova senha (mínimo de 12 caracteres)<input id="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required></label><label>Confirme a nova senha<input id="confirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required></label><p id="passwordChangeError" role="alert"></p><button id="passwordChangeSubmit">Salvar senha pessoal</button></form><p><button class="secondary" onclick="logout()">Sair</button></p></div>`;
+ $('passwordChangeForm').onsubmit=submitPasswordChange;
+}
+async function submitPasswordChange(event){
+ event.preventDefault();
+ const currentPassword=$('currentPassword').value,newPassword=$('newPassword').value;
+ const error=$('passwordChangeError'),button=$('passwordChangeSubmit');
+ if(newPassword!==$('confirmPassword').value){error.textContent='As novas senhas não coincidem.';return}
+ button.disabled=true;error.textContent='';
+ try{
+  const r=await fetch(s.server+'/api/change-password',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+s.token},body:JSON.stringify({currentPassword,newPassword})});
+  const data=await r.json();
+  if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:'Não foi possível alterar a senha.');
+  s.token='';s.mustChangePassword=false;s.syncAt='';save();show('config');
+  alert('Senha alterada. Entre novamente com sua senha pessoal.');
+ }catch(e){error.textContent=e.message;button.disabled=false}
+}
+async function connect(){
+ const user=$('who').value, server=$('server').value.replace(/\/$/,'');
+ if(!server || (location.protocol==='https:' && !server.startsWith('https://'))){alert('Informe uma URL HTTPS válida.');return}
+ if(s.pending.length && (user!==s.user || server!==s.server)){alert('Sincronize ou exporte o backup das alterações pendentes antes de trocar usuário ou servidor.');return}
+ try{
+  const r=await fetch(server+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user,password:$('password').value})});
+  if(!r.ok)throw Error('Login não autorizado');
+  const session=await r.json(), token=session.token;
+  if(user!==s.user || server!==s.server){s={...defaults,user,server};}
+  s.user=user;s.server=server;s.token=token;s.mustChangePassword=!!session.mustChangePassword;save();if(s.mustChangePassword){show('config');return}await sync();show('config');
+ }catch(e){alert('Não foi possível conectar: '+e.message)}
+}
+function logout(){
+ if(!confirm('Sair deste aparelho? A senha será solicitada no próximo acesso.'))return;
+ s.token='';s.mustChangePassword=false;s.syncAt='';save();show('config');
+}
+async function sync(){
+ if(s.mustChangePassword||syncing||!s.server||!s.token||!navigator.onLine)return;
+ syncing=true;
+ const batch=s.pending.slice(0,500), user=s.user, server=s.server, token=s.token;
+ try{
+  const r=await fetch(server+'/api/sync',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({changes:batch})});
+  if(!r.ok){let detail='';try{const payload=await r.json();detail=typeof payload.detail==='string'?payload.detail:''}catch(_){}if(r.status===401){s.token='';save();alert('Sua sessão expirou. Entre novamente em Configurações.')}throw Error('Sincronização recusada ('+r.status+'): '+(detail||'verifique os dados enviados'))}
+  const data=await r.json();
+  if(user!==s.user||server!==s.server||token!==s.token)return;
+  const acknowledged=new Set(batch.map(x=>x.changeId));
+  s.pending=s.pending.filter(x=>!acknowledged.has(x.changeId));
+  for(const name of ['clients','visits','orders','tasks','routes','goals','prices','officeProcesses','officeActions','officeCommercial','officeAdministrative','officeRituals','officeRoles','officeFinance','officeBudget','officeMonthlyClose'])if(Array.isArray(data[name]))s[name]=data[name];
+  // Reaplica alterações criadas enquanto a solicitação estava em andamento.
+  for(const change of s.pending){const name={client:'clients',visit:'visits',order:'orders',task:'tasks',route:'routes',delete_route:'routes',office_action:'officeActions',office_commercial:'officeCommercial',office_administrative:'officeAdministrative',office_finance:'officeFinance',office_budget:'officeBudget',office_monthly_close:'officeMonthlyClose',office_process:'officeProcesses'}[change.type];if(!name)continue;s[name]=s[name].filter(x=>x.id!==change.data.id);if(change.type!=='delete_route')s[name].push(change.data)}
+  s.syncAt=new Date().toLocaleString('pt-BR');window.routeAttemptedDay='';save();show(tab);
+ }catch(e){console.warn(e);window.lastSyncError=e.message;network();if(batch.length)alert('Os dados foram salvos neste aparelho, mas NÃO foram enviados à nuvem. '+e.message)}finally{syncing=false;if(!s.mustChangePassword&&s.pending.length&&s.server&&s.token&&navigator.onLine)setTimeout(sync,3000)}
+}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(b.dataset.tab));
+window.addEventListener('online',()=>{network();sync()});window.addEventListener('offline',network);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});setInterval(sync,30000);
+(async()=>{if('serviceWorker'in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('./sw.js').catch(()=>{});if(!s.server&&location.protocol.startsWith('http'))s.server=location.origin;save();show('hoje');sync()})();
+,'Variação %','Ação/Justificativa']},
+ officeMonthlyClose:{kind:'office_monthly_close',fields:['ID','Mês','Receitas previstas','Receitas recebidas','Despesas previstas','Despesas pagas','Resultado realizado','A receber','A pagar','Vencidos a receber','Faturamento comercial','Comissão apurada','Margem operacional','Status fechamento','Observações/Decisões']}
+};
+function renderRecordEditor(collection){
+ if(collection.startsWith('officeFin')||collection==='officeBudget'||collection==='officeMonthlyClose'){if(!financeAllowed())return ''}
+ const cfg=editableRecords[collection],rows=s[collection]||[];
+ const selected=rows.find(x=>x.id===window.recordEditId&&window.recordEditCollection===collection)||{};
+ const fields=cfg.fields.map(name=>{let type=['Valor','Orçado mensal','Realizado no mês','Receitas recebidas','Despesas pagas','Resultado realizado'].includes(name)?'number':name==='Vencimento'||name==='Prazo'?'date':'text';return '<label>'+esc(name)+'<input name="'+esc(name)+'" type="'+type+'" '+(type==='number'?'step="0.01" min="0" ':'')+'value="'+esc(selected[name]??'')+'"></label>'}).join('');
+ return '<div class="box"><h3>'+(selected.id?'Editar registro':'Novo registro')+'</h3><p class="muted">As alterações ficam pendentes até a sincronização com a nuvem.</p><form id="recordForm" data-collection="'+collection+'"><div class="row">'+fields+'</div><button type="submit">Salvar alterações</button> <button type="button" class="secondary" onclick="clearRecordEditor()">Novo / limpar</button></form></div><div class="box"><h3>Registros existentes</h3>'+(rows.length?'<div class="scroll"><table><tr><th>Registro</th><th>Ação</th></tr>'+rows.map((x,i)=>'<tr><td>'+esc(x['Descrição']||x['Demanda ou problema']||x['Demanda']||x.Processo||x.Categoria||x['Mês']||x.ID||('Registro '+(i+1)))+'</td><td><button type="button" onclick="editRecord(\''+collection+'\','+i+')">Editar</button></td></tr>').join('')+'</table></div>':'Nenhum registro cadastrado.')+'</div>';
+}
+function editRecord(collection,index){
+ const row=(s[collection]||[])[index];if(!row)return;
+ window.recordEditCollection=collection;window.recordEditId=row.id||'';
+ if(!row.id){row.id=uid();save();window.recordEditId=row.id}
+ render();$('recordForm')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function clearRecordEditor(){window.recordEditId='';window.recordEditCollection='';render()}
+function saveRecord(e){
+ e.preventDefault();const collection=e.target.dataset.collection,cfg=editableRecords[collection];
+ if(!cfg||(collection==='officeFinance'||collection==='officeBudget'||collection==='officeMonthlyClose')&&!financeAllowed())return;
+ const data=Object.fromEntries(new FormData(e.target));
+ for(const name of ['Valor','Orçado mensal','Realizado no mês','Receitas recebidas','Despesas pagas','Resultado realizado'])if(name in data){let v=Number(data[name]);if(!Number.isFinite(v)||v<0){alert('Informe um valor válido para '+name);return}data[name]=v}
+ const existing=(s[collection]||[]).find(x=>x.id===window.recordEditId);
+ const merged={...(existing||{}),...data,id:existing?.id||uid()};
+ const i=(s[collection]||[]).findIndex(x=>x.id===merged.id);
+ if(i<0)s[collection].push(merged);else s[collection][i]=merged;
+ queue(cfg.kind,merged);window.recordEditId='';window.recordEditCollection='';render();
+}
+function queue(type,data){s.pending.push({type,data:structuredClone(data),changeId:uid()});save();if(s.server&&navigator.onLine)sync()}
+function digits(value){return String(value||'').replace(/\D/g,'')}
+function validCNPJ(value){
+ const n=digits(value);
+ if(n.length!==14||/^(\d)\1{13}$/.test(n))return false;
+ const check=len=>{let sum=0,weight=len-7;for(let i=0;i<len;i++){sum+=Number(n[i])*weight;weight=weight===2?9:weight-1}let mod=sum%11;return mod<2?0:11-mod};
+ return Number(n[12])===check(12)&&Number(n[13])===check(13);
+}
+function newClient(){show('clientes');$('clientForm').reset();$('cid').value='';$('clientFormTitle').textContent='Cadastrar novo cliente';$('c_name').focus()}
+function saveClient(e){
+ e.preventDefault();
+ const d=Object.fromEntries(new FormData(e.target));
+ d.name=d.name.trim();d.city=d.city.trim();d.state=stateCode(d);
+ if(!d.name||!d.city||!['PA','AP'].includes(d.state)){alert('Informe razão social, cidade e UF válida (PA ou AP).');return}
+ if(!validCNPJ(d.taxId)){alert('Informe um CNPJ válido, com 14 dígitos e dígitos verificadores corretos.');$('c_taxId').focus();return}
+ d.taxId=digits(d.taxId);
+ d.stateRegistration=(d.stateRegistration||'').trim().toUpperCase();
+ if(d.stateRegistration!=='ISENTO'&&!/^\d{7,14}$/.test(d.stateRegistration)){alert('Informe a inscrição estadual (7 a 14 dígitos) ou ISENTO.');$('c_stateRegistration').focus();return}
+ if(d.stateRegistration!=='ISENTO')d.stateRegistration=digits(d.stateRegistration);
+ const old=s.clients.findIndex(c=>c.id===d.id);
+ if(s.clients.some(c=>c.id!==d.id&&digits(c.taxId)===d.taxId)){alert('Já existe um cliente com este CNPJ. Confira o cadastro antes de salvar.');return}
+ d.id=d.id||uid();
+ const merged=old<0?d:{...s.clients[old],...d};
+ if(old<0)s.clients.push(merged);else s.clients[old]=merged;
+ queue('client',merged);show('clientes');
+}
+function editClient(id){
+ show('clientes');let c=client(id);$('cid').value=id;
+ for(let k of ['name','tradeName','taxId','stateRegistration','contact','phone','email','address','district','city','state','channel','brands','last_purchase'])$('c_'+k).value=c[k]||'';
+ $('c_state').value=stateCode(c)==='FORA'?'':stateCode(c);
+ $('clientFormTitle').textContent='Editar cadastro do cliente';
+ $('clientForm').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function prefill(id){window.prefillId=id;show('registro')}
+function priceCents(value){let n=Number(String(value??0).replace(',','.'));return Number.isFinite(n)?Math.round(n*100):0}
+function parseBRLCents(value){let t=String(value||'').replace(/R\$/gi,'').replace(/\s/g,'');if(t.includes(','))t=t.replace(/\./g,'').replace(',','.');let n=Number(t);return Number.isFinite(n)?Math.round(n*100):NaN}
+function pricesForTable(priceTable){return (s.prices||[]).filter(p=>p.state===priceTable)}
+function orderDraft(){if(!window.currentOrder){let clientId=window.prefillId||'';window.currentOrder={date:today(),clientId,priceTable:stateCode(client(clientId))||'',brand:'',quantities:{}}}return window.currentOrder}
+function newOrder(){window.currentOrder={date:today(),clientId:'',priceTable:'',brand:'',quantities:{}};show('pedidos')}
+function setOrderDate(value){orderDraft().date=value}
+function setOrderClient(value){let d=orderDraft();d.clientId=value;d.priceTable=stateCode(client(value))||'';d.brand='';d.quantities={};show('pedidos')}
+function setOrderTable(value){let d=orderDraft();d.priceTable=value;d.brand='';d.quantities={};show('pedidos')}
+function setOrderBrand(value){let d=orderDraft();d.brand=value;d.quantities={};show('pedidos')}
+function orderTotalCents(products,draft){return products.reduce((sum,p)=>sum+priceCents(p.price)*Number(draft.quantities[p.sku]||0),0)}
+function setOrderQuantity(sku,value){let d=orderDraft(),qty=Math.max(0,Math.floor(Number(value)||0));d.quantities[sku]=qty;let products=pricesForTable(d.priceTable).filter(p=>p.brand===d.brand),p=products.find(x=>x.sku===sku),cell=document.querySelector(`[data-subtotal="${CSS.escape(sku)}"]`);if(cell&&p)cell.textContent=money(priceCents(p.price)*qty/100);let total=$('orderTotal');if(total)total.textContent=money(orderTotalCents(products,d)/100)}
+function saveOrder(e){e.preventDefault();let d=orderDraft(),products=pricesForTable(d.priceTable).filter(p=>p.brand===d.brand),items=products.map(p=>({sku:p.sku,description:p.description||'',quantity:Number(d.quantities[p.sku]||0),unitPrice:(priceCents(p.price)/100).toFixed(2)})).filter(i=>i.quantity>0);if(!d.clientId||!d.priceTable||!d.brand){alert('Selecione o cliente, a tabela de preços e a marca.');return}if(!items.length){alert('Informe a quantidade de pelo menos um produto.');return}let total=products.reduce((sum,p)=>sum+priceCents(p.price)*Number(d.quantities[p.sku]||0),0),form=new FormData(e.target),finalized=e.submitter?.value==='finalize',order={id:uid(),date:d.date,clientId:d.clientId,priceTable:d.priceTable,brand:d.brand,items,status:finalized?'Confirmado':(form.get('status')||'Pendente'),amount:total/100,user:s.user};s.orders.push(order);queue('order',order);window.currentOrder=null;window.prefillId='';if(finalized)shareOrderPDF(order.id,true);show('pedidos')}
+function pdfText(value){return String(value??'').normalize('NFC').replace(/[–—]/g,'-').replace(/[“”]/g,'"').replace(/[‘’]/g,"'").replace(/[^\x20-\xFF]/g,'?').replace(/([\\()])/g,'\\$1')}
+function wrapPDF(text,size=88){let words=String(text||'').split(/\s+/),lines=[],line='';for(const word of words){if((line+' '+word).trim().length>size){if(line)lines.push(line);line=word}else line=(line+' '+word).trim()}if(line)lines.push(line);return lines.length?lines:['']}
+function orderPDFBlob(order){let c=client(order.clientId),lines=[`Pedido ${order.id}`,`Data: ${order.date}   Status: ${order.status}`,`Cliente: ${c.name||'Não informado'}`,`CNPJ: ${c.taxId||'Não informado'}`,`Cidade/UF: ${c.city||''} / ${c.state||''}`,`Tabela: ${order.priceTable||order.state||'-'}   Marca: ${order.brand||'-'}`,''];for(const item of order.items||[]){let unit=priceCents(item.unitPrice)/100,subtotal=unit*Number(item.quantity||0);lines.push(...wrapPDF(`${item.sku} - ${item.description||item.sku} | ${item.quantity} x ${money(unit)} = ${money(subtotal)}`))}lines.push('',`TOTAL DO PEDIDO: ${money(order.amount)}`,`Responsável: ${order.user||s.user}`);let chunks=[];for(let i=0;i<lines.length;i+=34)chunks.push(lines.slice(i,i+34));let objects=['','',''],fontId=3,pageIds=[],contentIds=[];for(let i=0;i<chunks.length;i++){pageIds.push(4+i*2);contentIds.push(5+i*2)}objects[0]='<< /Type /Catalog /Pages 2 0 R >>';objects[1]=`<< /Type /Pages /Kids [${pageIds.map(id=>id+' 0 R').join(' ')}] /Count ${pageIds.length} >>`;objects[2]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';for(let i=0;i<chunks.length;i++){let stream=`BT\n/F1 16 Tf\n50 800 Td\n(L2 ONE - PEDIDO) Tj\n/F1 10 Tf\n0 -24 Td\n`;chunks[i].forEach((line,n)=>{stream+=`(${pdfText(line)}) Tj\n0 -18 Td\n`});stream+=`0 -8 Td\n(Página ${i+1} de ${chunks.length}) Tj\nET`;objects[pageIds[i]-1]=`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentIds[i]} 0 R >>`;objects[contentIds[i]-1]=`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`}let pdf='%PDF-1.4\n%âãÏÓ\n',offsets=[0];for(let i=0;i<objects.length;i++){offsets[i+1]=pdf.length;pdf+=`${i+1} 0 obj\n${objects[i]}\nendobj\n`}let xref=pdf.length;pdf+=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n`;for(let i=1;i<=objects.length;i++)pdf+=String(offsets[i]).padStart(10,'0')+' 00000 n \n';pdf+=`trailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;let bytes=Uint8Array.from([...pdf].map(ch=>ch.charCodeAt(0)&255));return new Blob([bytes],{type:'application/pdf'})}
+function orderFileName(order){let name=(client(order.clientId).name||'cliente').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'').toLowerCase();return `pedido-${order.date}-${name||'cliente'}.pdf`}
+function downloadBlob(blob,name){let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+function downloadOrderPDF(id){let order=s.orders.find(x=>x.id===id);if(!order)return;downloadBlob(orderPDFBlob(order),orderFileName(order))}
+function orderShareText(order){let c=client(order.clientId),items=(order.items||[]).reduce((n,i)=>n+Number(i.quantity||0),0);return `Pedido L2 ONE\nCliente: ${c.name||'-'}\nTabela: ${order.priceTable||order.state||'-'}\nMarca: ${order.brand||'-'}\nItens: ${items}\nTotal: ${money(order.amount)}`}
+async function shareOrderPDF(id,automatic=false){let order=s.orders.find(x=>x.id===id);if(!order)return;let blob=orderPDFBlob(order),name=orderFileName(order);downloadBlob(blob,name);let file=new File([blob],name,{type:'application/pdf'}),data={title:'Pedido L2 ONE',text:orderShareText(order),files:[file]};if(navigator.share&&navigator.canShare?.(data)){try{await navigator.share(data);return}catch(err){if(err.name==='AbortError')return}}let phone=digits(client(order.clientId).phone);if(phone.length===10||phone.length===11)phone='55'+phone;window.open(`https://wa.me/${phone}?text=${encodeURIComponent(orderShareText(order)+'\n\nO PDF foi baixado. Anexe o arquivo '+name+' nesta conversa.')}`,'_blank','noopener');if(automatic)alert('Pedido finalizado. O PDF foi salvo e o WhatsApp foi aberto para o envio.')}
+async function importPrices(e){e.preventDefault();if(!s.server||!s.token){alert('Conecte o sistema ao servidor antes de importar preços.');return}let lines=new FormData(e.target).get('prices').split(/\r?\n/).map(x=>x.trim()).filter(Boolean),prices=[];for(let i=0;i<lines.length;i++){let parts=lines[i].split(';').map(x=>x.trim());if(i===0&&/marca/i.test(parts[0])&&/sku/i.test(parts[1]||''))continue;if(parts.length<5){alert(`Linha ${i+1}: use Marca; SKU; Descrição; UF; Preço.`);return}let [brand,sku,description,state,value]=parts,cents=parseBRLCents(value);state=state.toUpperCase();if(!brand||!sku||!['PA','AP'].includes(state)||!Number.isFinite(cents)||cents<=0){alert(`Linha ${i+1}: confira marca, SKU, UF e preço.`);return}prices.push({brand,sku,description,state,price:(cents/100).toFixed(2)})}try{let r=await fetch(s.server+'/api/prices/import',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+s.token},body:JSON.stringify({prices})}),data=await r.json();if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:'Importação recusada.');alert(`${data.imported} preço(s) importado(s) com sucesso.`);await sync();show('marcas')}catch(err){alert('Não foi possível importar: '+err.message)}}
+function saveVisit(e){e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.id=uid();d.user=s.user;d.amount=Number(d.amount||0);s.visits.push(d);queue('visit',d);if(d.amount>0){alert('Atendimento registrado. O pedido por valor total não foi criado: novos pedidos exigem itens e preços da tabela do estado do cliente.')}if(d.next){let t={id:uid(),clientId:d.clientId,text:d.next,date:d.returnDate||d.date,user:s.user,status:'Aberta'};s.tasks.push(t);queue('task',t)}window.prefillId='';show('hoje')}
+function saveTask(e){e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.id=uid();d.status='Aberta';s.tasks.push(d);queue('task',d);show('hoje')}
+function saveGoal(e){e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.amount=Number(d.amount||0);d.id=d.month+'-'+d.user.toLowerCase().replace(/[^a-z0-9]+/g,'-');let i=s.goals.findIndex(x=>x.id===d.id);if(i<0)s.goals.push(d);else s.goals[i]=d;queue('goal',d);window.reportMonth=d.month;show('gestao')}
+function done(id){let t=s.tasks.find(x=>x.id===id);t.status='Concluída';queue('task',t);show('hoje')}
+function addRoute(id){let d=window.routeDay||today(),n=s.routes.filter(x=>x.date===d).length;if(n>=10){alert('A rota já tem 10 clientes. Retire um para adicionar outro.');return}let r={id:uid(),date:d,clientId:id,order:n+1,user:s.user};s.routes.push(r);queue('route',r);show('rota')}
+function removeRoute(id){s.routes=s.routes.filter(x=>x.id!==id);queue('delete_route',{id});show('rota')}
+function autoRoute(day=today(),replace=false){
+ window.routeAttemptedDay=day;
+ if(!['Ana Paula','Euler'].includes(s.user)){alert('A roteirização é restrita aos representantes Ana Paula e Euler.');window.routeBuilding=false;return}
+ const existing=s.routes.filter(r=>r.date===day);
+ if(replace){for(const r of existing){s.routes=s.routes.filter(x=>x.id!==r.id);s.pending.push({type:'delete_route',data:{id:r.id},changeId:uid()})}}
+ const picks=suggestedClients(day,8);
+ let order=s.routes.filter(r=>r.date===day).length;
+ for(const c of picks){let r={id:uid(),date:day,clientId:c.id,order:++order,user:s.user,suggested:true,location:locationLabel(c),reason:priority(c).reason};s.routes.push(r);s.pending.push({type:'route',data:structuredClone(r),changeId:uid()})}
+ window.routeBuilding=false;save();if(s.server&&navigator.onLine)sync();show('rota');
+}
+function changeOrder(id,status){
+ const o=s.orders.find(x=>x.id===id);
+ if(!o)return;
+ if(!Array.isArray(o.items)||!o.items.length){alert('Pedido antigo: alteração de status indisponível até a migração para pedidos por itens.');show('pedidos');return}
+ o.status=status;queue('order',o);show('pedidos')
+}
+function exportData(){let b=new Blob([JSON.stringify(s,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='L2_ONE_backup_'+today()+'.json';a.click();URL.revokeObjectURL(a.href)}
+async function importData(f){if(!f)return;try{let d=JSON.parse(await f.text());if(!Array.isArray(d.clients))throw Error('Arquivo inválido');if(confirm('Substituir os dados locais pelo backup?')){s={...defaults,...d,token:'',server:'',pending:[]};save();show('hoje')}}catch(e){alert(e.message)}}
+
+function renderPasswordChange(){
+ $('app').innerHTML=`<div class="box"><h2>Crie sua senha pessoal</h2><p>Olá, ${esc(s.user)}. Para liberar seu primeiro acesso, substitua a senha provisória.</p><form id="passwordChangeForm"><label>Senha provisória<input id="currentPassword" type="password" autocomplete="current-password" required></label><label>Nova senha (mínimo de 12 caracteres)<input id="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required></label><label>Confirme a nova senha<input id="confirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required></label><p id="passwordChangeError" role="alert"></p><button id="passwordChangeSubmit">Salvar senha pessoal</button></form><p><button class="secondary" onclick="logout()">Sair</button></p></div>`;
+ $('passwordChangeForm').onsubmit=submitPasswordChange;
+}
+async function submitPasswordChange(event){
+ event.preventDefault();
+ const currentPassword=$('currentPassword').value,newPassword=$('newPassword').value;
+ const error=$('passwordChangeError'),button=$('passwordChangeSubmit');
+ if(newPassword!==$('confirmPassword').value){error.textContent='As novas senhas não coincidem.';return}
+ button.disabled=true;error.textContent='';
+ try{
+  const r=await fetch(s.server+'/api/change-password',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+s.token},body:JSON.stringify({currentPassword,newPassword})});
+  const data=await r.json();
+  if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:'Não foi possível alterar a senha.');
+  s.token='';s.mustChangePassword=false;s.syncAt='';save();show('config');
+  alert('Senha alterada. Entre novamente com sua senha pessoal.');
+ }catch(e){error.textContent=e.message;button.disabled=false}
+}
+async function connect(){
+ const user=$('who').value, server=$('server').value.replace(/\/$/,'');
+ if(!server || (location.protocol==='https:' && !server.startsWith('https://'))){alert('Informe uma URL HTTPS válida.');return}
+ if(s.pending.length && (user!==s.user || server!==s.server)){alert('Sincronize ou exporte o backup das alterações pendentes antes de trocar usuário ou servidor.');return}
+ try{
+  const r=await fetch(server+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user,password:$('password').value})});
+  if(!r.ok)throw Error('Login não autorizado');
+  const session=await r.json(), token=session.token;
+  if(user!==s.user || server!==s.server){s={...defaults,user,server};}
+  s.user=user;s.server=server;s.token=token;s.mustChangePassword=!!session.mustChangePassword;save();if(s.mustChangePassword){show('config');return}await sync();show('config');
+ }catch(e){alert('Não foi possível conectar: '+e.message)}
+}
+function logout(){
+ if(!confirm('Sair deste aparelho? A senha será solicitada no próximo acesso.'))return;
+ s.token='';s.mustChangePassword=false;s.syncAt='';save();show('config');
+}
+async function sync(){
+ if(s.mustChangePassword||syncing||!s.server||!s.token||!navigator.onLine)return;
+ syncing=true;
+ const batch=s.pending.slice(0,500), user=s.user, server=s.server, token=s.token;
+ try{
+  const r=await fetch(server+'/api/sync',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({changes:batch})});
+  if(!r.ok){let detail='';try{const payload=await r.json();detail=typeof payload.detail==='string'?payload.detail:''}catch(_){}if(r.status===401){s.token='';save();alert('Sua sessão expirou. Entre novamente em Configurações.')}throw Error('Sincronização recusada ('+r.status+'): '+(detail||'verifique os dados enviados'))}
+  const data=await r.json();
+  if(user!==s.user||server!==s.server||token!==s.token)return;
+  const acknowledged=new Set(batch.map(x=>x.changeId));
+  s.pending=s.pending.filter(x=>!acknowledged.has(x.changeId));
+  for(const name of ['clients','visits','orders','tasks','routes','goals','prices','officeProcesses','officeActions','officeCommercial','officeAdministrative','officeRituals','officeRoles','officeFinance','officeBudget','officeMonthlyClose'])if(Array.isArray(data[name]))s[name]=data[name];
+  // Reaplica alterações criadas enquanto a solicitação estava em andamento.
+  for(const change of s.pending){const name={client:'clients',visit:'visits',order:'orders',task:'tasks',route:'routes',delete_route:'routes',office_action:'officeActions',office_commercial:'officeCommercial',office_administrative:'officeAdministrative',office_finance:'officeFinance',office_budget:'officeBudget',office_monthly_close:'officeMonthlyClose',office_process:'officeProcesses'}[change.type];if(!name)continue;s[name]=s[name].filter(x=>x.id!==change.data.id);if(change.type!=='delete_route')s[name].push(change.data)}
+  s.syncAt=new Date().toLocaleString('pt-BR');window.routeAttemptedDay='';save();show(tab);
+ }catch(e){console.warn(e);window.lastSyncError=e.message;network();if(batch.length)alert('Os dados foram salvos neste aparelho, mas NÃO foram enviados à nuvem. '+e.message)}finally{syncing=false;if(!s.mustChangePassword&&s.pending.length&&s.server&&s.token&&navigator.onLine)setTimeout(sync,3000)}
+}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(b.dataset.tab));
+window.addEventListener('online',()=>{network();sync()});window.addEventListener('offline',network);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});setInterval(sync,30000);
+(async()=>{if('serviceWorker'in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('./sw.js').catch(()=>{});if(!s.server&&location.protocol.startsWith('http'))s.server=location.origin;save();show('hoje');sync()})();
+,'Variação %','Saldo acumulado'].includes(name)?'number':name==='Vencimento'||name==='Prazo'?'date':'text';return '<label>'+esc(name)+'<input name="'+esc(name)+'" type="'+type+'" '+(type==='number'?'step="0.01" min="0" ':'')+'value="'+esc(selected[name]??'')+'"></label>'}).join('');
+ return '<div class="box"><h3>'+(selected.id?'Editar registro':'Novo registro')+'</h3><p class="muted">As alterações ficam pendentes até a sincronização com a nuvem.</p><form id="recordForm" data-collection="'+collection+'"><div class="row">'+fields+'</div><button type="submit">Salvar alterações</button> <button type="button" class="secondary" onclick="clearRecordEditor()">Novo / limpar</button></form></div><div class="box"><h3>Registros existentes</h3>'+(rows.length?'<div class="scroll"><table><tr><th>Registro</th><th>Ação</th></tr>'+rows.map((x,i)=>'<tr><td>'+esc(x['Descrição']||x['Demanda ou problema']||x['Demanda']||x.Processo||x.Categoria||x['Mês']||x.ID||('Registro '+(i+1)))+'</td><td><button type="button" onclick="editRecord(\''+collection+'\','+i+')">Editar</button></td></tr>').join('')+'</table></div>':'Nenhum registro cadastrado.')+'</div>';
+}
+function editRecord(collection,index){
+ const row=(s[collection]||[])[index];if(!row)return;
+ window.recordEditCollection=collection;window.recordEditId=row.id||'';
+ if(!row.id){row.id=uid();save();window.recordEditId=row.id}
+ render();$('recordForm')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function clearRecordEditor(){window.recordEditId='';window.recordEditCollection='';render()}
+function saveRecord(e){
+ e.preventDefault();const collection=e.target.dataset.collection,cfg=editableRecords[collection];
+ if(!cfg||(collection==='officeFinance'||collection==='officeBudget'||collection==='officeMonthlyClose')&&!financeAllowed())return;
+ const data=Object.fromEntries(new FormData(e.target));
+ for(const name of ['Valor','Orçado mensal','Realizado no mês','Receitas recebidas','Despesas pagas','Resultado realizado'])if(name in data){let v=Number(data[name]);if(!Number.isFinite(v)||v<0){alert('Informe um valor válido para '+name);return}data[name]=v}
+ const existing=(s[collection]||[]).find(x=>x.id===window.recordEditId);
+ const merged={...(existing||{}),...data,id:existing?.id||uid()};
+ const i=(s[collection]||[]).findIndex(x=>x.id===merged.id);
+ if(i<0)s[collection].push(merged);else s[collection][i]=merged;
+ queue(cfg.kind,merged);window.recordEditId='';window.recordEditCollection='';render();
+}
+function queue(type,data){s.pending.push({type,data:structuredClone(data),changeId:uid()});save();if(s.server&&navigator.onLine)sync()}
+function digits(value){return String(value||'').replace(/\D/g,'')}
+function validCNPJ(value){
+ const n=digits(value);
+ if(n.length!==14||/^(\d)\1{13}$/.test(n))return false;
+ const check=len=>{let sum=0,weight=len-7;for(let i=0;i<len;i++){sum+=Number(n[i])*weight;weight=weight===2?9:weight-1}let mod=sum%11;return mod<2?0:11-mod};
+ return Number(n[12])===check(12)&&Number(n[13])===check(13);
+}
+function newClient(){show('clientes');$('clientForm').reset();$('cid').value='';$('clientFormTitle').textContent='Cadastrar novo cliente';$('c_name').focus()}
+function saveClient(e){
+ e.preventDefault();
+ const d=Object.fromEntries(new FormData(e.target));
+ d.name=d.name.trim();d.city=d.city.trim();d.state=stateCode(d);
+ if(!d.name||!d.city||!['PA','AP'].includes(d.state)){alert('Informe razão social, cidade e UF válida (PA ou AP).');return}
+ if(!validCNPJ(d.taxId)){alert('Informe um CNPJ válido, com 14 dígitos e dígitos verificadores corretos.');$('c_taxId').focus();return}
+ d.taxId=digits(d.taxId);
+ d.stateRegistration=(d.stateRegistration||'').trim().toUpperCase();
+ if(d.stateRegistration!=='ISENTO'&&!/^\d{7,14}$/.test(d.stateRegistration)){alert('Informe a inscrição estadual (7 a 14 dígitos) ou ISENTO.');$('c_stateRegistration').focus();return}
+ if(d.stateRegistration!=='ISENTO')d.stateRegistration=digits(d.stateRegistration);
+ const old=s.clients.findIndex(c=>c.id===d.id);
+ if(s.clients.some(c=>c.id!==d.id&&digits(c.taxId)===d.taxId)){alert('Já existe um cliente com este CNPJ. Confira o cadastro antes de salvar.');return}
+ d.id=d.id||uid();
+ const merged=old<0?d:{...s.clients[old],...d};
+ if(old<0)s.clients.push(merged);else s.clients[old]=merged;
+ queue('client',merged);show('clientes');
+}
+function editClient(id){
+ show('clientes');let c=client(id);$('cid').value=id;
+ for(let k of ['name','tradeName','taxId','stateRegistration','contact','phone','email','address','district','city','state','channel','brands','last_purchase'])$('c_'+k).value=c[k]||'';
+ $('c_state').value=stateCode(c)==='FORA'?'':stateCode(c);
+ $('clientFormTitle').textContent='Editar cadastro do cliente';
+ $('clientForm').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function prefill(id){window.prefillId=id;show('registro')}
+function priceCents(value){let n=Number(String(value??0).replace(',','.'));return Number.isFinite(n)?Math.round(n*100):0}
+function parseBRLCents(value){let t=String(value||'').replace(/R\$/gi,'').replace(/\s/g,'');if(t.includes(','))t=t.replace(/\./g,'').replace(',','.');let n=Number(t);return Number.isFinite(n)?Math.round(n*100):NaN}
+function pricesForTable(priceTable){return (s.prices||[]).filter(p=>p.state===priceTable)}
+function orderDraft(){if(!window.currentOrder){let clientId=window.prefillId||'';window.currentOrder={date:today(),clientId,priceTable:stateCode(client(clientId))||'',brand:'',quantities:{}}}return window.currentOrder}
+function newOrder(){window.currentOrder={date:today(),clientId:'',priceTable:'',brand:'',quantities:{}};show('pedidos')}
+function setOrderDate(value){orderDraft().date=value}
+function setOrderClient(value){let d=orderDraft();d.clientId=value;d.priceTable=stateCode(client(value))||'';d.brand='';d.quantities={};show('pedidos')}
+function setOrderTable(value){let d=orderDraft();d.priceTable=value;d.brand='';d.quantities={};show('pedidos')}
+function setOrderBrand(value){let d=orderDraft();d.brand=value;d.quantities={};show('pedidos')}
+function orderTotalCents(products,draft){return products.reduce((sum,p)=>sum+priceCents(p.price)*Number(draft.quantities[p.sku]||0),0)}
+function setOrderQuantity(sku,value){let d=orderDraft(),qty=Math.max(0,Math.floor(Number(value)||0));d.quantities[sku]=qty;let products=pricesForTable(d.priceTable).filter(p=>p.brand===d.brand),p=products.find(x=>x.sku===sku),cell=document.querySelector(`[data-subtotal="${CSS.escape(sku)}"]`);if(cell&&p)cell.textContent=money(priceCents(p.price)*qty/100);let total=$('orderTotal');if(total)total.textContent=money(orderTotalCents(products,d)/100)}
+function saveOrder(e){e.preventDefault();let d=orderDraft(),products=pricesForTable(d.priceTable).filter(p=>p.brand===d.brand),items=products.map(p=>({sku:p.sku,description:p.description||'',quantity:Number(d.quantities[p.sku]||0),unitPrice:(priceCents(p.price)/100).toFixed(2)})).filter(i=>i.quantity>0);if(!d.clientId||!d.priceTable||!d.brand){alert('Selecione o cliente, a tabela de preços e a marca.');return}if(!items.length){alert('Informe a quantidade de pelo menos um produto.');return}let total=products.reduce((sum,p)=>sum+priceCents(p.price)*Number(d.quantities[p.sku]||0),0),form=new FormData(e.target),finalized=e.submitter?.value==='finalize',order={id:uid(),date:d.date,clientId:d.clientId,priceTable:d.priceTable,brand:d.brand,items,status:finalized?'Confirmado':(form.get('status')||'Pendente'),amount:total/100,user:s.user};s.orders.push(order);queue('order',order);window.currentOrder=null;window.prefillId='';if(finalized)shareOrderPDF(order.id,true);show('pedidos')}
+function pdfText(value){return String(value??'').normalize('NFC').replace(/[–—]/g,'-').replace(/[“”]/g,'"').replace(/[‘’]/g,"'").replace(/[^\x20-\xFF]/g,'?').replace(/([\\()])/g,'\\$1')}
+function wrapPDF(text,size=88){let words=String(text||'').split(/\s+/),lines=[],line='';for(const word of words){if((line+' '+word).trim().length>size){if(line)lines.push(line);line=word}else line=(line+' '+word).trim()}if(line)lines.push(line);return lines.length?lines:['']}
+function orderPDFBlob(order){let c=client(order.clientId),lines=[`Pedido ${order.id}`,`Data: ${order.date}   Status: ${order.status}`,`Cliente: ${c.name||'Não informado'}`,`CNPJ: ${c.taxId||'Não informado'}`,`Cidade/UF: ${c.city||''} / ${c.state||''}`,`Tabela: ${order.priceTable||order.state||'-'}   Marca: ${order.brand||'-'}`,''];for(const item of order.items||[]){let unit=priceCents(item.unitPrice)/100,subtotal=unit*Number(item.quantity||0);lines.push(...wrapPDF(`${item.sku} - ${item.description||item.sku} | ${item.quantity} x ${money(unit)} = ${money(subtotal)}`))}lines.push('',`TOTAL DO PEDIDO: ${money(order.amount)}`,`Responsável: ${order.user||s.user}`);let chunks=[];for(let i=0;i<lines.length;i+=34)chunks.push(lines.slice(i,i+34));let objects=['','',''],fontId=3,pageIds=[],contentIds=[];for(let i=0;i<chunks.length;i++){pageIds.push(4+i*2);contentIds.push(5+i*2)}objects[0]='<< /Type /Catalog /Pages 2 0 R >>';objects[1]=`<< /Type /Pages /Kids [${pageIds.map(id=>id+' 0 R').join(' ')}] /Count ${pageIds.length} >>`;objects[2]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';for(let i=0;i<chunks.length;i++){let stream=`BT\n/F1 16 Tf\n50 800 Td\n(L2 ONE - PEDIDO) Tj\n/F1 10 Tf\n0 -24 Td\n`;chunks[i].forEach((line,n)=>{stream+=`(${pdfText(line)}) Tj\n0 -18 Td\n`});stream+=`0 -8 Td\n(Página ${i+1} de ${chunks.length}) Tj\nET`;objects[pageIds[i]-1]=`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentIds[i]} 0 R >>`;objects[contentIds[i]-1]=`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`}let pdf='%PDF-1.4\n%âãÏÓ\n',offsets=[0];for(let i=0;i<objects.length;i++){offsets[i+1]=pdf.length;pdf+=`${i+1} 0 obj\n${objects[i]}\nendobj\n`}let xref=pdf.length;pdf+=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n`;for(let i=1;i<=objects.length;i++)pdf+=String(offsets[i]).padStart(10,'0')+' 00000 n \n';pdf+=`trailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;let bytes=Uint8Array.from([...pdf].map(ch=>ch.charCodeAt(0)&255));return new Blob([bytes],{type:'application/pdf'})}
+function orderFileName(order){let name=(client(order.clientId).name||'cliente').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'').toLowerCase();return `pedido-${order.date}-${name||'cliente'}.pdf`}
+function downloadBlob(blob,name){let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+function downloadOrderPDF(id){let order=s.orders.find(x=>x.id===id);if(!order)return;downloadBlob(orderPDFBlob(order),orderFileName(order))}
+function orderShareText(order){let c=client(order.clientId),items=(order.items||[]).reduce((n,i)=>n+Number(i.quantity||0),0);return `Pedido L2 ONE\nCliente: ${c.name||'-'}\nTabela: ${order.priceTable||order.state||'-'}\nMarca: ${order.brand||'-'}\nItens: ${items}\nTotal: ${money(order.amount)}`}
+async function shareOrderPDF(id,automatic=false){let order=s.orders.find(x=>x.id===id);if(!order)return;let blob=orderPDFBlob(order),name=orderFileName(order);downloadBlob(blob,name);let file=new File([blob],name,{type:'application/pdf'}),data={title:'Pedido L2 ONE',text:orderShareText(order),files:[file]};if(navigator.share&&navigator.canShare?.(data)){try{await navigator.share(data);return}catch(err){if(err.name==='AbortError')return}}let phone=digits(client(order.clientId).phone);if(phone.length===10||phone.length===11)phone='55'+phone;window.open(`https://wa.me/${phone}?text=${encodeURIComponent(orderShareText(order)+'\n\nO PDF foi baixado. Anexe o arquivo '+name+' nesta conversa.')}`,'_blank','noopener');if(automatic)alert('Pedido finalizado. O PDF foi salvo e o WhatsApp foi aberto para o envio.')}
+async function importPrices(e){e.preventDefault();if(!s.server||!s.token){alert('Conecte o sistema ao servidor antes de importar preços.');return}let lines=new FormData(e.target).get('prices').split(/\r?\n/).map(x=>x.trim()).filter(Boolean),prices=[];for(let i=0;i<lines.length;i++){let parts=lines[i].split(';').map(x=>x.trim());if(i===0&&/marca/i.test(parts[0])&&/sku/i.test(parts[1]||''))continue;if(parts.length<5){alert(`Linha ${i+1}: use Marca; SKU; Descrição; UF; Preço.`);return}let [brand,sku,description,state,value]=parts,cents=parseBRLCents(value);state=state.toUpperCase();if(!brand||!sku||!['PA','AP'].includes(state)||!Number.isFinite(cents)||cents<=0){alert(`Linha ${i+1}: confira marca, SKU, UF e preço.`);return}prices.push({brand,sku,description,state,price:(cents/100).toFixed(2)})}try{let r=await fetch(s.server+'/api/prices/import',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+s.token},body:JSON.stringify({prices})}),data=await r.json();if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:'Importação recusada.');alert(`${data.imported} preço(s) importado(s) com sucesso.`);await sync();show('marcas')}catch(err){alert('Não foi possível importar: '+err.message)}}
+function saveVisit(e){e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.id=uid();d.user=s.user;d.amount=Number(d.amount||0);s.visits.push(d);queue('visit',d);if(d.amount>0){alert('Atendimento registrado. O pedido por valor total não foi criado: novos pedidos exigem itens e preços da tabela do estado do cliente.')}if(d.next){let t={id:uid(),clientId:d.clientId,text:d.next,date:d.returnDate||d.date,user:s.user,status:'Aberta'};s.tasks.push(t);queue('task',t)}window.prefillId='';show('hoje')}
+function saveTask(e){e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.id=uid();d.status='Aberta';s.tasks.push(d);queue('task',d);show('hoje')}
+function saveGoal(e){e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.amount=Number(d.amount||0);d.id=d.month+'-'+d.user.toLowerCase().replace(/[^a-z0-9]+/g,'-');let i=s.goals.findIndex(x=>x.id===d.id);if(i<0)s.goals.push(d);else s.goals[i]=d;queue('goal',d);window.reportMonth=d.month;show('gestao')}
+function done(id){let t=s.tasks.find(x=>x.id===id);t.status='Concluída';queue('task',t);show('hoje')}
+function addRoute(id){let d=window.routeDay||today(),n=s.routes.filter(x=>x.date===d).length;if(n>=10){alert('A rota já tem 10 clientes. Retire um para adicionar outro.');return}let r={id:uid(),date:d,clientId:id,order:n+1,user:s.user};s.routes.push(r);queue('route',r);show('rota')}
+function removeRoute(id){s.routes=s.routes.filter(x=>x.id!==id);queue('delete_route',{id});show('rota')}
+function autoRoute(day=today(),replace=false){
+ window.routeAttemptedDay=day;
+ if(!['Ana Paula','Euler'].includes(s.user)){alert('A roteirização é restrita aos representantes Ana Paula e Euler.');window.routeBuilding=false;return}
+ const existing=s.routes.filter(r=>r.date===day);
+ if(replace){for(const r of existing){s.routes=s.routes.filter(x=>x.id!==r.id);s.pending.push({type:'delete_route',data:{id:r.id},changeId:uid()})}}
+ const picks=suggestedClients(day,8);
+ let order=s.routes.filter(r=>r.date===day).length;
+ for(const c of picks){let r={id:uid(),date:day,clientId:c.id,order:++order,user:s.user,suggested:true,location:locationLabel(c),reason:priority(c).reason};s.routes.push(r);s.pending.push({type:'route',data:structuredClone(r),changeId:uid()})}
+ window.routeBuilding=false;save();if(s.server&&navigator.onLine)sync();show('rota');
+}
+function changeOrder(id,status){
+ const o=s.orders.find(x=>x.id===id);
+ if(!o)return;
+ if(!Array.isArray(o.items)||!o.items.length){alert('Pedido antigo: alteração de status indisponível até a migração para pedidos por itens.');show('pedidos');return}
+ o.status=status;queue('order',o);show('pedidos')
+}
+function exportData(){let b=new Blob([JSON.stringify(s,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='L2_ONE_backup_'+today()+'.json';a.click();URL.revokeObjectURL(a.href)}
+async function importData(f){if(!f)return;try{let d=JSON.parse(await f.text());if(!Array.isArray(d.clients))throw Error('Arquivo inválido');if(confirm('Substituir os dados locais pelo backup?')){s={...defaults,...d,token:'',server:'',pending:[]};save();show('hoje')}}catch(e){alert(e.message)}}
+
+function renderPasswordChange(){
+ $('app').innerHTML=`<div class="box"><h2>Crie sua senha pessoal</h2><p>Olá, ${esc(s.user)}. Para liberar seu primeiro acesso, substitua a senha provisória.</p><form id="passwordChangeForm"><label>Senha provisória<input id="currentPassword" type="password" autocomplete="current-password" required></label><label>Nova senha (mínimo de 12 caracteres)<input id="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required></label><label>Confirme a nova senha<input id="confirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required></label><p id="passwordChangeError" role="alert"></p><button id="passwordChangeSubmit">Salvar senha pessoal</button></form><p><button class="secondary" onclick="logout()">Sair</button></p></div>`;
+ $('passwordChangeForm').onsubmit=submitPasswordChange;
+}
+async function submitPasswordChange(event){
+ event.preventDefault();
+ const currentPassword=$('currentPassword').value,newPassword=$('newPassword').value;
+ const error=$('passwordChangeError'),button=$('passwordChangeSubmit');
+ if(newPassword!==$('confirmPassword').value){error.textContent='As novas senhas não coincidem.';return}
+ button.disabled=true;error.textContent='';
+ try{
+  const r=await fetch(s.server+'/api/change-password',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+s.token},body:JSON.stringify({currentPassword,newPassword})});
+  const data=await r.json();
+  if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:'Não foi possível alterar a senha.');
+  s.token='';s.mustChangePassword=false;s.syncAt='';save();show('config');
+  alert('Senha alterada. Entre novamente com sua senha pessoal.');
+ }catch(e){error.textContent=e.message;button.disabled=false}
+}
+async function connect(){
+ const user=$('who').value, server=$('server').value.replace(/\/$/,'');
+ if(!server || (location.protocol==='https:' && !server.startsWith('https://'))){alert('Informe uma URL HTTPS válida.');return}
+ if(s.pending.length && (user!==s.user || server!==s.server)){alert('Sincronize ou exporte o backup das alterações pendentes antes de trocar usuário ou servidor.');return}
+ try{
+  const r=await fetch(server+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user,password:$('password').value})});
+  if(!r.ok)throw Error('Login não autorizado');
+  const session=await r.json(), token=session.token;
+  if(user!==s.user || server!==s.server){s={...defaults,user,server};}
+  s.user=user;s.server=server;s.token=token;s.mustChangePassword=!!session.mustChangePassword;save();if(s.mustChangePassword){show('config');return}await sync();show('config');
+ }catch(e){alert('Não foi possível conectar: '+e.message)}
+}
+function logout(){
+ if(!confirm('Sair deste aparelho? A senha será solicitada no próximo acesso.'))return;
+ s.token='';s.mustChangePassword=false;s.syncAt='';save();show('config');
+}
+async function sync(){
+ if(s.mustChangePassword||syncing||!s.server||!s.token||!navigator.onLine)return;
+ syncing=true;
+ const batch=s.pending.slice(0,500), user=s.user, server=s.server, token=s.token;
+ try{
+  const r=await fetch(server+'/api/sync',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({changes:batch})});
+  if(!r.ok){let detail='';try{const payload=await r.json();detail=typeof payload.detail==='string'?payload.detail:''}catch(_){}if(r.status===401){s.token='';save();alert('Sua sessão expirou. Entre novamente em Configurações.')}throw Error('Sincronização recusada ('+r.status+'): '+(detail||'verifique os dados enviados'))}
+  const data=await r.json();
+  if(user!==s.user||server!==s.server||token!==s.token)return;
+  const acknowledged=new Set(batch.map(x=>x.changeId));
+  s.pending=s.pending.filter(x=>!acknowledged.has(x.changeId));
+  for(const name of ['clients','visits','orders','tasks','routes','goals','prices','officeProcesses','officeActions','officeCommercial','officeAdministrative','officeRituals','officeRoles','officeFinance','officeBudget','officeMonthlyClose'])if(Array.isArray(data[name]))s[name]=data[name];
+  // Reaplica alterações criadas enquanto a solicitação estava em andamento.
+  for(const change of s.pending){const name={client:'clients',visit:'visits',order:'orders',task:'tasks',route:'routes',delete_route:'routes',office_action:'officeActions',office_commercial:'officeCommercial',office_administrative:'officeAdministrative',office_finance:'officeFinance',office_budget:'officeBudget',office_monthly_close:'officeMonthlyClose',office_process:'officeProcesses'}[change.type];if(!name)continue;s[name]=s[name].filter(x=>x.id!==change.data.id);if(change.type!=='delete_route')s[name].push(change.data)}
+  s.syncAt=new Date().toLocaleString('pt-BR');window.routeAttemptedDay='';save();show(tab);
+ }catch(e){console.warn(e);window.lastSyncError=e.message;network();if(batch.length)alert('Os dados foram salvos neste aparelho, mas NÃO foram enviados à nuvem. '+e.message)}finally{syncing=false;if(!s.mustChangePassword&&s.pending.length&&s.server&&s.token&&navigator.onLine)setTimeout(sync,3000)}
+}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(b.dataset.tab));
+window.addEventListener('online',()=>{network();sync()});window.addEventListener('offline',network);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});setInterval(sync,30000);
+(async()=>{if('serviceWorker'in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('./sw.js').catch(()=>{});if(!s.server&&location.protocol.startsWith('http'))s.server=location.origin;save();show('hoje');sync()})();
+,'Variação %','Ação/Justificativa']},
+ officeMonthlyClose:{kind:'office_monthly_close',fields:['ID','Mês','Receitas previstas','Receitas recebidas','Despesas previstas','Despesas pagas','Resultado realizado','A receber','A pagar','Vencidos a receber','Faturamento comercial','Comissão apurada','Margem operacional','Status fechamento','Observações/Decisões']}
 };
 function renderRecordEditor(collection){
  if(collection.startsWith('officeFin')||collection==='officeBudget'||collection==='officeMonthlyClose'){if(!financeAllowed())return ''}
