@@ -203,6 +203,10 @@ def normalize_uf(value):
     code = str(value or '').strip().upper()
     return {'PA':'PA','PARA':'PA','PARÁ':'PA','AP':'AP','AMAPA':'AP','AMAPÁ':'AP'}.get(code)
 
+def price_table_matches_client(customer_state, table_state):
+    client_uf = normalize_uf(customer_state)
+    return client_uf is not None and client_uf == normalize_uf(table_state)
+
 class PriceRow(BaseModel):
     brand: str = Field(min_length=1)
     sku: str = Field(min_length=1)
@@ -345,6 +349,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 price_table = normalize_uf(obj.get('priceTable'))
                 if not price_table:
                     raise HTTPException(400, 'Escolha a tabela de preços PA ou AP')
+                if not price_table_matches_client(customer[0].get('state'), obj.get('priceTable')):
+                    raise HTTPException(400, 'A tabela de preços deve corresponder à UF do cliente')
                 total = Decimal('0')
                 for item in obj['items']:
                     if not isinstance(item, dict) or not isinstance(item.get('sku'), str) or not item['sku'].strip():
