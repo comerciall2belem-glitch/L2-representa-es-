@@ -329,7 +329,7 @@ def health():
     with db() as con:
         users = con.execute('SELECT count(*) FROM app_users WHERE active').fetchone()[0]
         counts = {kind: con.execute('SELECT count(*) FROM entities WHERE kind=%s',(kind,)).fetchone()[0]
-                  for kind in ('client','visit','order','task','route','goal')}
+                  for kind in ('client','visit','order','task','route','goal','office_process','office_budget','office_ritual','office_role')}
     return {'status':'ok', 'users':users, **counts}
 
 @app.post('/api/self-test')
