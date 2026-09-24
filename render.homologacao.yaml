@@ -13,13 +13,7 @@ services:
         fromDatabase:
           name: l2-one-homologacao-db
           property: connectionString
-      - key: L2_PASSWORD_1
-        sync: false
-      - key: L2_PASSWORD_2
-        sync: false
-      - key: L2_PASSWORD_3
-        sync: false
-      - key: L2_PASSWORD_4
+      - key: L2_INITIAL_PASSWORD
         sync: false
 databases:
   - name: l2-one-homologacao-db

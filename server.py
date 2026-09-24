@@ -11,7 +11,8 @@ from psycopg.types.json import Jsonb
 
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
-PASSWORDS = {u: os.getenv(f'L2_PASSWORD_{i}', '') for i, u in enumerate(USERS, 1)}
+INITIAL_PASSWORD = os.getenv('L2_INITIAL_PASSWORD', '')
+PASSWORDS = {u: INITIAL_PASSWORD or os.getenv(f'L2_PASSWORD_{i}', '') for i, u in enumerate(USERS, 1)}
 DATABASE_URL = os.getenv('DATABASE_URL', '')
 SESSION_HOURS = int(os.getenv('L2_SESSION_HOURS', '24'))
 config_errors = []
@@ -46,12 +47,13 @@ def initialize():
         con.execute('CREATE TABLE IF NOT EXISTS applied_changes (change_id TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE TABLE IF NOT EXISTS audit_log (id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, kind TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE TABLE IF NOT EXISTS app_users (username TEXT PRIMARY KEY, password_hash TEXT NOT NULL, active BOOLEAN NOT NULL DEFAULT true, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())')
+        con.execute('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false')
         con.execute('CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, username TEXT NOT NULL REFERENCES app_users(username), expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at)')
         for user, password in PASSWORDS.items():
             exists = con.execute('SELECT 1 FROM app_users WHERE username=%s',(user,)).fetchone()
             if not exists:
-                con.execute('INSERT INTO app_users(username,password_hash) VALUES(%s,%s)',(user,password_hash(password)))
+                con.execute('INSERT INTO app_users(username,password_hash,must_change_password) VALUES(%s,%s,true)',(user,password_hash(password)))
         # Importação inicial opcional por segredo do Render. O valor é gzip+base64,
         # nunca fica no repositório, e só é aplicado enquanto a carteira estiver vazia.
         initial_clients = os.getenv('L2_INITIAL_CLIENTS_B64', '')
@@ -97,7 +99,7 @@ class Change(BaseModel):
 class Sync(BaseModel):
     changes: list[Change] = Field(max_length=500)
 
-def auth(header):
+def auth(header, allow_password_change=False):
     if not header or not header.startswith('Bearer '):
         raise HTTPException(401, 'Autenticação necessária')
     token = header[7:]
@@ -105,15 +107,17 @@ def auth(header):
         raise HTTPException(401, 'Sessão inválida')
     token_digest = hashlib.sha256(token.encode()).hexdigest()
     with db() as con:
-        row = con.execute("SELECT s.username FROM sessions s JOIN app_users u ON u.username=s.username WHERE s.token_hash=%s AND s.expires_at>now() AND u.active",(token_digest,)).fetchone()
+        row = con.execute("SELECT s.username, u.must_change_password FROM sessions s JOIN app_users u ON u.username=s.username WHERE s.token_hash=%s AND s.expires_at>now() AND u.active",(token_digest,)).fetchone()
     if not row:
         raise HTTPException(401, 'Sessão inválida ou expirada')
+    if row[1] and not allow_password_change:
+        raise HTTPException(403, 'Troque a senha provisória antes de usar o sistema')
     return row[0]
 
 @app.post('/api/login')
 def login(data: Login):
     with db() as con:
-        row = con.execute('SELECT password_hash FROM app_users WHERE username=%s AND active',(data.user,)).fetchone()
+        row = con.execute('SELECT password_hash, must_change_password FROM app_users WHERE username=%s AND active',(data.user,)).fetchone()
     if not row or not password_ok(data.password, row[0]):
         time.sleep(0.25)
         raise HTTPException(401, 'Credenciais inválidas')
@@ -121,14 +125,32 @@ def login(data: Login):
     with db() as con:
         con.execute("DELETE FROM sessions WHERE expires_at<=now()")
         con.execute("INSERT INTO sessions(token_hash,username,expires_at) VALUES(%s,%s,now()+(%s || ' hours')::interval)",(hashlib.sha256(token.encode()).hexdigest(),data.user,SESSION_HOURS))
-    return {'token': token, 'user': data.user, 'expiresInHours': SESSION_HOURS}
+    return {'token': token, 'user': data.user, 'expiresInHours': SESSION_HOURS, 'mustChangePassword': row[1]}
 
 @app.post('/api/logout')
 def logout(authorization: str | None = Header(default=None)):
-    auth(authorization)
+    auth(authorization, allow_password_change=True)
     token_digest = hashlib.sha256(authorization[7:].encode()).hexdigest()
     with db() as con: con.execute('DELETE FROM sessions WHERE token_hash=%s',(token_digest,))
     return {'ok': True}
+
+
+class PasswordChange(BaseModel):
+    currentPassword: str = Field(max_length=1024)
+    newPassword: str = Field(min_length=12, max_length=1024)
+
+@app.post('/api/change-password')
+def change_password(data: PasswordChange, authorization: str | None = Header(default=None)):
+    user = auth(authorization, allow_password_change=True)
+    with db() as con:
+        row = con.execute('SELECT password_hash FROM app_users WHERE username=%s AND active FOR UPDATE', (user,)).fetchone()
+        if not row or not password_ok(data.currentPassword, row[0]):
+            raise HTTPException(401, 'Senha atual incorreta')
+        if password_ok(data.newPassword, row[0]) or data.newPassword in PASSWORDS.values():
+            raise HTTPException(400, 'Escolha uma senha diferente da provisória')
+        con.execute('UPDATE app_users SET password_hash=%s, must_change_password=false, updated_at=now() WHERE username=%s', (password_hash(data.newPassword), user))
+        con.execute('DELETE FROM sessions WHERE username=%s', (user,))
+    return {'ok': True, 'loginRequired': True}
 
 def normalize_uf(value):
     code = str(value or '').strip().upper()
