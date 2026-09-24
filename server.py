@@ -78,6 +78,31 @@ def initialize():
                     con.execute('INSERT INTO entities(kind,id,payload) VALUES(%s,%s,%s)', ('client', entity_id, Jsonb(payload)))
             except Exception as exc:
                 raise RuntimeError('Falha ao importar a carteira inicial protegida.') from exc
+        initial_prices = os.getenv('L2_INITIAL_PRICES_B64', '')
+        has_prices = con.execute("SELECT 1 FROM entities WHERE kind='price' LIMIT 1").fetchone()
+        if initial_prices and not has_prices:
+            try:
+                prices = json.loads(gzip.decompress(base64.b64decode(initial_prices)).decode('utf-8'))
+                if not isinstance(prices, list) or len(prices) != 3934:
+                    raise ValueError('Carga de preços deve conter 3934 registros.')
+                seen = set()
+                for row in prices:
+                    if not isinstance(row, dict):
+                        raise ValueError('Produto inválido.')
+                    brand, sku = str(row.get('brand') or '').strip(), str(row.get('sku') or '').strip()
+                    state = str(row.get('state') or '').strip().upper()
+                    amount = Decimal(str(row.get('price') or '0'))
+                    if not brand or not sku or state not in ('PA', 'AP') or not amount.is_finite() or amount <= 0:
+                        raise ValueError('Marca, SKU, UF ou preço inválido.')
+                    key = f'{brand}|{state}|{sku}'
+                    if key in seen:
+                        raise ValueError('Preço duplicado na carga.')
+                    seen.add(key)
+                    payload = {'brand':brand, 'sku':sku, 'state':state,
+                               'price':str(amount), 'description':str(row.get('description') or '')}
+                    con.execute("INSERT INTO entities(kind,id,payload) VALUES('price',%s,%s)", (key, Jsonb(payload)))
+            except Exception as exc:
+                raise RuntimeError('Falha ao importar preços iniciais protegidos.') from exc
         office_seed = os.getenv('L2_OFFICE_SEED_B64', '')
         office_marker = 'office-management-seed-v1'
         already_imported = con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s', (office_marker,)).fetchone()
@@ -415,7 +440,7 @@ def health():
     with db() as con:
         users = con.execute('SELECT count(*) FROM app_users WHERE active').fetchone()[0]
         counts = {kind: con.execute('SELECT count(*) FROM entities WHERE kind=%s',(kind,)).fetchone()[0]
-                  for kind in ('client','visit','order','task','route','goal','office_process','office_budget','office_ritual','office_role')}
+                  for kind in ('client','visit','order','task','route','goal','price','office_process','office_budget','office_ritual','office_role')}
     return {'status':'ok', 'users':users, **counts}
 
 @app.post('/api/self-test')
