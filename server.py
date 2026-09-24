@@ -188,6 +188,17 @@ def change_password(data: PasswordChange, authorization: str | None = Header(def
         con.execute('DELETE FROM sessions WHERE username=%s', (user,))
     return {'ok': True, 'loginRequired': True}
 
+def valid_cnpj(value):
+    digits = ''.join(ch for ch in str(value or '') if ch.isdigit())
+    if len(digits) != 14 or len(set(digits)) == 1:
+        return False
+    def check(length):
+        weights = list(range(length - 7, 1, -1)) + list(range(9, 1, -1))
+        total = sum(int(digits[i]) * weights[i] for i in range(length))
+        remainder = total % 11
+        return 0 if remainder < 2 else 11 - remainder
+    return int(digits[12]) == check(12) and int(digits[13]) == check(13)
+
 def normalize_uf(value):
     code = str(value or '').strip().upper()
     return {'PA':'PA','PARA':'PA','PARÁ':'PA','AP':'AP','AMAPA':'AP','AMAPÁ':'AP'}.get(code)
@@ -251,6 +262,23 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 state = str(obj.get('state','')).strip().upper()
                 if state and state not in ('PA','PARA','PARÁ','AP','AMAPA','AMAPÁ'):
                     raise HTTPException(400, 'A carteira aceita somente clientes do Pará e Amapá')
+            if kind == 'client':
+                # Cadastros legados continuam editáveis; novos exigem identificação fiscal.
+                existing = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (entity_id,)).fetchone()
+                if not existing and not normalize_uf(obj.get('state')):
+                    raise HTTPException(400, 'UF PA ou AP obrigatória para novo cliente')
+                tax_id = ''.join(ch for ch in str(obj.get('taxId') or '') if ch.isdigit())
+                registration = str(obj.get('stateRegistration') or '').strip().upper()
+                if not existing or tax_id or registration:
+                    if not valid_cnpj(tax_id):
+                        raise HTTPException(400, 'CNPJ inválido; informe os 14 dígitos corretos')
+                    if registration != 'ISENTO' and not (registration.isdigit() and 7 <= len(registration) <= 14):
+                        raise HTTPException(400, 'Informe inscrição estadual numérica ou ISENTO')
+                    obj['taxId'] = tax_id
+                    obj['stateRegistration'] = registration
+                    duplicates = con.execute("SELECT id,payload FROM entities WHERE kind='client' AND id<>%s AND payload->>'taxId' IS NOT NULL", (entity_id,)).fetchall()
+                    if any(''.join(ch for ch in str(row[1].get('taxId') or '') if ch.isdigit()) == tax_id for row in duplicates):
+                        raise HTTPException(409, 'CNPJ já cadastrado em outro cliente')
             if kind == 'order':
                 if not isinstance(obj.get('items'), list) or not obj['items']:
                     raise HTTPException(400, 'Novo pedido exige itens e tabela de preços por UF; registros antigos permanecem somente para consulta')
