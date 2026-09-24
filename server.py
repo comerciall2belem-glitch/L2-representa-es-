@@ -223,17 +223,18 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 customer = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (obj.get('clientId'),)).fetchone()
                 if not customer:
                     raise HTTPException(400, 'Cliente não cadastrado')
-                uf = normalize_uf(customer[0].get('state'))
-                if not uf:
-                    raise HTTPException(400, 'UF do cliente ausente ou inválida; corrija o cadastro')
+                client_uf = normalize_uf(customer[0].get('state'))
+                price_table = normalize_uf(obj.get('priceTable'))
+                if not price_table:
+                    raise HTTPException(400, 'Escolha a tabela de preços PA ou AP')
                 total = Decimal('0')
                 for item in obj['items']:
                     if not isinstance(item, dict) or not isinstance(item.get('sku'), str) or not item['sku'].strip():
                         raise HTTPException(400, 'SKU inválido')
-                    price_key = f"{obj.get('brand','').strip()}|{uf}|{item['sku'].strip()}"
+                    price_key = f"{obj.get('brand','').strip()}|{price_table}|{item['sku'].strip()}"
                     price_row = con.execute("SELECT payload FROM entities WHERE kind='price' AND id=%s", (price_key,)).fetchone()
                     if not price_row:
-                        raise HTTPException(400, f"Preço não cadastrado para {uf}: {item['sku']}")
+                        raise HTTPException(400, f"Preço não cadastrado na tabela {price_table}: {item['sku']}")
                     try:
                         qty = Decimal(str(item['quantity']))
                         unit = Decimal(str(price_row[0]['price']))
@@ -244,7 +245,9 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     item['unitPrice'] = str(unit)
                     item['subtotal'] = str((qty * unit).quantize(Decimal('0.01')))
                     total += qty * unit
-                obj['state'] = uf
+                obj['clientState'] = client_uf
+                obj['priceTable'] = price_table
+                obj['state'] = price_table
                 obj['amount'] = float(total.quantize(Decimal('0.01')))
             if kind == 'order':
                 try: amount = float(obj.get('amount',0))
@@ -273,7 +276,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
             con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
             con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,kind,entity_id,'delete' if kind=='delete_route' else 'upsert'))
         result = {}
-        for kind, name in [('client','clients'),('visit','visits'),('order','orders'),('task','tasks'),('route','routes'),('goal','goals')]:
+        for kind, name in [('client','clients'),('visit','visits'),('order','orders'),('task','tasks'),('route','routes'),('goal','goals'),('price','prices')]:
             result[name] = [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))]
         return result
 
