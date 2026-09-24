@@ -60,7 +60,7 @@ function saveClient(e){
  if(!validCNPJ(d.taxId)){alert('Informe um CNPJ válido, com 14 dígitos e dígitos verificadores corretos.');$('c_taxId').focus();return}
  d.taxId=digits(d.taxId);
  d.stateRegistration=(d.stateRegistration||'').trim().toUpperCase();
- if(d.stateRegistration!=='ISENTO'&&!/^\d{7,14}$/.test(digits(d.stateRegistration))){alert('Informe a inscrição estadual (7 a 14 dígitos) ou ISENTO.');$('c_stateRegistration').focus();return}
+ if(d.stateRegistration!=='ISENTO'&&!/^\d{7,14}$/.test(d.stateRegistration)){alert('Informe a inscrição estadual (7 a 14 dígitos) ou ISENTO.');$('c_stateRegistration').focus();return}
  if(d.stateRegistration!=='ISENTO')d.stateRegistration=digits(d.stateRegistration);
  const old=s.clients.findIndex(c=>c.id===d.id);
  if(s.clients.some(c=>c.id!==d.id&&digits(c.taxId)===d.taxId)){alert('Já existe um cliente com este CNPJ. Confira o cadastro antes de salvar.');return}
@@ -163,7 +163,7 @@ async function sync(){
  const batch=s.pending.slice(0,500), user=s.user, server=s.server, token=s.token;
  try{
   const r=await fetch(server+'/api/sync',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({changes:batch})});
-  if(!r.ok){if(r.status===401){s.token='';save();alert('Sua sessão expirou. Entre novamente em Nuvem.')}throw Error('Sincronização recusada: '+r.status)}
+  if(!r.ok){let detail='';try{const payload=await r.json();detail=typeof payload.detail==='string'?payload.detail:''}catch(_){}if(r.status===401){s.token='';save();alert('Sua sessão expirou. Entre novamente em Configurações.')}throw Error('Sincronização recusada ('+r.status+'): '+(detail||'verifique os dados enviados'))}
   const data=await r.json();
   if(user!==s.user||server!==s.server||token!==s.token)return;
   const acknowledged=new Set(batch.map(x=>x.changeId));
@@ -172,7 +172,7 @@ async function sync(){
   // Reaplica alterações criadas enquanto a solicitação estava em andamento.
   for(const change of s.pending){const name={client:'clients',visit:'visits',order:'orders',task:'tasks',route:'routes',delete_route:'routes'}[change.type];if(!name)continue;s[name]=s[name].filter(x=>x.id!==change.data.id);if(change.type!=='delete_route')s[name].push(change.data)}
   s.syncAt=new Date().toLocaleString('pt-BR');window.routeAttemptedDay='';save();show(tab);
- }catch(e){console.warn(e);network()}finally{syncing=false;if(!s.mustChangePassword&&s.pending.length&&s.server&&s.token&&navigator.onLine)setTimeout(sync,3000)}
+ }catch(e){console.warn(e);window.lastSyncError=e.message;network();if(batch.length)alert('Os dados foram salvos neste aparelho, mas NÃO foram enviados à nuvem. '+e.message)}finally{syncing=false;if(!s.mustChangePassword&&s.pending.length&&s.server&&s.token&&navigator.onLine)setTimeout(sync,3000)}
 }
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(b.dataset.tab));
 window.addEventListener('online',()=>{network();sync()});window.addEventListener('offline',network);
