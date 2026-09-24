@@ -256,12 +256,16 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 raise HTTPException(400, 'Alteração inválida')
             if (kind in ('office_finance','office_budget','office_monthly_close','cash_day','cash_entry') or (kind == 'office_process' and str(obj.get('Área','')) == 'Financeiro')) and user not in FINANCE_USERS:
                 raise HTTPException(403, 'Acesso financeiro restrito')
+            if kind == 'office_process' and user not in FINANCE_USERS:
+                previous_process = con.execute("SELECT payload FROM entities WHERE kind='office_process' AND id=%s",(entity_id,)).fetchone()
+                if previous_process and str(previous_process[0].get('Área','')) == 'Financeiro':
+                    raise HTTPException(403, 'Acesso financeiro restrito')
             if kind in ('cash_day','cash_entry'):
                 from datetime import date as _date
                 from decimal import Decimal as _Decimal
                 try:
                     _date.fromisoformat(str(obj.get('date','')))
-                except ValueError:
+                except (ValueError, TypeError):
                     raise HTTPException(400, 'Data do caixa inválida')
                 if kind == 'cash_day':
                     try:
