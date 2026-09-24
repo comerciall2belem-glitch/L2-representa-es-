@@ -11,6 +11,7 @@ from psycopg.types.json import Jsonb
 
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
+FINANCE_USERS = {'Ana Paula', 'Euler', 'Laís'}
 INITIAL_PASSWORD = os.getenv('L2_INITIAL_PASSWORD', '')
 PASSWORDS = {u: INITIAL_PASSWORD or os.getenv(f'L2_PASSWORD_{i}', '') for i, u in enumerate(USERS, 1)}
 DATABASE_URL = os.getenv('DATABASE_URL', '')
@@ -77,6 +78,41 @@ def initialize():
                     con.execute('INSERT INTO entities(kind,id,payload) VALUES(%s,%s,%s)', ('client', entity_id, Jsonb(payload)))
             except Exception as exc:
                 raise RuntimeError('Falha ao importar a carteira inicial protegida.') from exc
+        office_seed = os.getenv('L2_OFFICE_SEED_B64', '')
+        office_marker = 'office-management-seed-v1'
+        already_imported = con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s', (office_marker,)).fetchone()
+        if office_seed and not already_imported:
+            try:
+                office = json.loads(gzip.decompress(base64.b64decode(office_seed)).decode('utf-8'))
+                sections = {
+                    'processes': ('office_process', 'ID'),
+                    'budget': ('office_budget', None),
+                    'rituals': ('office_ritual', 'Momento'),
+                    'roles': ('office_role', 'Pessoa'),
+                    'actions': ('office_action', 'ID'),
+                    'commercial': ('office_commercial', 'ID'),
+                    'administrative': ('office_administrative', 'ID'),
+                    'finance': ('office_finance', 'ID'),
+                    'monthlyClose': ('office_monthly_close', 'Mês'),
+                }
+                for section, (kind, id_field) in sections.items():
+                    rows = office.get(section, [])
+                    if not isinstance(rows, list):
+                        raise ValueError(f'Seção inválida: {section}')
+                    for index, row in enumerate(rows):
+                        if not isinstance(row, dict):
+                            raise ValueError(f'Linha inválida: {section}')
+                        row_id = str(row.get(id_field, '') if id_field else '').strip()
+                        if not row_id:
+                            row_id = f'{section}-{index + 1}'
+                        payload = dict(row)
+                        payload['id'] = row_id
+                        payload['source'] = 'L2 — Gestão Integrada do Escritório'
+                        con.execute('INSERT INTO entities(kind,id,payload) VALUES(%s,%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,updated_at=now()', (kind, row_id, Jsonb(payload)))
+                con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)', (office_marker,))
+            except Exception as exc:
+                raise RuntimeError('Falha ao importar a gestão integrada do escritório.') from exc
+
         # Nunca excluir clientes automaticamente por divergência de UF.
         # O cadastro permanece disponível para correção; pedidos exigem PA/AP.
 
@@ -205,8 +241,10 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
         for change in data.changes:
             kind, obj = change.type, dict(change.data)
             entity_id = obj.get('id')
-            if kind not in ('client','visit','order','task','route','goal','delete_route') or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
+            if kind not in ('client','visit','order','task','route','goal','delete_route','office_action','office_commercial','office_administrative','office_finance','office_budget','office_monthly_close') or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
                 raise HTTPException(400, 'Alteração inválida')
+            if kind in ('office_finance','office_budget','office_monthly_close') and user not in FINANCE_USERS:
+                raise HTTPException(403, 'Acesso financeiro restrito')
             if kind == 'client' and (not isinstance(obj.get('name'),str) or not obj['name'].strip()):
                 raise HTTPException(400, 'Nome do cliente obrigatório')
             if kind == 'client':
@@ -223,17 +261,18 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 customer = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (obj.get('clientId'),)).fetchone()
                 if not customer:
                     raise HTTPException(400, 'Cliente não cadastrado')
-                uf = normalize_uf(customer[0].get('state'))
-                if not uf:
-                    raise HTTPException(400, 'UF do cliente ausente ou inválida; corrija o cadastro')
+                client_uf = normalize_uf(customer[0].get('state'))
+                price_table = normalize_uf(obj.get('priceTable'))
+                if not price_table:
+                    raise HTTPException(400, 'Escolha a tabela de preços PA ou AP')
                 total = Decimal('0')
                 for item in obj['items']:
                     if not isinstance(item, dict) or not isinstance(item.get('sku'), str) or not item['sku'].strip():
                         raise HTTPException(400, 'SKU inválido')
-                    price_key = f"{obj.get('brand','').strip()}|{uf}|{item['sku'].strip()}"
+                    price_key = f"{obj.get('brand','').strip()}|{price_table}|{item['sku'].strip()}"
                     price_row = con.execute("SELECT payload FROM entities WHERE kind='price' AND id=%s", (price_key,)).fetchone()
                     if not price_row:
-                        raise HTTPException(400, f"Preço não cadastrado para {uf}: {item['sku']}")
+                        raise HTTPException(400, f"Preço não cadastrado na tabela {price_table}: {item['sku']}")
                     try:
                         qty = Decimal(str(item['quantity']))
                         unit = Decimal(str(price_row[0]['price']))
@@ -244,7 +283,9 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     item['unitPrice'] = str(unit)
                     item['subtotal'] = str((qty * unit).quantize(Decimal('0.01')))
                     total += qty * unit
-                obj['state'] = uf
+                obj['clientState'] = client_uf
+                obj['priceTable'] = price_table
+                obj['state'] = price_table
                 obj['amount'] = float(total.quantize(Decimal('0.01')))
             if kind == 'order':
                 try: amount = float(obj.get('amount',0))
@@ -273,8 +314,14 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
             con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
             con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,kind,entity_id,'delete' if kind=='delete_route' else 'upsert'))
         result = {}
-        for kind, name in [('client','clients'),('visit','visits'),('order','orders'),('task','tasks'),('route','routes'),('goal','goals')]:
-            result[name] = [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))]
+        public_kinds = [('client','clients'),('visit','visits'),('order','orders'),('task','tasks'),('route','routes'),('goal','goals'),('price','prices'),('office_process','officeProcesses'),('office_action','officeActions'),('office_commercial','officeCommercial'),('office_administrative','officeAdministrative'),('office_ritual','officeRituals'),('office_role','officeRoles')]
+        for kind, name in public_kinds:
+            if kind == 'office_process' and user not in FINANCE_USERS:
+                result[name] = [row[0] for row in con.execute("SELECT payload FROM entities WHERE kind=%s AND coalesce(payload->>'Área','')<>'Financeiro' ORDER BY updated_at,id", (kind,))]
+            else:
+                result[name] = [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))]
+        for kind, name in [('office_finance','officeFinance'),('office_budget','officeBudget'),('office_monthly_close','officeMonthlyClose')]:
+            result[name] = [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))] if user in FINANCE_USERS else []
         return result
 
 @app.get('/health')
@@ -282,7 +329,7 @@ def health():
     with db() as con:
         users = con.execute('SELECT count(*) FROM app_users WHERE active').fetchone()[0]
         counts = {kind: con.execute('SELECT count(*) FROM entities WHERE kind=%s',(kind,)).fetchone()[0]
-                  for kind in ('client','visit','order','task','route','goal')}
+                  for kind in ('client','visit','order','task','route','goal','office_process','office_budget','office_ritual','office_role')}
     return {'status':'ok', 'users':users, **counts}
 
 @app.post('/api/self-test')
