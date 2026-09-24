@@ -4,6 +4,7 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.responses import FileResponse
+from decimal import Decimal, InvalidOperation
 from pydantic import BaseModel, Field
 import psycopg
 from psycopg.types.json import Jsonb
@@ -131,6 +132,52 @@ def logout(authorization: str | None = Header(default=None)):
     with db() as con: con.execute('DELETE FROM sessions WHERE token_hash=%s',(token_digest,))
     return {'ok': True}
 
+def normalize_uf(value):
+    code = str(value or '').strip().upper()
+    return {'PA':'PA','PARA':'PA','PARÁ':'PA','AP':'AP','AMAPA':'AP','AMAPÁ':'AP'}.get(code)
+
+class PriceRow(BaseModel):
+    brand: str = Field(min_length=1)
+    sku: str = Field(min_length=1)
+    state: str
+    price: Decimal = Field(ge=0)
+    description: str = ''
+
+class PriceImport(BaseModel):
+    prices: list[PriceRow] = Field(min_length=1, max_length=1000)
+
+@app.post('/api/prices/import')
+def import_prices(data: PriceImport, authorization: str | None = Header(default=None)):
+    if auth(authorization) != 'Ana Paula':
+        raise HTTPException(403, 'Importação restrita à administradora')
+    prepared = {}
+    for row in data.prices:
+        uf = normalize_uf(row.state)
+        if not uf:
+            raise HTTPException(400, 'Tabela deve identificar PA ou AP em cada produto')
+        key = f"{row.brand.strip()}|{uf}|{row.sku.strip()}"
+        if key in prepared:
+            raise HTTPException(400, f'SKU duplicado para marca e UF: {key}')
+        prepared[key] = {'brand':row.brand.strip(),'sku':row.sku.strip(),'state':uf,
+                         'price':str(row.price),'description':row.description}
+    with db() as con:
+        for key, payload in prepared.items():
+            con.execute("INSERT INTO entities(kind,id,payload) VALUES('price',%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,updated_at=now()", (key,Jsonb(payload)))
+    return {'imported':len(prepared)}
+
+@app.get('/api/prices/{client_id}')
+def prices_for_client(client_id: str, authorization: str | None = Header(default=None)):
+    auth(authorization)
+    with db() as con:
+        row = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s",(client_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, 'Cliente não encontrado')
+        uf = normalize_uf(row[0].get('state'))
+        if not uf:
+            raise HTTPException(400, 'UF do cliente ausente ou inválida')
+        prices = [r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='price' AND payload->>'state'=%s ORDER BY id",(uf,))]
+    return {'clientId':client_id,'state':uf,'prices':prices}
+
 @app.post('/api/sync')
 def sync(data: Sync, authorization: str | None = Header(default=None)):
     user = auth(authorization)
@@ -146,6 +193,35 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 state = str(obj.get('state','')).strip().upper()
                 if state and state not in ('PA','PARA','PARÁ','AP','AMAPA','AMAPÁ'):
                     raise HTTPException(400, 'A carteira aceita somente clientes do Pará e Amapá')
+            if kind == 'order' and obj.get('items') is not None:
+                if not isinstance(obj['items'], list) or not obj['items']:
+                    raise HTTPException(400, 'Pedido deve conter itens')
+                customer = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (obj.get('clientId'),)).fetchone()
+                if not customer:
+                    raise HTTPException(400, 'Cliente não cadastrado')
+                uf = normalize_uf(customer[0].get('state'))
+                if not uf:
+                    raise HTTPException(400, 'UF do cliente ausente ou inválida; corrija o cadastro')
+                total = Decimal('0')
+                for item in obj['items']:
+                    if not isinstance(item, dict) or not isinstance(item.get('sku'), str) or not item['sku'].strip():
+                        raise HTTPException(400, 'SKU inválido')
+                    price_key = f"{obj.get('brand','').strip()}|{uf}|{item['sku'].strip()}"
+                    price_row = con.execute("SELECT payload FROM entities WHERE kind='price' AND id=%s", (price_key,)).fetchone()
+                    if not price_row:
+                        raise HTTPException(400, f"Preço não cadastrado para {uf}: {item['sku']}")
+                    try:
+                        qty = Decimal(str(item['quantity']))
+                        unit = Decimal(str(price_row[0]['price']))
+                    except (KeyError, TypeError, ValueError, InvalidOperation):
+                        raise HTTPException(400, 'Quantidade ou preço inválido')
+                    if qty <= 0 or qty > 100000 or unit < 0:
+                        raise HTTPException(400, 'Quantidade ou preço inválido')
+                    item['unitPrice'] = str(unit)
+                    item['subtotal'] = str((qty * unit).quantize(Decimal('0.01')))
+                    total += qty * unit
+                obj['state'] = uf
+                obj['amount'] = float(total.quantize(Decimal('0.01')))
             if kind == 'order':
                 try: amount = float(obj.get('amount',0))
                 except (TypeError, ValueError): raise HTTPException(400,'Valor inválido')
