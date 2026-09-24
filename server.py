@@ -14,8 +14,16 @@ USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
 PASSWORDS = {u: os.getenv(f'L2_PASSWORD_{i}', '') for i, u in enumerate(USERS, 1)}
 DATABASE_URL = os.getenv('DATABASE_URL', '')
 SESSION_HOURS = int(os.getenv('L2_SESSION_HOURS', '24'))
-if not DATABASE_URL or not all(len(p) >= 12 for p in PASSWORDS.values()):
-    raise RuntimeError('Configure DATABASE_URL e L2_PASSWORD_1..4 (12+ caracteres).')
+config_errors = []
+if not DATABASE_URL:
+    config_errors.append('DATABASE_URL ausente')
+for i, user in enumerate(USERS, 1):
+    if not PASSWORDS[user]:
+        config_errors.append(f'L2_PASSWORD_{i} ausente')
+    elif len(PASSWORDS[user]) < 12:
+        config_errors.append(f'L2_PASSWORD_{i} deve ter pelo menos 12 caracteres')
+if config_errors:
+    raise RuntimeError('Configuracao invalida: ' + '; '.join(config_errors))
 
 def db():
     return psycopg.connect(DATABASE_URL)
