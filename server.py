@@ -449,6 +449,6 @@ def home(): return FileResponse(BASE/'index.html',headers={'Cache-Control':'no-s
 
 @app.get('/{filename}')
 def asset(filename: str):
-    if filename not in ('app.js','sw.js','manifest.json'):
+    if filename not in ('app.js','cash.js','sw.js','manifest.json'):
         raise HTTPException(404)
     return FileResponse(BASE/filename,headers={'Cache-Control':'no-store'})
