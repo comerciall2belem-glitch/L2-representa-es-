@@ -98,19 +98,19 @@ function validCNPJ(value){
  const check=len=>{let sum=0,weight=len-7;for(let i=0;i<len;i++){sum+=Number(n[i])*weight;weight=weight===2?9:weight-1}let mod=sum%11;return mod<2?0:11-mod};
  return Number(n[12])===check(12)&&Number(n[13])===check(13);
 }
-function newClient(){show('clientes');$('clientForm').reset();$('cid').value='';$('clientFormTitle').textContent='Cadastrar novo cliente';$('c_name').focus()}
+function newClient(){show('clientes');$('c_taxId').required=true;$('c_stateRegistration').required=true;$('clientForm').reset();$('cid').value='';$('clientFormTitle').textContent='Cadastrar novo cliente';$('c_name').focus()}
 function saveClient(e){
  e.preventDefault();
  const d=Object.fromEntries(new FormData(e.target));
  d.name=d.name.trim();d.city=d.city.trim();d.state=stateCode(d);
  if(!d.name||!d.city||!['PA','AP'].includes(d.state)){alert('Informe razão social, cidade e UF válida (PA ou AP).');return}
- if(!validCNPJ(d.taxId)){alert('Informe um CNPJ válido, com 14 dígitos e dígitos verificadores corretos.');$('c_taxId').focus();return}
+ const legacy=s.clients.find(c=>c.id===d.id&&!c.taxId&&!c.stateRegistration);if(!legacy&&!validCNPJ(d.taxId)){alert('Informe um CNPJ válido, com 14 dígitos e dígitos verificadores corretos.');$('c_taxId').focus();return}
  d.taxId=digits(d.taxId);
  d.stateRegistration=(d.stateRegistration||'').trim().toUpperCase();
- if(d.stateRegistration!=='ISENTO'&&!/^\d{7,14}$/.test(d.stateRegistration)){alert('Informe a inscrição estadual (7 a 14 dígitos) ou ISENTO.');$('c_stateRegistration').focus();return}
+ if(!legacy&&d.stateRegistration!=='ISENTO'&&!/^\d{7,14}$/.test(d.stateRegistration)){alert('Informe a inscrição estadual (7 a 14 dígitos) ou ISENTO.');$('c_stateRegistration').focus();return}
  if(d.stateRegistration!=='ISENTO')d.stateRegistration=digits(d.stateRegistration);
  const old=s.clients.findIndex(c=>c.id===d.id);
- if(s.clients.some(c=>c.id!==d.id&&digits(c.taxId)===d.taxId)){alert('Já existe um cliente com este CNPJ. Confira o cadastro antes de salvar.');return}
+ if(d.taxId&&s.clients.some(c=>c.id!==d.id&&digits(c.taxId)===d.taxId)){alert('Já existe um cliente com este CNPJ. Confira o cadastro antes de salvar.');return}
  d.id=d.id||uid();
  const merged=old<0?d:{...s.clients[old],...d};
  if(old<0)s.clients.push(merged);else s.clients[old]=merged;
@@ -119,7 +119,7 @@ function saveClient(e){
 function editClient(id){
  show('clientes');let c=client(id);$('cid').value=id;
  for(let k of ['name','tradeName','taxId','stateRegistration','contact','phone','email','address','district','city','state','channel','brands','last_purchase'])$('c_'+k).value=c[k]||'';
- $('c_state').value=stateCode(c)==='FORA'?'':stateCode(c);
+ $('c_state').value=stateCode(c)==='FORA'?'':stateCode(c);$('c_taxId').required=!!c.taxId;$('c_stateRegistration').required=!!c.stateRegistration;
  $('clientFormTitle').textContent='Editar cadastro do cliente';
  $('clientForm').scrollIntoView({behavior:'smooth',block:'start'});
 }
