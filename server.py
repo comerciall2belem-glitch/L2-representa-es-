@@ -252,10 +252,58 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
         for change in data.changes:
             kind, obj = change.type, dict(change.data)
             entity_id = obj.get('id')
-            if kind not in ('client','visit','order','task','route','goal','delete_route','office_action','office_commercial','office_administrative','office_finance','office_budget','office_monthly_close','office_process') or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
+            if kind not in ('client','visit','order','task','route','goal','delete_route','office_action','office_commercial','office_administrative','office_finance','office_budget','office_monthly_close','office_process','cash_day','cash_entry') or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
                 raise HTTPException(400, 'Alteração inválida')
-            if (kind in ('office_finance','office_budget','office_monthly_close') or (kind == 'office_process' and str(obj.get('Área','')) == 'Financeiro')) and user not in FINANCE_USERS:
+            if (kind in ('office_finance','office_budget','office_monthly_close','cash_day','cash_entry') or (kind == 'office_process' and str(obj.get('Área','')) == 'Financeiro')) and user not in FINANCE_USERS:
                 raise HTTPException(403, 'Acesso financeiro restrito')
+            if kind in ('cash_day','cash_entry'):
+                from datetime import date as _date
+                from decimal import Decimal as _Decimal
+                try:
+                    _date.fromisoformat(str(obj.get('date','')))
+                except ValueError:
+                    raise HTTPException(400, 'Data do caixa inválida')
+                if kind == 'cash_day':
+                    try:
+                        opening = _Decimal(str(obj['opening']))
+                        if not opening.is_finite() or opening < 0 or opening.as_tuple().exponent < -2:
+                            raise ValueError()
+                    except (KeyError, ValueError, InvalidOperation):
+                        raise HTTPException(400, 'Saldo inicial inválido')
+                    if obj.get('status') not in ('Aberto','Fechado'):
+                        raise HTTPException(400, 'Status de caixa inválido')
+                    existing_day = con.execute("SELECT payload FROM entities WHERE kind='cash_day' AND id=%s", (entity_id,)).fetchone()
+                    existing_date = con.execute("SELECT id FROM entities WHERE kind='cash_day' AND payload->>'date'=%s AND id<>%s", (obj['date'],entity_id)).fetchone()
+                    if existing_date or (existing_day and existing_day[0].get('date') != obj['date']):
+                        raise HTTPException(409, 'Caixa da data já existe')
+                    if existing_day and existing_day[0].get('status') == 'Fechado':
+                        raise HTTPException(409, 'Caixa fechado não pode ser alterado')
+                    if existing_day and str(existing_day[0].get('opening')) != str(obj['opening']):
+                        raise HTTPException(409, 'Saldo inicial não pode ser alterado após abertura')
+                    if obj['status'] == 'Fechado':
+                        if not existing_day:
+                            raise HTTPException(409, 'Abra o caixa antes de fechar')
+                        try:
+                            closing = _Decimal(str(obj['closing']))
+                            if not closing.is_finite() or closing < 0 or closing.as_tuple().exponent < -2:
+                                raise ValueError()
+                        except (KeyError, ValueError, InvalidOperation):
+                            raise HTTPException(400, 'Saldo de fechamento inválido')
+                else:
+                    if obj.get('type') not in ('Entrada','Saída') or not str(obj.get('category','')).strip() or not str(obj.get('description','')).strip():
+                        raise HTTPException(400, 'Movimentação incompleta')
+                    try:
+                        amount = _Decimal(str(obj['amount']))
+                        if not amount.is_finite() or amount <= 0 or amount.as_tuple().exponent < -2:
+                            raise ValueError()
+                    except (KeyError, ValueError, InvalidOperation):
+                        raise HTTPException(400, 'Valor da movimentação inválido')
+                    existing_entry = con.execute("SELECT 1 FROM entities WHERE kind='cash_entry' AND id=%s",(entity_id,)).fetchone()
+                    if existing_entry:
+                        raise HTTPException(409, 'Movimentações registradas não podem ser substituídas')
+                    day_record = con.execute("SELECT payload FROM entities WHERE kind='cash_day' AND payload->>'date'=%s",(obj['date'],)).fetchone()
+                    if not day_record or day_record[0].get('status') != 'Aberto':
+                        raise HTTPException(409, 'Caixa não está aberto para esta data')
             if kind == 'client' and (not isinstance(obj.get('name'),str) or not obj['name'].strip()):
                 raise HTTPException(400, 'Nome do cliente obrigatório')
             if kind == 'client':
@@ -348,7 +396,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 result[name] = [row[0] for row in con.execute("SELECT payload FROM entities WHERE kind=%s AND coalesce(payload->>'Área','')<>'Financeiro' ORDER BY updated_at,id", (kind,))]
             else:
                 result[name] = [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))]
-        for kind, name in [('office_finance','officeFinance'),('office_budget','officeBudget'),('office_monthly_close','officeMonthlyClose')]:
+        for kind, name in [('office_finance','officeFinance'),('office_budget','officeBudget'),('office_monthly_close','officeMonthlyClose'),('cash_day','cashDays'),('cash_entry','cashEntries')]:
             result[name] = [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))] if user in FINANCE_USERS else []
         return result
 
