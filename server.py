@@ -281,13 +281,19 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
         for change in data.changes:
             kind, obj = change.type, dict(change.data)
             entity_id = obj.get('id')
-            deletable = {'delete_client':'client','delete_visit':'visit','delete_task':'task','delete_goal':'goal','delete_route':'route','delete_order':'order','delete_price':'price','delete_office_process':'office_process','delete_office_action':'office_action','delete_office_commercial':'office_commercial','delete_office_administrative':'office_administrative','delete_office_finance':'office_finance','delete_office_budget':'office_budget','delete_office_monthly_close':'office_monthly_close'}
+            deletable = {'delete_client':'client','delete_visit':'visit','delete_task':'task','delete_goal':'goal','delete_route':'route','delete_order':'order','delete_price':'price','delete_cash_entry':'cash_entry','delete_office_process':'office_process','delete_office_action':'office_action','delete_office_commercial':'office_commercial','delete_office_administrative':'office_administrative','delete_office_finance':'office_finance','delete_office_budget':'office_budget','delete_office_monthly_close':'office_monthly_close'}
             if kind not in ('client','visit','order','task','route','goal','price','office_action','office_commercial','office_administrative','office_finance','office_budget','office_monthly_close','office_process','cash_day','cash_entry',*deletable) or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
                 raise HTTPException(400, 'Alteração inválida')
             if kind in deletable:
                 target = deletable[kind]
-                if target in ('office_finance','office_budget','office_monthly_close') and user not in FINANCE_USERS:
+                if target in ('office_finance','office_budget','office_monthly_close','cash_entry') and user not in FINANCE_USERS:
                     raise HTTPException(403, 'Acesso financeiro restrito')
+                if target == 'cash_entry':
+                    previous = con.execute("SELECT payload FROM entities WHERE kind='cash_entry' AND id=%s",(entity_id,)).fetchone()
+                    if previous:
+                        day = con.execute("SELECT payload FROM entities WHERE kind='cash_day' AND payload->>'date'=%s",(previous[0].get('date'),)).fetchone()
+                        if not day or day[0].get('status') != 'Aberto':
+                            raise HTTPException(409, 'Caixa fechado não permite excluir lançamentos')
                 if target == 'route' and user in ('Laís','Marlene'):
                     raise HTTPException(403, 'Roteirização restrita a representantes')
                 if target in ('price','client') and user != 'Ana Paula':
@@ -367,9 +373,9 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                             raise ValueError()
                     except (KeyError, ValueError, InvalidOperation):
                         raise HTTPException(400, 'Valor da movimentação inválido')
-                    existing_entry = con.execute("SELECT 1 FROM entities WHERE kind='cash_entry' AND id=%s",(entity_id,)).fetchone()
-                    if existing_entry:
-                        raise HTTPException(409, 'Movimentações registradas não podem ser substituídas')
+                    existing_entry = con.execute("SELECT payload FROM entities WHERE kind='cash_entry' AND id=%s",(entity_id,)).fetchone()
+                    if existing_entry and existing_entry[0].get('date') != obj['date']:
+                        raise HTTPException(409, 'Movimentação não pode mudar de data')
                     day_record = con.execute("SELECT payload FROM entities WHERE kind='cash_day' AND payload->>'date'=%s",(obj['date'],)).fetchone()
                     if not day_record or day_record[0].get('status') != 'Aberto':
                         raise HTTPException(409, 'Caixa não está aberto para esta data')
