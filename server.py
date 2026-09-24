@@ -78,6 +78,31 @@ def initialize():
                     con.execute('INSERT INTO entities(kind,id,payload) VALUES(%s,%s,%s)', ('client', entity_id, Jsonb(payload)))
             except Exception as exc:
                 raise RuntimeError('Falha ao importar a carteira inicial protegida.') from exc
+        initial_prices = os.getenv('L2_INITIAL_PRICES_B64', '')
+        has_prices = con.execute("SELECT 1 FROM entities WHERE kind='price' LIMIT 1").fetchone()
+        if initial_prices and not has_prices:
+            try:
+                prices = json.loads(gzip.decompress(base64.b64decode(initial_prices)).decode('utf-8'))
+                if not isinstance(prices, list) or len(prices) != 3934:
+                    raise ValueError('Carga de preços deve conter 3934 registros.')
+                seen = set()
+                for row in prices:
+                    if not isinstance(row, dict):
+                        raise ValueError('Produto inválido.')
+                    brand, sku = str(row.get('brand') or '').strip(), str(row.get('sku') or '').strip()
+                    state = str(row.get('state') or '').strip().upper()
+                    amount = Decimal(str(row.get('price') or '0'))
+                    if not brand or not sku or state not in ('PA', 'AP') or not amount.is_finite() or amount <= 0:
+                        raise ValueError('Marca, SKU, UF ou preço inválido.')
+                    key = f'{brand}|{state}|{sku}'
+                    if key in seen:
+                        raise ValueError('Preço duplicado na carga.')
+                    seen.add(key)
+                    payload = {'brand':brand, 'sku':sku, 'state':state,
+                               'price':str(amount), 'description':str(row.get('description') or '')}
+                    con.execute("INSERT INTO entities(kind,id,payload) VALUES('price',%s,%s)", (key, Jsonb(payload)))
+            except Exception as exc:
+                raise RuntimeError('Falha ao importar preços iniciais protegidos.') from exc
         office_seed = os.getenv('L2_OFFICE_SEED_B64', '')
         office_marker = 'office-management-seed-v1'
         already_imported = con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s', (office_marker,)).fetchone()
@@ -256,8 +281,44 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
         for change in data.changes:
             kind, obj = change.type, dict(change.data)
             entity_id = obj.get('id')
-            if kind not in ('client','visit','order','task','route','goal','delete_route','office_action','office_commercial','office_administrative','office_finance','office_budget','office_monthly_close','office_process','cash_day','cash_entry') or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
+            deletable = {'delete_client':'client','delete_visit':'visit','delete_task':'task','delete_goal':'goal','delete_route':'route','delete_order':'order','delete_price':'price','delete_office_process':'office_process','delete_office_action':'office_action','delete_office_commercial':'office_commercial','delete_office_administrative':'office_administrative','delete_office_finance':'office_finance','delete_office_budget':'office_budget','delete_office_monthly_close':'office_monthly_close'}
+            if kind not in ('client','visit','order','task','route','goal','price','office_action','office_commercial','office_administrative','office_finance','office_budget','office_monthly_close','office_process','cash_day','cash_entry',*deletable) or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
                 raise HTTPException(400, 'Alteração inválida')
+            if kind in deletable:
+                target = deletable[kind]
+                if target in ('office_finance','office_budget','office_monthly_close') and user not in FINANCE_USERS:
+                    raise HTTPException(403, 'Acesso financeiro restrito')
+                if target == 'route' and user in ('Laís','Marlene'):
+                    raise HTTPException(403, 'Roteirização restrita a representantes')
+                if target in ('price','client') and user != 'Ana Paula':
+                    raise HTTPException(403, 'Exclusão restrita à administradora')
+                if target == 'office_process' and user not in FINANCE_USERS:
+                    previous = con.execute("SELECT payload FROM entities WHERE kind=%s AND id=%s", (target,entity_id)).fetchone()
+                    if previous and previous[0].get('Área') == 'Financeiro':
+                        raise HTTPException(403, 'Acesso financeiro restrito')
+                if target == 'client':
+                    for dependent in ('order','visit','route','task'):
+                        if con.execute("SELECT 1 FROM entities WHERE kind=%s AND payload->>'clientId'=%s LIMIT 1",(dependent,entity_id)).fetchone():
+                            raise HTTPException(409, 'Cliente possui histórico vinculado; preserve o cadastro')
+                if target == 'order':
+                    previous = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
+                    if previous and previous[0].get('status') not in ('Pendente','Cancelado'):
+                        raise HTTPException(409, 'Pedido confirmado ou faturado deve ser cancelado, não excluído')
+                if con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s',(change.changeId,)).fetchone():
+                    continue
+                con.execute('DELETE FROM entities WHERE kind=%s AND id=%s',(target,entity_id))
+                con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
+                con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,target,entity_id,'delete'))
+                continue
+            if kind == 'price':
+                if user != 'Ana Paula':
+                    raise HTTPException(403, 'Preço restrito à administradora')
+                brand,sku,state = str(obj.get('brand','')).strip(),str(obj.get('sku','')).strip(),normalize_uf(obj.get('state'))
+                try: price=Decimal(str(obj.get('price','')))
+                except (ValueError,InvalidOperation): raise HTTPException(400,'Preço inválido')
+                if not brand or not sku or not state or entity_id != f'{brand}|{state}|{sku}' or not price.is_finite() or price <= 0 or price.as_tuple().exponent < -2:
+                    raise HTTPException(400,'Preço ou identificação inválida')
+                obj.update(brand=brand,sku=sku,state=state,price=str(price))
             if (kind in ('office_finance','office_budget','office_monthly_close','cash_day','cash_entry') or (kind == 'office_process' and str(obj.get('Área','')) == 'Financeiro')) and user not in FINANCE_USERS:
                 raise HTTPException(403, 'Acesso financeiro restrito')
             if kind == 'office_process' and user not in FINANCE_USERS:
@@ -415,7 +476,7 @@ def health():
     with db() as con:
         users = con.execute('SELECT count(*) FROM app_users WHERE active').fetchone()[0]
         counts = {kind: con.execute('SELECT count(*) FROM entities WHERE kind=%s',(kind,)).fetchone()[0]
-                  for kind in ('client','visit','order','task','route','goal','office_process','office_budget','office_ritual','office_role')}
+                  for kind in ('client','visit','order','task','route','goal','price','office_process','office_budget','office_ritual','office_role')}
     return {'status':'ok', 'users':users, **counts}
 
 @app.post('/api/self-test')
