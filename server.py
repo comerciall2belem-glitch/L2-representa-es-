@@ -67,18 +67,8 @@ def initialize():
                     con.execute('INSERT INTO entities(kind,id,payload) VALUES(%s,%s,%s)', ('client', entity_id, Jsonb(payload)))
             except Exception as exc:
                 raise RuntimeError('Falha ao importar a carteira inicial protegida.') from exc
-        # Higienização regional: remove somente UF explicitamente fora de PA/AP.
-        # Cadastros sem UF são preservados para conferência, evitando perda indevida.
-        outside = con.execute("""
-            SELECT id FROM entities
-            WHERE kind='client'
-              AND trim(coalesce(payload->>'state','')) <> ''
-              AND upper(trim(payload->>'state')) NOT IN ('PA','PARA','PARÁ','AP','AMAPA','AMAPÁ')
-        """).fetchall()
-        for (client_id,) in outside:
-            con.execute("DELETE FROM entities WHERE kind='route' AND payload->>'clientId'=%s", (client_id,))
-            con.execute("DELETE FROM entities WHERE kind='client' AND id=%s", (client_id,))
-            con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES('sistema','client',%s,'delete-outside-pa-ap')", (client_id,))
+        # Nunca excluir clientes automaticamente por divergência de UF.
+        # O cadastro permanece disponível para correção; pedidos exigem PA/AP.
 
 @asynccontextmanager
 async def lifespan(app):
@@ -193,9 +183,13 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 state = str(obj.get('state','')).strip().upper()
                 if state and state not in ('PA','PARA','PARÁ','AP','AMAPA','AMAPÁ'):
                     raise HTTPException(400, 'A carteira aceita somente clientes do Pará e Amapá')
-            if kind == 'order' and obj.get('items') is not None:
-                if not isinstance(obj['items'], list) or not obj['items']:
-                    raise HTTPException(400, 'Pedido deve conter itens')
+            if kind == 'order':
+                if not isinstance(obj.get('items'), list) or not obj['items']:
+                    raise HTTPException(400, 'Novo pedido exige itens e tabela de preços por UF; registros antigos permanecem somente para consulta')
+                if not isinstance(obj.get('brand'), str) or not obj['brand'].strip():
+                    raise HTTPException(400, 'Marca obrigatória')
+                if not isinstance(obj.get('clientId'), str):
+                    raise HTTPException(400, 'Cliente obrigatório')
                 customer = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (obj.get('clientId'),)).fetchone()
                 if not customer:
                     raise HTTPException(400, 'Cliente não cadastrado')
@@ -215,7 +209,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         unit = Decimal(str(price_row[0]['price']))
                     except (KeyError, TypeError, ValueError, InvalidOperation):
                         raise HTTPException(400, 'Quantidade ou preço inválido')
-                    if qty <= 0 or qty > 100000 or unit < 0:
+                    if not qty.is_finite() or not unit.is_finite() or qty != qty.to_integral_value() or qty <= 0 or qty > 100000 or unit <= 0:
                         raise HTTPException(400, 'Quantidade ou preço inválido')
                     item['unitPrice'] = str(unit)
                     item['subtotal'] = str((qty * unit).quantize(Decimal('0.01')))
@@ -268,7 +262,6 @@ def self_test(authorization: str | None = Header(default=None)):
         raise HTTPException(403, 'Autoteste restrito à administradora')
     sample = {
         'visit': {'id':'self-test-visit','clientId':'self-test','date':'2026-01-01','notes':'teste transacional'},
-        'order': {'id':'self-test-order','clientId':'self-test','date':'2026-01-01','amount':1.0,'status':'Teste'},
         'task': {'id':'self-test-task','title':'teste transacional','date':'2026-01-01','done':False},
         'route': {'id':'self-test-route','date':'2026-01-01','clientIds':[]},
         'goal': {'id':'self-test-goal','month':'2026-01','amount':1.0},
