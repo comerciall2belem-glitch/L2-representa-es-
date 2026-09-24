@@ -1,0 +1,26 @@
+name: Validacao L2 ONE
+on:
+  push:
+    branches: [feature/precos-uf-cliente]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  static-and-fiscal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar sintaxe Python
+        run: python -m py_compile server.py
+      - name: Verificar sintaxe JavaScript
+        run: |
+          node --check app.js
+          node --check cash.js
+      - name: Testar regras fiscais
+        run: python -m unittest discover -s tests -p 'test_*.py' -v

@@ -188,9 +188,24 @@ def change_password(data: PasswordChange, authorization: str | None = Header(def
         con.execute('DELETE FROM sessions WHERE username=%s', (user,))
     return {'ok': True, 'loginRequired': True}
 
+def valid_cnpj(value):
+    digits = ''.join(ch for ch in str(value or '') if ch.isdigit())
+    if len(digits) != 14 or len(set(digits)) == 1:
+        return False
+    def check(length):
+        weights = list(range(length - 7, 1, -1)) + list(range(9, 1, -1))
+        total = sum(int(digits[i]) * weights[i] for i in range(length))
+        remainder = total % 11
+        return 0 if remainder < 2 else 11 - remainder
+    return int(digits[12]) == check(12) and int(digits[13]) == check(13)
+
 def normalize_uf(value):
     code = str(value or '').strip().upper()
     return {'PA':'PA','PARA':'PA','PARÁ':'PA','AP':'AP','AMAPA':'AP','AMAPÁ':'AP'}.get(code)
+
+def price_table_matches_client(customer_state, table_state):
+    client_uf = normalize_uf(customer_state)
+    return client_uf is not None and client_uf == normalize_uf(table_state)
 
 class PriceRow(BaseModel):
     brand: str = Field(min_length=1)
@@ -241,16 +256,85 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
         for change in data.changes:
             kind, obj = change.type, dict(change.data)
             entity_id = obj.get('id')
-            if kind not in ('client','visit','order','task','route','goal','delete_route','office_action','office_commercial','office_administrative','office_finance','office_budget','office_monthly_close') or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
+            if kind not in ('client','visit','order','task','route','goal','delete_route','office_action','office_commercial','office_administrative','office_finance','office_budget','office_monthly_close','office_process','cash_day','cash_entry') or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
                 raise HTTPException(400, 'Alteração inválida')
-            if kind in ('office_finance','office_budget','office_monthly_close') and user not in FINANCE_USERS:
+            if (kind in ('office_finance','office_budget','office_monthly_close','cash_day','cash_entry') or (kind == 'office_process' and str(obj.get('Área','')) == 'Financeiro')) and user not in FINANCE_USERS:
                 raise HTTPException(403, 'Acesso financeiro restrito')
+            if kind == 'office_process' and user not in FINANCE_USERS:
+                previous_process = con.execute("SELECT payload FROM entities WHERE kind='office_process' AND id=%s",(entity_id,)).fetchone()
+                if previous_process and str(previous_process[0].get('Área','')) == 'Financeiro':
+                    raise HTTPException(403, 'Acesso financeiro restrito')
+            if kind in ('cash_day','cash_entry'):
+                from datetime import date as _date
+                from decimal import Decimal as _Decimal
+                try:
+                    _date.fromisoformat(str(obj.get('date','')))
+                except (ValueError, TypeError):
+                    raise HTTPException(400, 'Data do caixa inválida')
+                if kind == 'cash_day':
+                    try:
+                        opening = _Decimal(str(obj['opening']))
+                        if not opening.is_finite() or opening < 0 or opening.as_tuple().exponent < -2:
+                            raise ValueError()
+                    except (KeyError, ValueError, InvalidOperation):
+                        raise HTTPException(400, 'Saldo inicial inválido')
+                    if obj.get('status') not in ('Aberto','Fechado'):
+                        raise HTTPException(400, 'Status de caixa inválido')
+                    existing_day = con.execute("SELECT payload FROM entities WHERE kind='cash_day' AND id=%s", (entity_id,)).fetchone()
+                    existing_date = con.execute("SELECT id FROM entities WHERE kind='cash_day' AND payload->>'date'=%s AND id<>%s", (obj['date'],entity_id)).fetchone()
+                    if existing_date or (existing_day and existing_day[0].get('date') != obj['date']):
+                        raise HTTPException(409, 'Caixa da data já existe')
+                    if existing_day and existing_day[0].get('status') == 'Fechado':
+                        raise HTTPException(409, 'Caixa fechado não pode ser alterado')
+                    if existing_day and str(existing_day[0].get('opening')) != str(obj['opening']):
+                        raise HTTPException(409, 'Saldo inicial não pode ser alterado após abertura')
+                    if obj['status'] == 'Fechado':
+                        if not existing_day:
+                            raise HTTPException(409, 'Abra o caixa antes de fechar')
+                        try:
+                            closing = _Decimal(str(obj['closing']))
+                            if not closing.is_finite() or closing < 0 or closing.as_tuple().exponent < -2:
+                                raise ValueError()
+                        except (KeyError, ValueError, InvalidOperation):
+                            raise HTTPException(400, 'Saldo de fechamento inválido')
+                else:
+                    if obj.get('type') not in ('Entrada','Saída') or not str(obj.get('category','')).strip() or not str(obj.get('description','')).strip():
+                        raise HTTPException(400, 'Movimentação incompleta')
+                    try:
+                        amount = _Decimal(str(obj['amount']))
+                        if not amount.is_finite() or amount <= 0 or amount.as_tuple().exponent < -2:
+                            raise ValueError()
+                    except (KeyError, ValueError, InvalidOperation):
+                        raise HTTPException(400, 'Valor da movimentação inválido')
+                    existing_entry = con.execute("SELECT 1 FROM entities WHERE kind='cash_entry' AND id=%s",(entity_id,)).fetchone()
+                    if existing_entry:
+                        raise HTTPException(409, 'Movimentações registradas não podem ser substituídas')
+                    day_record = con.execute("SELECT payload FROM entities WHERE kind='cash_day' AND payload->>'date'=%s",(obj['date'],)).fetchone()
+                    if not day_record or day_record[0].get('status') != 'Aberto':
+                        raise HTTPException(409, 'Caixa não está aberto para esta data')
             if kind == 'client' and (not isinstance(obj.get('name'),str) or not obj['name'].strip()):
                 raise HTTPException(400, 'Nome do cliente obrigatório')
             if kind == 'client':
                 state = str(obj.get('state','')).strip().upper()
                 if state and state not in ('PA','PARA','PARÁ','AP','AMAPA','AMAPÁ'):
                     raise HTTPException(400, 'A carteira aceita somente clientes do Pará e Amapá')
+            if kind == 'client':
+                # Cadastros legados continuam editáveis; novos exigem identificação fiscal.
+                existing = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (entity_id,)).fetchone()
+                if not existing and not normalize_uf(obj.get('state')):
+                    raise HTTPException(400, 'UF PA ou AP obrigatória para novo cliente')
+                tax_id = ''.join(ch for ch in str(obj.get('taxId') or '') if ch.isdigit())
+                registration = str(obj.get('stateRegistration') or '').strip().upper()
+                if not existing or tax_id or registration:
+                    if not valid_cnpj(tax_id):
+                        raise HTTPException(400, 'CNPJ inválido; informe os 14 dígitos corretos')
+                    if registration != 'ISENTO' and not (registration.isdigit() and 7 <= len(registration) <= 14):
+                        raise HTTPException(400, 'Informe inscrição estadual numérica ou ISENTO')
+                    obj['taxId'] = tax_id
+                    obj['stateRegistration'] = registration
+                    duplicates = con.execute("SELECT id,payload FROM entities WHERE kind='client' AND id<>%s AND payload->>'taxId' IS NOT NULL", (entity_id,)).fetchall()
+                    if any(''.join(ch for ch in str(row[1].get('taxId') or '') if ch.isdigit()) == tax_id for row in duplicates):
+                        raise HTTPException(409, 'CNPJ já cadastrado em outro cliente')
             if kind == 'order':
                 if not isinstance(obj.get('items'), list) or not obj['items']:
                     raise HTTPException(400, 'Novo pedido exige itens e tabela de preços por UF; registros antigos permanecem somente para consulta')
@@ -265,6 +349,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 price_table = normalize_uf(obj.get('priceTable'))
                 if not price_table:
                     raise HTTPException(400, 'Escolha a tabela de preços PA ou AP')
+                if not price_table_matches_client(customer[0].get('state'), obj.get('priceTable')):
+                    raise HTTPException(400, 'A tabela de preços deve corresponder à UF do cliente')
                 total = Decimal('0')
                 for item in obj['items']:
                     if not isinstance(item, dict) or not isinstance(item.get('sku'), str) or not item['sku'].strip():
@@ -320,7 +406,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 result[name] = [row[0] for row in con.execute("SELECT payload FROM entities WHERE kind=%s AND coalesce(payload->>'Área','')<>'Financeiro' ORDER BY updated_at,id", (kind,))]
             else:
                 result[name] = [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))]
-        for kind, name in [('office_finance','officeFinance'),('office_budget','officeBudget'),('office_monthly_close','officeMonthlyClose')]:
+        for kind, name in [('office_finance','officeFinance'),('office_budget','officeBudget'),('office_monthly_close','officeMonthlyClose'),('cash_day','cashDays'),('cash_entry','cashEntries')]:
             result[name] = [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))] if user in FINANCE_USERS else []
         return result
 
@@ -369,6 +455,6 @@ def home(): return FileResponse(BASE/'index.html',headers={'Cache-Control':'no-s
 
 @app.get('/{filename}')
 def asset(filename: str):
-    if filename not in ('app.js','sw.js','manifest.json'):
+    if filename not in ('app.js','cash.js','sw.js','manifest.json'):
         raise HTTPException(404)
     return FileResponse(BASE/filename,headers={'Cache-Control':'no-store'})
