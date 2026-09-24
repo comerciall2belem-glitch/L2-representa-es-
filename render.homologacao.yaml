@@ -23,7 +23,9 @@ services:
         sync: false
 databases:
   - name: l2-one-homologacao-db
-    plan: free
+    plan: 0.1c-256mb
+    diskSizeGB: 1
+    storageAutoscalingEnabled: false
     databaseName: l2one_homologacao
     user: l2one_homologacao
     ipAllowList: []
