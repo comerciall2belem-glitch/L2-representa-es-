@@ -1,0 +1,25 @@
+# Blueprint exclusivo de homologação. Criar como um NOVO Blueprint no Render.
+services:
+  - type: web
+    name: l2-one-homologacao
+    runtime: python
+    plan: free
+    branch: feature/precos-uf-cliente
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: l2-one-homologacao-db
+          property: connectionString
+      - key: L2_INITIAL_PASSWORD
+        sync: false
+databases:
+  - name: l2-one-homologacao-db
+    plan: 0.1c-256mb
+    diskSizeGB: 1
+    storageAutoscalingEnabled: false
+    databaseName: l2one_homologacao
+    user: l2one_homologacao
+    ipAllowList: []
