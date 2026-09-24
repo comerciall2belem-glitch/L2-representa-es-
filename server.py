@@ -252,9 +252,9 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
         for change in data.changes:
             kind, obj = change.type, dict(change.data)
             entity_id = obj.get('id')
-            if kind not in ('client','visit','order','task','route','goal','delete_route','office_action','office_commercial','office_administrative','office_finance','office_budget','office_monthly_close') or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
+            if kind not in ('client','visit','order','task','route','goal','delete_route','office_action','office_commercial','office_administrative','office_finance','office_budget','office_monthly_close','office_process') or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
                 raise HTTPException(400, 'Alteração inválida')
-            if kind in ('office_finance','office_budget','office_monthly_close') and user not in FINANCE_USERS:
+            if (kind in ('office_finance','office_budget','office_monthly_close') or (kind == 'office_process' and str(obj.get('Área','')) == 'Financeiro')) and user not in FINANCE_USERS:
                 raise HTTPException(403, 'Acesso financeiro restrito')
             if kind == 'client' and (not isinstance(obj.get('name'),str) or not obj['name'].strip()):
                 raise HTTPException(400, 'Nome do cliente obrigatório')
