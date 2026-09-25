@@ -1,5 +1,5 @@
 """L2 ONE: secure FastAPI/PostgreSQL application for Render."""
-import os, json, time, hashlib, secrets, re, base64, gzip
+import os, json, time, hashlib, secrets, re, base64, gzip, unicodedata
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Header, UploadFile, File
@@ -318,12 +318,12 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
         for change in data.changes:
             kind, obj = change.type, dict(change.data)
             entity_id = obj.get('id')
-            deletable = {'delete_client':'client','delete_visit':'visit','delete_task':'task','delete_goal':'goal','delete_route':'route','delete_order':'order','delete_price':'price','delete_cash_entry':'cash_entry','delete_office_process':'office_process','delete_office_action':'office_action','delete_office_commercial':'office_commercial','delete_office_administrative':'office_administrative','delete_office_ritual':'office_ritual','delete_office_role':'office_role','delete_office_finance':'office_finance','delete_office_budget':'office_budget','delete_office_monthly_close':'office_monthly_close'}
-            if kind not in ('client','visit','order','task','route','goal','price','office_action','office_commercial','office_administrative','office_ritual','office_role','office_finance','office_budget','office_monthly_close','office_process','cash_day','cash_entry',*deletable) or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
+            deletable = {'delete_client':'client','delete_visit':'visit','delete_task':'task','delete_goal':'goal','delete_route':'route','delete_order':'order','delete_price':'price','delete_cash_entry':'cash_entry','delete_commission_rate':'commission_rate','delete_commission_receipt':'commission_receipt','delete_office_process':'office_process','delete_office_action':'office_action','delete_office_commercial':'office_commercial','delete_office_administrative':'office_administrative','delete_office_ritual':'office_ritual','delete_office_role':'office_role','delete_office_finance':'office_finance','delete_office_budget':'office_budget','delete_office_monthly_close':'office_monthly_close'}
+            if kind not in ('client','visit','order','task','route','goal','price','commission_rate','commission_receipt','office_action','office_commercial','office_administrative','office_ritual','office_role','office_finance','office_budget','office_monthly_close','office_process','cash_day','cash_entry',*deletable) or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
                 raise HTTPException(400, 'Alteração inválida')
             if kind in deletable:
                 target = deletable[kind]
-                if target in ('office_finance','office_budget','office_monthly_close','cash_entry') and user not in FINANCE_USERS:
+                if target in ('office_finance','office_budget','office_monthly_close','cash_entry','commission_rate','commission_receipt') and user not in FINANCE_USERS:
                     raise HTTPException(403, 'Acesso financeiro restrito')
                 if target == 'cash_entry':
                     previous = con.execute("SELECT payload FROM entities WHERE kind='cash_entry' AND id=%s",(entity_id,)).fetchone()
@@ -364,8 +364,25 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 if not brand or not sku or not state or entity_id != f'{brand}|{state}|{sku}' or not price.is_finite() or price <= 0 or price.as_tuple().exponent < -2:
                     raise HTTPException(400,'Preço ou identificação inválida')
                 obj.update(brand=brand,sku=sku,state=state,price=str(price))
-            if (kind in ('office_finance','office_budget','office_monthly_close','cash_day','cash_entry') or (kind == 'office_process' and str(obj.get('Área','')) == 'Financeiro')) and user not in FINANCE_USERS:
+            if (kind in ('office_finance','office_budget','office_monthly_close','cash_day','cash_entry','commission_rate','commission_receipt') or (kind == 'office_process' and str(obj.get('Área','')) == 'Financeiro')) and user not in FINANCE_USERS:
                 raise HTTPException(403, 'Acesso financeiro restrito')
+            if kind in ('commission_rate','commission_receipt'):
+                brand = str(obj.get('brand','')).strip()
+                normalized = re.sub(r'[^a-z0-9]+','-',unicodedata.normalize('NFKD',brand).encode('ascii','ignore').decode().lower()).strip('-')
+                if not normalized or len(brand)>120 or len(normalized)>120:
+                    raise HTTPException(400, 'Indústria inválida')
+                from decimal import Decimal as _Decimal
+                try:
+                    value = _Decimal(str(obj['rate' if kind=='commission_rate' else 'received']))
+                except (KeyError, ValueError, InvalidOperation):
+                    raise HTTPException(400, 'Valor de comissão inválido')
+                if not value.is_finite() or value<0 or value.as_tuple().exponent < -2 or (kind=='commission_rate' and value>100) or (kind=='commission_receipt' and value>10000000000):
+                    raise HTTPException(400, 'Valor de comissão inválido')
+                expected_id = normalized if kind=='commission_rate' else str(obj.get('month',''))+'|'+normalized
+                if kind=='commission_receipt' and not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])',str(obj.get('month',''))):
+                    raise HTTPException(400, 'Mês de comissão inválido')
+                if entity_id != expected_id:
+                    raise HTTPException(400, 'Identificação de comissão inválida')
             if kind == 'office_process' and user not in FINANCE_USERS:
                 previous_process = con.execute("SELECT payload FROM entities WHERE kind='office_process' AND id=%s",(entity_id,)).fetchone()
                 if previous_process and str(previous_process[0].get('Área','')) == 'Financeiro':
@@ -518,7 +535,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 result[name] = [row[0] for row in con.execute("SELECT payload FROM entities WHERE kind=%s AND coalesce(payload->>'Área','')<>'Financeiro' ORDER BY updated_at,id", (kind,))]
             else:
                 result[name] = [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))]
-        for kind, name in [('office_finance','officeFinance'),('office_budget','officeBudget'),('office_monthly_close','officeMonthlyClose'),('cash_day','cashDays'),('cash_entry','cashEntries')]:
+        for kind, name in [('office_finance','officeFinance'),('office_budget','officeBudget'),('office_monthly_close','officeMonthlyClose'),('cash_day','cashDays'),('cash_entry','cashEntries'),('commission_rate','commissionRates'),('commission_receipt','commissionReceipts')]:
             result[name] = [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))] if user in FINANCE_USERS else []
         return result
 
