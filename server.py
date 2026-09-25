@@ -312,13 +312,13 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                             raise HTTPException(409, 'Cliente possui histórico vinculado; preserve o cadastro')
                 if target == 'order':
                     previous = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
-                    if previous and previous[0].get('status') not in ('Pendente','Cancelado'):
-                        raise HTTPException(409, 'Pedido confirmado ou faturado deve ser cancelado, não excluído')
+                    if previous and previous[0].get('status') not in ('Pendente','Cancelado') and user != 'Ana Paula':
+                        raise HTTPException(403, 'Somente Ana Paula pode arquivar pedido confirmado ou faturado')
                 if con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s',(change.changeId,)).fetchone():
                     continue
+                if target == 'order' and previous:
+                    con.execute("INSERT INTO archived_entities(kind,id,payload,reason) VALUES('order',%s,%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,reason=excluded.reason,archived_at=now()",(entity_id,Jsonb(previous[0]),'arquivado por '+user))
                 con.execute('DELETE FROM entities WHERE kind=%s AND id=%s',(target,entity_id))
-                if target == 'order':
-                    con.execute('DELETE FROM order_attachments WHERE order_id=%s',(entity_id,))
                 con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
                 con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,target,entity_id,'delete'))
                 continue
@@ -488,6 +488,29 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
 def order_exists(con, order_id: str):
     if not con.execute("SELECT 1 FROM entities WHERE kind='order' AND id=%s",(order_id,)).fetchone():
         raise HTTPException(404, 'Pedido não encontrado')
+
+@app.get('/api/admin/orders/archived')
+def archived_orders(authorization: str | None = Header(default=None)):
+    if auth(authorization) != 'Ana Paula':
+        raise HTTPException(403, 'Consulta restrita à administradora')
+    with db() as con:
+        rows=con.execute("SELECT id,payload,reason,archived_at FROM archived_entities WHERE kind='order' ORDER BY archived_at DESC LIMIT 200").fetchall()
+    return [{'id':id,'order':payload,'reason':reason,'archivedAt':when.isoformat()} for id,payload,reason,when in rows]
+
+@app.post('/api/admin/orders/{order_id}/restore')
+def restore_archived_order(order_id: str, authorization: str | None = Header(default=None)):
+    if auth(authorization) != 'Ana Paula':
+        raise HTTPException(403, 'Restauração restrita à administradora')
+    with db() as con:
+        row=con.execute("SELECT payload FROM archived_entities WHERE kind='order' AND id=%s FOR UPDATE",(order_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, 'Pedido arquivado não encontrado')
+        if con.execute("SELECT 1 FROM entities WHERE kind='order' AND id=%s",(order_id,)).fetchone():
+            raise HTTPException(409, 'Pedido já está ativo')
+        con.execute("INSERT INTO entities(kind,id,payload) VALUES('order',%s,%s)",(order_id,Jsonb(row[0])))
+        con.execute("DELETE FROM archived_entities WHERE kind='order' AND id=%s",(order_id,))
+        con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES('Ana Paula','order',%s,'restore')",(order_id,))
+    return {'id':order_id,'restored':True}
 
 @app.get('/api/orders/{order_id}/attachments')
 def list_order_attachments(order_id: str, authorization: str | None = Header(default=None)):
