@@ -176,7 +176,7 @@ function orderPDFBlob(order){
  const rule=(x1,y1,x2,y2,width=.5)=>`${width} w ${x1} ${y1} m ${x2} ${y2} l S\n`;
  const fill=(x,y,w,h,r=.95,g=.96,b=.96)=>`${r} ${g} ${b} rg ${x} ${y} ${w} ${h} re f 0 0 0 rg\n`;
  const head=(number)=>{
-  let out=fill(42,787,511,32,.10,.23,.28)+textAt(52,798,'L2 ONE  |  PEDIDO COMERCIAL',14,true);
+  let out=fill(42,787,511,32,.94,.94,.94)+rule(42,787,553,787,1)+textAt(52,798,'L2 ONE  |  PEDIDO COMERCIAL',14,true);
   out+=rightAt(548,799,`Página ${number}`,8);
   out+=textAt(42,768,`PEDIDO: ${short(order.id,44)}`,8.5,true)+rightAt(553,768,`Emissão: ${date(order.date)}`,8.5);
   out+=rule(42,758,553,758,1);
