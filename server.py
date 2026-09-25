@@ -250,6 +250,33 @@ def admin_reset_my_password(data: AdminPasswordReset, authorization: str | None 
         con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)', (user,'app_user',user,'password_reset'))
     return {'ok': True, 'loginRequired': True}
 
+class TeamAccessReset(BaseModel):
+    user: str
+
+@app.get('/api/admin/team-access')
+def team_access(authorization: str | None = Header(default=None)):
+    if auth(authorization) != 'Ana Paula':
+        raise HTTPException(403, 'Acesso restrito à administradora')
+    with db() as con:
+        rows = con.execute('SELECT username,active,must_change_password FROM app_users ORDER BY username').fetchall()
+    return [{'user': name, 'active': active, 'mustChangePassword': first_access} for name,active,first_access in rows]
+
+@app.post('/api/admin/team-access/reset')
+def reset_team_access(data: TeamAccessReset, authorization: str | None = Header(default=None)):
+    if auth(authorization) != 'Ana Paula':
+        raise HTTPException(403, 'Acesso restrito à administradora')
+    if data.user not in USERS or data.user == 'Ana Paula':
+        raise HTTPException(400, 'Selecione um integrante da equipe')
+    provisional = secrets.token_urlsafe(24)
+    with db() as con:
+        row = con.execute('SELECT active FROM app_users WHERE username=%s FOR UPDATE', (data.user,)).fetchone()
+        if not row or not row[0]:
+            raise HTTPException(404, 'Conta não está ativa')
+        con.execute('UPDATE app_users SET password_hash=%s,must_change_password=true,updated_at=now() WHERE username=%s', (password_hash(provisional),data.user))
+        con.execute('DELETE FROM sessions WHERE username=%s', (data.user,))
+        con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)', ('Ana Paula','app_user',data.user,'team_access_reset'))
+    return {'user': data.user, 'temporaryPassword': provisional, 'mustChangePassword': True}
+
 def valid_cnpj(value):
     digits = ''.join(ch for ch in str(value or '') if ch.isdigit())
     if len(digits) != 14 or len(set(digits)) == 1:
