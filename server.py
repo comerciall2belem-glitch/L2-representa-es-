@@ -504,6 +504,9 @@ async def upload_order_attachment(order_id: str, file: UploadFile = File(...), a
     elif content.startswith(b'\xff\xd8\xff'): content_type='image/jpeg'
     elif content.startswith(b'\x89PNG\r\n\x1a\n'): content_type='image/png'
     else: raise HTTPException(400, 'Envie somente PDF, JPG ou PNG')
+    allowed_extensions={'application/pdf':('.pdf',),'image/jpeg':('.jpg','.jpeg'),'image/png':('.png',)}
+    if not name.lower().endswith(allowed_extensions[content_type]):
+        raise HTTPException(400,'A extensão não corresponde ao conteúdo do arquivo')
     attachment_id=secrets.token_hex(16)
     with db() as con:
         order_exists(con,order_id)
