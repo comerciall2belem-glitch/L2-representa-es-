@@ -519,7 +519,7 @@ def download_order_attachment(order_id: str, attachment_id: str, authorization: 
     with db() as con:
         row=con.execute('SELECT filename,content_type,content FROM order_attachments WHERE id=%s AND order_id=%s',(attachment_id,order_id)).fetchone()
     if not row: raise HTTPException(404,'Comprovante não encontrado')
-    safe_name=''.join(c if c.isalnum() or c in ' ._-()' else '_' for c in row[0])
+    safe_name=''.join(c if (c.isascii() and c.isalnum()) or c in ' ._-()' else '_' for c in row[0])
     return Response(content=bytes(row[2]),media_type=row[1],headers={'Content-Disposition':f'attachment; filename="{safe_name}"'})
 
 @app.delete('/api/orders/{order_id}/attachments/{attachment_id}')
