@@ -8,6 +8,7 @@ from decimal import Decimal, InvalidOperation
 from pydantic import BaseModel, Field
 import psycopg
 from psycopg.types.json import Jsonb
+from client_cleanup import plan as client_cleanup_plan
 
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
@@ -47,6 +48,7 @@ def initialize():
         con.execute('CREATE TABLE IF NOT EXISTS entities (kind TEXT NOT NULL, id TEXT NOT NULL, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(kind,id))')
         con.execute('CREATE TABLE IF NOT EXISTS applied_changes (change_id TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE TABLE IF NOT EXISTS audit_log (id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, kind TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
+        con.execute('CREATE TABLE IF NOT EXISTS archived_entities (kind TEXT NOT NULL, id TEXT NOT NULL, payload JSONB NOT NULL, reason TEXT NOT NULL, archived_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(kind,id))')
         con.execute('CREATE TABLE IF NOT EXISTS order_attachments (id TEXT PRIMARY KEY, order_id TEXT NOT NULL, filename TEXT NOT NULL, content_type TEXT NOT NULL, content BYTEA NOT NULL, uploaded_by TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE INDEX IF NOT EXISTS idx_order_attachments_order ON order_attachments(order_id)')
         con.execute('CREATE TABLE IF NOT EXISTS app_users (username TEXT PRIMARY KEY, password_hash TEXT NOT NULL, active BOOLEAN NOT NULL DEFAULT true, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())')
@@ -390,6 +392,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 if state and state not in ('PA','PARA','PARÁ','AP','AMAPA','AMAPÁ'):
                     raise HTTPException(400, 'A carteira aceita somente clientes do Pará e Amapá')
             if kind == 'client':
+                if con.execute("SELECT 1 FROM archived_entities WHERE kind='client' AND id=%s",(entity_id,)).fetchone():
+                    raise HTTPException(409, 'Cliente arquivado; não é permitido recriar o mesmo cadastro')
                 # Cadastros legados continuam editáveis; novos exigem identificação fiscal.
                 existing = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (entity_id,)).fetchone()
                 if not existing and not normalize_uf(obj.get('state')):
@@ -537,6 +541,59 @@ def delete_order_attachment(order_id: str, attachment_id: str, authorization: st
         if not deleted: raise HTTPException(404,'Comprovante não encontrado')
         con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,'order_attachment',attachment_id,'delete'))
     return {'deleted':True}
+
+def cleanup_snapshot(con):
+    rows=[{'id':r[0],'payload':r[1]} for r in con.execute("SELECT id,payload FROM entities WHERE kind='client' ORDER BY id")]
+    proposal=client_cleanup_plan(rows)
+    changes=sorted([('outside',r['id']) for r in proposal['outside']]+
+                   [('duplicate',r['old']['id'],r['keep']['id']) for r in proposal['duplicates']])
+    digest=hashlib.sha256(json.dumps(changes,ensure_ascii=False).encode()).hexdigest()
+    return proposal,digest,len(rows)
+
+class CleanupConfirmation(BaseModel):
+    previewHash: str = Field(min_length=64,max_length=64)
+
+@app.get('/api/admin/clients/cleanup')
+def preview_client_cleanup(authorization: str | None = Header(default=None)):
+    if auth(authorization)!='Ana Paula': raise HTTPException(403,'Acesso restrito à administradora')
+    with db() as con:
+        proposal,digest,total=cleanup_snapshot(con)
+    return {'total':total,'outside':len(proposal['outside']),'duplicates':len(proposal['duplicates']),
+            'remaining':total-len(proposal['outside'])-len(proposal['duplicates']),
+            'previewHash':digest,'duplicateExamples':[
+                {'name':item['old']['payload'].get('name'),'id':item['old']['id'],'keepId':item['keep']['id'],'reason':item['reason']}
+                for item in proposal['duplicates'][:20]]}
+
+@app.post('/api/admin/clients/cleanup')
+def apply_client_cleanup(data: CleanupConfirmation, authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    if user!='Ana Paula': raise HTTPException(403,'Acesso restrito à administradora')
+    with db() as con:
+        con.execute('SELECT pg_advisory_xact_lock(%s)',(12422026,))
+        proposal,digest,total=cleanup_snapshot(con)
+        if data.previewHash!=digest: raise HTTPException(409,'A carteira mudou; consulte novamente a prévia')
+        for item in proposal['duplicates']:
+            old,keep=item['old'],item['keep']
+            merged=dict(keep['payload'])
+            for key,value in old['payload'].items():
+                if key not in ('id','name','state','taxId') and not merged.get(key) and value:
+                    merged[key]=value
+            if merged!=keep['payload']:
+                con.execute("UPDATE entities SET payload=%s,updated_at=now() WHERE kind='client' AND id=%s",(Jsonb(merged),keep['id']))
+                keep['payload']=merged
+            con.execute("UPDATE entities SET payload=jsonb_set(payload,'{clientId}',to_jsonb(%s::text)),updated_at=now() WHERE kind IN ('visit','order','task','route') AND payload->>'clientId'=%s",(keep['id'],old['id']))
+            con.execute("INSERT INTO archived_entities(kind,id,payload,reason) VALUES('client',%s,%s,%s) ON CONFLICT DO NOTHING",(old['id'],Jsonb(old['payload']),'duplicado: '+keep['id']))
+            con.execute("DELETE FROM entities WHERE kind='client' AND id=%s",(old['id'],))
+            con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'client',%s,%s)",(user,old['id'],'merge: '+keep['id']))
+        for row in proposal['outside']:
+            record=row['payload']
+            snapshot={'name':record.get('name',''),'city':record.get('city',''),'state':record.get('state','')}
+            con.execute("UPDATE entities SET payload=jsonb_set(payload,'{clientSnapshot}',%s::jsonb),updated_at=now() WHERE kind IN ('visit','order','task','route') AND payload->>'clientId'=%s",(json.dumps(snapshot,ensure_ascii=False),row['id']))
+            con.execute("INSERT INTO archived_entities(kind,id,payload,reason) VALUES('client',%s,%s,'fora de PA/AP') ON CONFLICT DO NOTHING",(row['id'],Jsonb(record)))
+            con.execute("DELETE FROM entities WHERE kind='client' AND id=%s",(row['id'],))
+            con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'client',%s,'archive: outside PA/AP')",(user,row['id']))
+    return {'archivedOutside':len(proposal['outside']),'mergedDuplicates':len(proposal['duplicates']),
+            'remaining':total-len(proposal['outside'])-len(proposal['duplicates'])}
 
 @app.get('/health')
 def health():
