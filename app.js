@@ -168,12 +168,16 @@ function pdfText(value){return String(value??'').normalize('NFC').replace(/[–�
 function wrapPDF(text,size=88){let words=String(text||'').split(/\s+/),lines=[],line='';for(const word of words){if((line+' '+word).trim().length>size){if(line)lines.push(line);line=word}else line=(line+' '+word).trim()}if(line)lines.push(line);return lines.length?lines:['']}
 function orderPDFBlob(order){
  const customer=client(order.clientId),items=order.items||[];
- const bounds=[42,112,372,418,485,553],pages=[];
- const short=(value,max=96)=>{let t=String(value??'').trim();return t.length>max?t.slice(0,max-1)+'…':t};
+ const bounds=[42,112,372,420,487,553],pages=[];
+ const short=(value,max=96)=>{let t=String(value??'').trim();return t.length>max?t.slice(0,max-3)+'...':t};
  const date=(value)=>{let m=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?`${m[3]}/${m[2]}/${m[1]}`:String(value||'—')};
  const escPDF=(value)=>pdfText(String(value??''));
  const textAt=(x,y,value,size=9,bold=false)=>`BT /${bold?'F2':'F1'} ${size} Tf ${x} ${y} Td (${escPDF(value)}) Tj ET\n`;
- const rightAt=(right,y,value,size=9,bold=false)=>{let label=String(value??'');return textAt(Math.max(42,right-label.length*size*.51),y,label,size,bold)};
+ const measureCtx=typeof document==='undefined'?null:document.createElement('canvas').getContext('2d');
+ const textWidth=(value,size,bold=false)=>{let label=String(value??'');if(!measureCtx)return label.length*size*.52;measureCtx.font=`${bold?'bold ':''}${size}px Helvetica, Arial, sans-serif`;return measureCtx.measureText(label).width};
+ const fit=(value,maxWidth,size,bold=false)=>{let label=String(value??'');if(textWidth(label,size,bold)<=maxWidth)return label;while(label&&textWidth(label+'...',size,bold)>maxWidth)label=label.slice(0,-1);return label.trimEnd()+'...'};
+ const rightAt=(right,y,value,size=9,bold=false)=>textAt(Math.max(42,right-textWidth(value,size,bold)),y,value,size,bold);
+ const centerAt=(left,right,y,value,size=9,bold=false)=>textAt((left+right-textWidth(value,size,bold))/2,y,value,size,bold);
  const rule=(x1,y1,x2,y2,width=.5)=>`${width} w ${x1} ${y1} m ${x2} ${y2} l S\n`;
  const fill=(x,y,w,h,r=.95,g=.96,b=.96)=>`${r} ${g} ${b} rg ${x} ${y} ${w} ${h} re f 0 0 0 rg\n`;
  const head=(number)=>{
@@ -182,23 +186,23 @@ function orderPDFBlob(order){
   out+=textAt(42,768,`PEDIDO Nº ${orderLabel(order.orderNumber)}`,8.5,true)+rightAt(553,768,`Emissão: ${date(order.date)}`,8.5);
   out+=rule(42,758,553,758,1);
   if(number===1){
-   out+=textAt(42,742,`Marca / indústria: ${short(order.brand||'Não informada',62)}`,9);
+   out+=textAt(42,742,fit(`Marca / indústria: ${order.brand||'Não informada'}`,370,9),9);
    out+=rightAt(553,742,`Tabela: ${order.priceTable||order.state||'—'}`,9,true);
-   out+=textAt(42,723,`Cliente: ${short(customer.name||'Não informado',83)}`,9.5,true);
-   out+=textAt(42,707,`CNPJ/CPF: ${customer.taxId||'Não informado'}    IE: ${customer.stateRegistration||'Não informada'}`,8.5);
-   out+=textAt(42,691,`Endereço: ${short(customer.address||'Não informado',92)}`,8.5);
-   out+=textAt(42,675,`Bairro: ${short(customer.district||'—',36)}    Cidade/UF: ${customer.city||'—'} / ${customer.state||'—'}`,8.5);
-   out+=textAt(42,659,`Contato: ${short(customer.contact||customer.phone||'—',45)}    Pedido por: ${order.user||'—'}`,8.5);
+   out+=textAt(42,723,fit(`Cliente: ${customer.name||'Não informado'}`,505,9.5,true),9.5,true);
+   out+=textAt(42,707,fit(`CNPJ/CPF: ${customer.taxId||'Não informado'}    IE: ${customer.stateRegistration||'Não informada'}`,505,8.5),8.5);
+   out+=textAt(42,691,fit(`Endereço: ${customer.address||'Não informado'}`,505,8.5),8.5);
+   out+=textAt(42,675,fit(`Bairro: ${customer.district||'—'}    Cidade/UF: ${customer.city||'—'} / ${customer.state||'—'}`,505,8.5),8.5);
+   out+=textAt(42,659,fit(`Contato: ${customer.contact||customer.phone||'—'}    Pedido por: ${order.user||'—'}`,505,8.5),8.5);
    out+=rule(42,647,553,647);
-   out+=textAt(42,632,`Condição de pagamento: ${short(order.paymentTerms||'Não informada',45)}`,8.5);
+   out+=textAt(42,632,fit(`Condição de pagamento: ${order.paymentTerms||'Não informada'}`,380,8.5),8.5);
    out+=rightAt(553,632,`Situação: ${order.status||'—'}`,8.5);
   }else out+=textAt(42,740,`Cliente: ${short(customer.name||'Não informado',80)}`,9,true);
   const top=number===1?610:722;
   out+=fill(42,top-23,511,23,.90,.93,.93);
   for(const x of bounds)out+=rule(x,top,x,top-23);
   out+=rule(42,top,553,top,1)+rule(42,top-23,553,top-23,1);
-  out+=textAt(46,top-16,'CÓDIGO',8,true)+textAt(116,top-16,'DESCRIÇÃO',8,true);
-  out+=rightAt(414,top-16,'QTD.',8,true)+rightAt(481,top-16,'UNITÁRIO',8,true)+rightAt(549,top-16,'VALOR',8,true);
+  out+=centerAt(bounds[0],bounds[1],top-16,'CÓDIGO',8,true)+centerAt(bounds[1],bounds[2],top-16,'DESCRIÇÃO',8,true);
+  out+=centerAt(bounds[2],bounds[3],top-16,'QTD.',8,true)+centerAt(bounds[3],bounds[4],top-16,'UNITÁRIO',8,true)+centerAt(bounds[4],bounds[5],top-16,'VALOR',8,true);
   return {out,top};
  };
  let index=0,page=1;
@@ -209,11 +213,11 @@ function orderPDFBlob(order){
    const item=items[index++],qty=Number(item.quantity||0),unit=priceCents(item.unitPrice)/100;
    const description=wrapPDF(item.description||item.sku,47);
    stream+=textAt(46,y-15,short(item.sku,14),7.8);
-   stream+=textAt(116,y-12,short(description[0],47),7.8);
-   if(description.length>1)stream+=textAt(116,y-21,short(description.slice(1).join(' '),47),7.8);
-   stream+=rightAt(414,y-15,new Intl.NumberFormat('pt-BR').format(qty),8.5);
-   stream+=rightAt(481,y-15,money(unit).replace(/^R\$\s*/,''),8.5);
-   stream+=rightAt(549,y-15,money(unit*qty).replace(/^R\$\s*/,''),8.5);
+   stream+=textAt(116,y-12,fit(description[0],252,7.8),7.8);
+   if(description.length>1)stream+=textAt(116,y-21,fit(description.slice(1).join(' '),252,7.8),7.8);
+   stream+=centerAt(bounds[2],bounds[3],y-15,new Intl.NumberFormat('pt-BR').format(qty),8.5);
+   stream+=centerAt(bounds[3],bounds[4],y-15,money(unit).replace(/^R\$\s*/,''),8.5);
+   stream+=centerAt(bounds[4],bounds[5],y-15,money(unit*qty).replace(/^R\$\s*/,''),8.5);
    y-=25;stream+=rule(42,y,553,y);
    for(const x of bounds)stream+=rule(x,y,x,y+25);
   }
