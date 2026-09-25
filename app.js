@@ -149,54 +149,80 @@ async function deleteOrderAttachment(id,attachmentId){if(!confirm('Excluir este 
 function pdfText(value){return String(value??'').normalize('NFC').replace(/[–—]/g,'-').replace(/[“”]/g,'"').replace(/[‘’]/g,"'").replace(/[^\x20-\xFF]/g,'?').replace(/([\\()])/g,'\\$1')}
 function wrapPDF(text,size=88){let words=String(text||'').split(/\s+/),lines=[],line='';for(const word of words){if((line+' '+word).trim().length>size){if(line)lines.push(line);line=word}else line=(line+' '+word).trim()}if(line)lines.push(line);return lines.length?lines:['']}
 function orderPDFBlob(order){
-  const c=client(order.clientId),field=(value)=>String(value||'Não informado'),lines=[
-    'ESPELHO DE PEDIDO COMERCIAL',
-    'Modelo de conferência - Não é DANFE nem documento fiscal',
-    `Pedido nº ${field(order.id)} | Emissão ${field(order.date)} | Status ${field(order.status)}`,
-    '', 'IDENTIFICAÇÃO DA OPERAÇÃO',
-    `Marca / indústria: ${field(order.brand)} | UF de preço: ${field(order.priceTable||order.state)}`,
-    'NF-e nº / série / chave de acesso: Após faturamento, conforme documento fiscal emitido',
-    '', 'DESTINATÁRIO / CLIENTE',
-    ...wrapPDF(`Razão social / nome: ${field(c.name)} | Nome fantasia: ${field(c.tradeName)}`),
-    `CNPJ / CPF: ${field(c.taxId)} | Inscrição estadual: ${field(c.stateRegistration)}`,
-    ...wrapPDF(`Endereço: ${field(c.address)} | Bairro: ${field(c.district)} | Município / UF: ${field(c.city)} / ${field(c.state)}`),
-    ...wrapPDF(`Contato: ${field(c.contact)} | Telefone: ${field(c.phone)} | E-mail: ${field(c.email)}`),
-    '', 'PRODUTOS E SERVIÇOS'
-  ];
-  let calculatedCents=0;
-  for(const [index,item] of (order.items||[]).entries()){
-    const cents=priceCents(item.unitPrice),quantity=Number(item.quantity||0),subtotal=cents*quantity;
-    calculatedCents+=subtotal;
-    lines.push(...wrapPDF(`${index+1}. ${item.sku} - ${item.description||item.sku} | UN ${quantity} x ${money(cents/100)} = ${money(subtotal/100)}`,80));
+ const customer=client(order.clientId),items=order.items||[];
+ const bounds=[42,112,372,418,485,553],pages=[];
+ const short=(value,max=96)=>{let t=String(value??'').trim();return t.length>max?t.slice(0,max-1)+'…':t};
+ const date=(value)=>{let m=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?`${m[3]}/${m[2]}/${m[1]}`:String(value||'—')};
+ const escPDF=(value)=>pdfText(String(value??''));
+ const textAt=(x,y,value,size=9,bold=false)=>`BT /${bold?'F2':'F1'} ${size} Tf ${x} ${y} Td (${escPDF(value)}) Tj ET\n`;
+ const rightAt=(right,y,value,size=9,bold=false)=>{let label=String(value??'');return textAt(Math.max(42,right-label.length*size*.51),y,label,size,bold)};
+ const rule=(x1,y1,x2,y2,width=.5)=>`${width} w ${x1} ${y1} m ${x2} ${y2} l S\n`;
+ const fill=(x,y,w,h,r=.95,g=.96,b=.96)=>`${r} ${g} ${b} rg ${x} ${y} ${w} ${h} re f 0 0 0 rg\n`;
+ const head=(number)=>{
+  let out=fill(42,787,511,32,.10,.23,.28)+textAt(52,798,'L2 ONE  |  PEDIDO COMERCIAL',14,true);
+  out+=rightAt(548,799,`Página ${number}`,8);
+  out+=textAt(42,768,`PEDIDO: ${short(order.id,44)}`,8.5,true)+rightAt(553,768,`Emissão: ${date(order.date)}`,8.5);
+  out+=rule(42,758,553,758,1);
+  if(number===1){
+   out+=textAt(42,742,`Marca / indústria: ${short(order.brand||'Não informada',62)}`,9);
+   out+=rightAt(553,742,`Tabela: ${order.priceTable||order.state||'—'}`,9,true);
+   out+=textAt(42,723,`Cliente: ${short(customer.name||'Não informado',83)}`,9.5,true);
+   out+=textAt(42,707,`CNPJ/CPF: ${customer.taxId||'Não informado'}    IE: ${customer.stateRegistration||'Não informada'}`,8.5);
+   out+=textAt(42,691,`Endereço: ${short(customer.address||'Não informado',92)}`,8.5);
+   out+=textAt(42,675,`Bairro: ${short(customer.district||'—',36)}    Cidade/UF: ${customer.city||'—'} / ${customer.state||'—'}`,8.5);
+   out+=textAt(42,659,`Contato: ${short(customer.contact||customer.phone||'—',45)}    Pedido por: ${order.user||'—'}`,8.5);
+   out+=rule(42,647,553,647);
+   out+=textAt(42,632,`Condição de pagamento: ${short(order.paymentTerms||'Não informada',45)}`,8.5);
+   out+=rightAt(553,632,`Situação: ${order.status||'—'}`,8.5);
+  }else out+=textAt(42,740,`Cliente: ${short(customer.name||'Não informado',80)}`,9,true);
+  const top=number===1?610:722;
+  out+=fill(42,top-23,511,23,.90,.93,.93);
+  for(const x of bounds)out+=rule(x,top,x,top-23);
+  out+=rule(42,top,553,top,1)+rule(42,top-23,553,top-23,1);
+  out+=textAt(46,top-16,'CÓDIGO',8,true)+textAt(116,top-16,'DESCRIÇÃO',8,true);
+  out+=rightAt(414,top-16,'QTD.',8,true)+rightAt(481,top-16,'UNITÁRIO',8,true)+rightAt(549,top-16,'VALOR',8,true);
+  return {out,top};
+ };
+ let index=0,page=1;
+ do{
+  const {out:header,top}=head(page);let stream=header,y=top-23;
+  const bottom=155;
+  while(index<items.length&&y-25>=bottom){
+   const item=items[index++],qty=Number(item.quantity||0),unit=priceCents(item.unitPrice)/100;
+   const description=wrapPDF(item.description||item.sku,47);
+   stream+=textAt(46,y-15,short(item.sku,14),7.8);
+   stream+=textAt(116,y-12,short(description[0],47),7.8);
+   if(description.length>1)stream+=textAt(116,y-21,short(description.slice(1).join(' '),47),7.8);
+   stream+=rightAt(414,y-15,new Intl.NumberFormat('pt-BR').format(qty),8.5);
+   stream+=rightAt(481,y-15,money(unit).replace(/^R\$\s*/,''),8.5);
+   stream+=rightAt(549,y-15,money(unit*qty).replace(/^R\$\s*/,''),8.5);
+   y-=25;stream+=rule(42,y,553,y);
+   for(const x of bounds)stream+=rule(x,y,x,y+25);
   }
-  lines.push('', 'TOTAIS E IMPOSTOS',`Valor dos produtos: ${money(calculatedCents/100)} | Total do pedido: ${money(order.amount)}`,
-    'Descontos / frete / tributos: Consultar documento fiscal após faturamento',
-    '', 'PAGAMENTO E FATURAMENTO',
-    `Vendedor / representante: ${field(order.user)}`,
-    'Condição de pagamento / parcelas / entrega: Não informadas no pedido',
-    '', 'TRANSPORTE E VOLUMES',
-    'Transportadora / modalidade / volumes: Não informados no pedido',
-    '', 'INFORMAÇÕES ADICIONAIS E CONFERÊNCIA',
-    'Dados fiscais e valores tributários sujeitos à emissão efetiva da NF-e.');
-  const chunks=[];for(let i=0;i<lines.length;i+=34)chunks.push(lines.slice(i,i+34));
-  const objects=['','',''],fontId=3,pageIds=[],contentIds=[];
-  for(let i=0;i<chunks.length;i++){pageIds.push(4+i*2);contentIds.push(5+i*2)}
-  objects[0]='<< /Type /Catalog /Pages 2 0 R >>';
-  objects[1]=`<< /Type /Pages /Kids [${pageIds.map(id=>id+' 0 R').join(' ')}] /Count ${pageIds.length} >>`;
-  objects[2]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
-  for(let i=0;i<chunks.length;i++){
-    let stream=`BT\n/F1 14 Tf\n50 800 Td\n(L2 ONE - ESPELHO DE PEDIDO) Tj\n/F1 9 Tf\n0 -25 Td\n`;
-    for(const line of chunks[i])stream+=`(${pdfText(line)}) Tj\n0 -19 Td\n`;
-    stream+=`0 -8 Td\n(Página ${i+1} de ${chunks.length}) Tj\nET`;
-    objects[pageIds[i]-1]=`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentIds[i]} 0 R >>`;
-    objects[contentIds[i]-1]=`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
+  if(index===items.length){
+   stream+=fill(42,y-34,511,34,.90,.93,.93)+rule(42,y,553,y,1)+rule(42,y-34,553,y-34,1);
+   stream+=textAt(48,y-22,'VALOR TOTAL DO PEDIDO',10,true)+rightAt(548,y-22,money(order.amount),11,true);
+   stream+=textAt(42,y-52,'Espelho comercial para conferência. Não é DANFE nem documento fiscal.',7.5);
   }
-  let pdf='%PDF-1.4\n%âãÏÓ\n',offsets=[0];
-  for(let i=0;i<objects.length;i++){offsets[i+1]=pdf.length;pdf+=`${i+1} 0 obj\n${objects[i]}\nendobj\n`}
-  const xref=pdf.length;pdf+=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n`;
-  for(let i=1;i<=objects.length;i++)pdf+=String(offsets[i]).padStart(10,'0')+' 00000 n \n';
-  pdf+=`trailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
-  return new Blob([Uint8Array.from([...pdf].map(ch=>ch.charCodeAt(0)&255))],{type:'application/pdf'});
+  stream+=rule(42,55,553,55)+textAt(42,43,'L2 ONE  |  Representações comerciais PA / AP',7.5)+rightAt(553,43,`Página ${page}`,7.5);
+  pages.push(stream);page++;
+ }while(index<items.length);
+ const objects=['','','',''],pageIds=[],contentIds=[];
+ for(let i=0;i<pages.length;i++){pageIds.push(5+i*2);contentIds.push(6+i*2)}
+ objects[0]='<< /Type /Catalog /Pages 2 0 R >>';
+ objects[1]=`<< /Type /Pages /Kids [${pageIds.map(id=>id+' 0 R').join(' ')}] /Count ${pages.length} >>`;
+ objects[2]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+ objects[3]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+ for(let i=0;i<pages.length;i++){
+  const stream=pages[i];objects[pageIds[i]-1]=`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentIds[i]} 0 R >>`;
+  objects[contentIds[i]-1]=`<< /Length ${stream.length} >>\nstream\n${stream}endstream`;
+ }
+ let pdf='%PDF-1.4\n%âãÏÓ\n',offsets=[0];
+ for(let i=0;i<objects.length;i++){offsets[i+1]=pdf.length;pdf+=`${i+1} 0 obj\n${objects[i]}\nendobj\n`}
+ const xref=pdf.length;pdf+=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n`;
+ for(let i=1;i<=objects.length;i++)pdf+=String(offsets[i]).padStart(10,'0')+' 00000 n \n';
+ pdf+=`trailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+ return new Blob([Uint8Array.from([...pdf].map(ch=>ch.charCodeAt(0)&255))],{type:'application/pdf'});
 }
 function orderFileName(order){let name=(client(order.clientId).name||'cliente').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'').toLowerCase();return `pedido-${order.date}-${name||'cliente'}.pdf`}
 function downloadBlob(blob,name){let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
