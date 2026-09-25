@@ -229,6 +229,27 @@ def change_password(data: PasswordChange, authorization: str | None = Header(def
         con.execute('DELETE FROM sessions WHERE username=%s', (user,))
     return {'ok': True, 'loginRequired': True}
 
+class AdminPasswordReset(BaseModel):
+    newPassword: str = Field(min_length=12, max_length=1024)
+
+@app.post('/api/admin/reset-my-password')
+def admin_reset_my_password(data: AdminPasswordReset, authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    if user != 'Ana Paula':
+        raise HTTPException(403, 'Acesso restrito à administradora')
+    if data.newPassword in PASSWORDS.values():
+        raise HTTPException(400, 'Escolha uma senha pessoal diferente da provisória')
+    with db() as con:
+        row = con.execute('SELECT password_hash FROM app_users WHERE username=%s AND active FOR UPDATE', (user,)).fetchone()
+        if not row:
+            raise HTTPException(404, 'Conta indisponível')
+        if password_ok(data.newPassword, row[0]):
+            raise HTTPException(400, 'Escolha uma senha diferente da atual')
+        con.execute('UPDATE app_users SET password_hash=%s, must_change_password=false, updated_at=now() WHERE username=%s', (password_hash(data.newPassword), user))
+        con.execute('DELETE FROM sessions WHERE username=%s', (user,))
+        con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)', (user,'app_user',user,'password_reset'))
+    return {'ok': True, 'loginRequired': True}
+
 def valid_cnpj(value):
     digits = ''.join(ch for ch in str(value or '') if ch.isdigit())
     if len(digits) != 14 or len(set(digits)) == 1:
