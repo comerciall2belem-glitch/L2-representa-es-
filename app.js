@@ -145,7 +145,56 @@ async function downloadOrderAttachment(id,attachmentId,name){try{const r=await f
 async function deleteOrderAttachment(id,attachmentId){if(!confirm('Excluir este comprovante?'))return;const r=await fetch(s.server+'/api/orders/'+encodeURIComponent(id)+'/attachments/'+encodeURIComponent(attachmentId),{method:'DELETE',headers:{Authorization:'Bearer '+s.token}});if(!r.ok){const data=await r.json().catch(()=>({}));return alert(data.detail||'Exclusão recusada')}await manageOrderAttachments(id)}
 function pdfText(value){return String(value??'').normalize('NFC').replace(/[–—]/g,'-').replace(/[“”]/g,'"').replace(/[‘’]/g,"'").replace(/[^\x20-\xFF]/g,'?').replace(/([\\()])/g,'\\$1')}
 function wrapPDF(text,size=88){let words=String(text||'').split(/\s+/),lines=[],line='';for(const word of words){if((line+' '+word).trim().length>size){if(line)lines.push(line);line=word}else line=(line+' '+word).trim()}if(line)lines.push(line);return lines.length?lines:['']}
-function orderPDFBlob(order){let c=client(order.clientId),lines=[`Pedido ${order.id}`,`Data: ${order.date}   Status: ${order.status}`,`Cliente: ${c.name||'Não informado'}`,`CNPJ: ${c.taxId||'Não informado'}`,`Cidade/UF: ${c.city||''} / ${c.state||''}`,`Tabela: ${order.priceTable||order.state||'-'}   Marca: ${order.brand||'-'}`,''];for(const item of order.items||[]){let unit=priceCents(item.unitPrice)/100,subtotal=unit*Number(item.quantity||0);lines.push(...wrapPDF(`${item.sku} - ${item.description||item.sku} | ${item.quantity} x ${money(unit)} = ${money(subtotal)}`))}lines.push('',`TOTAL DO PEDIDO: ${money(order.amount)}`,`Responsável: ${order.user||s.user}`);let chunks=[];for(let i=0;i<lines.length;i+=34)chunks.push(lines.slice(i,i+34));let objects=['','',''],fontId=3,pageIds=[],contentIds=[];for(let i=0;i<chunks.length;i++){pageIds.push(4+i*2);contentIds.push(5+i*2)}objects[0]='<< /Type /Catalog /Pages 2 0 R >>';objects[1]=`<< /Type /Pages /Kids [${pageIds.map(id=>id+' 0 R').join(' ')}] /Count ${pageIds.length} >>`;objects[2]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';for(let i=0;i<chunks.length;i++){let stream=`BT\n/F1 16 Tf\n50 800 Td\n(L2 ONE - PEDIDO) Tj\n/F1 10 Tf\n0 -24 Td\n`;chunks[i].forEach((line,n)=>{stream+=`(${pdfText(line)}) Tj\n0 -18 Td\n`});stream+=`0 -8 Td\n(Página ${i+1} de ${chunks.length}) Tj\nET`;objects[pageIds[i]-1]=`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentIds[i]} 0 R >>`;objects[contentIds[i]-1]=`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`}let pdf='%PDF-1.4\n%âãÏÓ\n',offsets=[0];for(let i=0;i<objects.length;i++){offsets[i+1]=pdf.length;pdf+=`${i+1} 0 obj\n${objects[i]}\nendobj\n`}let xref=pdf.length;pdf+=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n`;for(let i=1;i<=objects.length;i++)pdf+=String(offsets[i]).padStart(10,'0')+' 00000 n \n';pdf+=`trailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;let bytes=Uint8Array.from([...pdf].map(ch=>ch.charCodeAt(0)&255));return new Blob([bytes],{type:'application/pdf'})}
+function orderPDFBlob(order){
+  const c=client(order.clientId),field=(value)=>String(value||'Não informado'),lines=[
+    'ESPELHO DE PEDIDO COMERCIAL',
+    'Modelo de conferência - Não é DANFE nem documento fiscal',
+    `Pedido nº ${field(order.id)} | Emissão ${field(order.date)} | Status ${field(order.status)}`,
+    '', 'IDENTIFICAÇÃO DA OPERAÇÃO',
+    `Marca / indústria: ${field(order.brand)} | UF de preço: ${field(order.priceTable||order.state)}`,
+    'NF-e nº / série / chave de acesso: Após faturamento, conforme documento fiscal emitido',
+    '', 'DESTINATÁRIO / CLIENTE',
+    ...wrapPDF(`Razão social / nome: ${field(c.name)} | Nome fantasia: ${field(c.tradeName)}`),
+    `CNPJ / CPF: ${field(c.taxId)} | Inscrição estadual: ${field(c.stateRegistration)}`,
+    ...wrapPDF(`Endereço: ${field(c.address)} | Bairro: ${field(c.district)} | Município / UF: ${field(c.city)} / ${field(c.state)}`),
+    ...wrapPDF(`Contato: ${field(c.contact)} | Telefone: ${field(c.phone)} | E-mail: ${field(c.email)}`),
+    '', 'PRODUTOS E SERVIÇOS'
+  ];
+  let calculatedCents=0;
+  for(const [index,item] of (order.items||[]).entries()){
+    const cents=priceCents(item.unitPrice),quantity=Number(item.quantity||0),subtotal=cents*quantity;
+    calculatedCents+=subtotal;
+    lines.push(...wrapPDF(`${index+1}. ${item.sku} - ${item.description||item.sku} | UN ${quantity} x ${money(cents/100)} = ${money(subtotal/100)}`,80));
+  }
+  lines.push('', 'TOTAIS E IMPOSTOS',`Valor dos produtos: ${money(calculatedCents/100)} | Total do pedido: ${money(order.amount)}`,
+    'Descontos / frete / tributos: Consultar documento fiscal após faturamento',
+    '', 'PAGAMENTO E FATURAMENTO',
+    `Vendedor / representante: ${field(order.user)}`,
+    'Condição de pagamento / parcelas / entrega: Não informadas no pedido',
+    '', 'TRANSPORTE E VOLUMES',
+    'Transportadora / modalidade / volumes: Não informados no pedido',
+    '', 'INFORMAÇÕES ADICIONAIS E CONFERÊNCIA',
+    'Dados fiscais e valores tributários sujeitos à emissão efetiva da NF-e.');
+  const chunks=[];for(let i=0;i<lines.length;i+=34)chunks.push(lines.slice(i,i+34));
+  const objects=['','',''],fontId=3,pageIds=[],contentIds=[];
+  for(let i=0;i<chunks.length;i++){pageIds.push(4+i*2);contentIds.push(5+i*2)}
+  objects[0]='<< /Type /Catalog /Pages 2 0 R >>';
+  objects[1]=`<< /Type /Pages /Kids [${pageIds.map(id=>id+' 0 R').join(' ')}] /Count ${pageIds.length} >>`;
+  objects[2]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+  for(let i=0;i<chunks.length;i++){
+    let stream=`BT\n/F1 14 Tf\n50 800 Td\n(L2 ONE - ESPELHO DE PEDIDO) Tj\n/F1 9 Tf\n0 -25 Td\n`;
+    for(const line of chunks[i])stream+=`(${pdfText(line)}) Tj\n0 -19 Td\n`;
+    stream+=`0 -8 Td\n(Página ${i+1} de ${chunks.length}) Tj\nET`;
+    objects[pageIds[i]-1]=`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentIds[i]} 0 R >>`;
+    objects[contentIds[i]-1]=`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
+  }
+  let pdf='%PDF-1.4\n%âãÏÓ\n',offsets=[0];
+  for(let i=0;i<objects.length;i++){offsets[i+1]=pdf.length;pdf+=`${i+1} 0 obj\n${objects[i]}\nendobj\n`}
+  const xref=pdf.length;pdf+=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n`;
+  for(let i=1;i<=objects.length;i++)pdf+=String(offsets[i]).padStart(10,'0')+' 00000 n \n';
+  pdf+=`trailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return new Blob([Uint8Array.from([...pdf].map(ch=>ch.charCodeAt(0)&255))],{type:'application/pdf'});
+}
 function orderFileName(order){let name=(client(order.clientId).name||'cliente').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'').toLowerCase();return `pedido-${order.date}-${name||'cliente'}.pdf`}
 function downloadBlob(blob,name){let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 function downloadOrderPDF(id){let order=s.orders.find(x=>x.id===id);if(!order)return;downloadBlob(orderPDFBlob(order),orderFileName(order))}
