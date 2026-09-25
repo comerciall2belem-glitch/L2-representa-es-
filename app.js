@@ -5,6 +5,9 @@ const orderLabel=value=>Number.isSafeInteger(Number(value))&&Number(value)>0?Str
 const key='l2one_state_v2', defaults={whatsappTemplates:[],clients:[],visits:[],orders:[],tasks:[],goals:[],routes:[],prices:[],commissionRates:[],commissionReceipts:[],officeProcesses:[],officeActions:[],officeCommercial:[],officeAdministrative:[],officeRituals:[],officeRoles:[],officeFinance:[],officeBudget:[],officeMonthlyClose:[],cashDays:[],cashEntries:[],user:'Ana Paula',server:'',token:'',mustChangePassword:false,syncAt:'',pending:[]};
 let s=Object.assign({},defaults,JSON.parse(localStorage.getItem(key)||'{}')),tab='hoje',syncing=false;
 for(const name of ['commissionRates','commissionReceipts','whatsappTemplates'])if(!Array.isArray(s[name]))s[name]=[];
+const restrictedCollections=['officeFinance','officeBudget','officeMonthlyClose','cashDays','cashEntries','commissionRates','commissionReceipts'];
+function clearRestrictedCache(){for(const name of restrictedCollections)s[name]=[];s.officeProcesses=(s.officeProcesses||[]).filter(x=>String(x['Área']||'')!=='Financeiro')}
+if(!s.token||s.user==='Marlene'){clearRestrictedCache();localStorage.setItem(key,JSON.stringify(s))}
 const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 function uniqueLocations(values){const groups=new Map();for(const value of values){const label=String(value||'').trim().replace(/\s+/g,' '),key=norm(label);if(!key)continue;let group=groups.get(key);if(!group){group=new Map();groups.set(key,group)}group.set(label,(group.get(label)||0)+1)}return [...groups.values()].map(group=>[...group].sort((a,b)=>b[1]-a[1]||Number(/[^\x00-\x7F]/.test(b[0]))-Number(/[^\x00-\x7F]/.test(a[0]))||a[0].localeCompare(b[0],'pt-BR'))[0][0]).sort((a,b)=>a.localeCompare(b,'pt-BR'))}
 const stateCode=c=>{let uf=norm(c.state).replace(/\s/g,'');if(uf==='pa'||uf==='para')return'PA';if(uf==='ap'||uf==='amapa')return'AP';return uf?'FORA':''};
@@ -374,7 +377,7 @@ async function connect(){
   if(!r.ok)throw Error('Login não autorizado');
   const session=await r.json(), token=session.token;
   if(user!==s.user || server!==s.server){s={...defaults,user,server};}
-  s.user=user;s.server=server;s.token=token;s.mustChangePassword=!!session.mustChangePassword;save();if(s.mustChangePassword){show('config');return}await sync();show('config');
+  s.user=user;s.server=server;s.token=token;s.mustChangePassword=!!session.mustChangePassword;if(user==='Marlene')clearRestrictedCache();save();if(s.mustChangePassword){show('config');return}await sync();show('config');
  }catch(e){alert('Não foi possível conectar: '+e.message)}
 }
 async function adminResetPassword(event){
@@ -393,9 +396,12 @@ async function resetTeamAccess(user){
  const panel=$('teamAccessPanel');if(!panel)return;
  try{const response=await fetch(s.server+'/api/admin/team-access/reset',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+s.token},body:JSON.stringify({user})}),data=await response.json();if(!response.ok)throw Error(data.detail||'Falha ao gerar acesso.');panel.replaceChildren();const title=document.createElement('p'),password=document.createElement('code'),note=document.createElement('p');title.textContent='Senha provisória de '+data.user+': ';password.textContent=data.temporaryPassword;note.textContent='Copie agora e entregue diretamente à pessoa. Esta senha não aparecerá novamente. Ela deverá criar sua senha pessoal ao entrar.';panel.append(title,password,note);}catch(error){panel.textContent=error.message}
 }
-function logout(){
+async function logout(){
  if(!confirm('Sair deste aparelho? A senha será solicitada no próximo acesso.'))return;
- s.token='';s.mustChangePassword=false;s.syncAt='';save();show('config');
+ if(s.pending.some(x=>['office_finance','office_budget','office_monthly_close','cash_day','cash_entry','commission_rate','commission_receipt','office_process'].some(kind=>x.type===kind||x.type==='delete_'+kind)))return alert('Sincronize as alterações financeiras pendentes antes de sair.');
+ const token=s.token,server=s.server;
+ if(token&&server&&navigator.onLine){try{await fetch(server+'/api/logout',{method:'POST',headers:{Authorization:'Bearer '+token}})}catch(_){}}
+ s.token='';s.mustChangePassword=false;s.syncAt='';clearRestrictedCache();save();show('config');
 }
 async function sync(){
  if(s.mustChangePassword||syncing||!s.server||!s.token||!navigator.onLine)return;
@@ -403,7 +409,7 @@ async function sync(){
  const batch=s.pending.slice(0,500), user=s.user, server=s.server, token=s.token;
  try{
   const r=await fetch(server+'/api/sync',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({changes:batch})});
-  if(!r.ok){let detail='';try{const payload=await r.json();detail=typeof payload.detail==='string'?payload.detail:''}catch(_){}if(r.status===401){s.token='';save();alert('Sua sessão expirou. Entre novamente em Configurações.')}throw Error('Sincronização recusada ('+r.status+'): '+(detail||'verifique os dados enviados'))}
+  if(!r.ok){let detail='';try{const payload=await r.json();detail=typeof payload.detail==='string'?payload.detail:''}catch(_){}if(r.status===401){s.token='';clearRestrictedCache();save();alert('Sua sessão expirou. Entre novamente em Configurações.')}throw Error('Sincronização recusada ('+r.status+'): '+(detail||'verifique os dados enviados'))}
   const data=await r.json();
   if(user!==s.user||server!==s.server||token!==s.token)return;
   const acknowledged=new Set(batch.map(x=>x.changeId));
