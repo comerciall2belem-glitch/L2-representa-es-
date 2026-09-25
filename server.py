@@ -679,6 +679,8 @@ def home(): return FileResponse(BASE/'index.html',headers={'Cache-Control':'no-s
 
 @app.get('/{filename}')
 def asset(filename: str):
-    if filename not in ('app.js','cash.js','sw.js','manifest.json'):
+    if filename not in ('app.js','cash.js','sw.js','manifest.json','icon-192.png','icon-512.png','apple-touch-icon.png'):
         raise HTTPException(404)
+    if filename in ('icon-192.png','icon-512.png','apple-touch-icon.png'):
+        return Response(content=base64.b64decode((BASE/(filename+'.b64')).read_text()), media_type='image/png', headers={'Cache-Control':'public, max-age=86400'})
     return FileResponse(BASE/filename,headers={'Cache-Control':'no-store'})
