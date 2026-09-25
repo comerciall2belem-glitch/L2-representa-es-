@@ -2,8 +2,8 @@
 import os, json, time, hashlib, secrets, re, base64, gzip
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Header
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Header, UploadFile, File
+from fastapi.responses import FileResponse, Response
 from decimal import Decimal, InvalidOperation
 from pydantic import BaseModel, Field
 import psycopg
@@ -47,6 +47,8 @@ def initialize():
         con.execute('CREATE TABLE IF NOT EXISTS entities (kind TEXT NOT NULL, id TEXT NOT NULL, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(kind,id))')
         con.execute('CREATE TABLE IF NOT EXISTS applied_changes (change_id TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE TABLE IF NOT EXISTS audit_log (id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, kind TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
+        con.execute('CREATE TABLE IF NOT EXISTS order_attachments (id TEXT PRIMARY KEY, order_id TEXT NOT NULL, filename TEXT NOT NULL, content_type TEXT NOT NULL, content BYTEA NOT NULL, uploaded_by TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
+        con.execute('CREATE INDEX IF NOT EXISTS idx_order_attachments_order ON order_attachments(order_id)')
         con.execute('CREATE TABLE IF NOT EXISTS app_users (username TEXT PRIMARY KEY, password_hash TEXT NOT NULL, active BOOLEAN NOT NULL DEFAULT true, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false')
         con.execute('CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, username TEXT NOT NULL REFERENCES app_users(username), expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
@@ -313,6 +315,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 if con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s',(change.changeId,)).fetchone():
                     continue
                 con.execute('DELETE FROM entities WHERE kind=%s AND id=%s',(target,entity_id))
+                if target == 'order':
+                    con.execute('DELETE FROM order_attachments WHERE order_id=%s',(entity_id,))
                 con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
                 con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,target,entity_id,'delete'))
                 continue
@@ -476,6 +480,60 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
         for kind, name in [('office_finance','officeFinance'),('office_budget','officeBudget'),('office_monthly_close','officeMonthlyClose'),('cash_day','cashDays'),('cash_entry','cashEntries')]:
             result[name] = [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))] if user in FINANCE_USERS else []
         return result
+
+def order_exists(con, order_id: str):
+    if not con.execute("SELECT 1 FROM entities WHERE kind='order' AND id=%s",(order_id,)).fetchone():
+        raise HTTPException(404, 'Pedido não encontrado')
+
+@app.get('/api/orders/{order_id}/attachments')
+def list_order_attachments(order_id: str, authorization: str | None = Header(default=None)):
+    auth(authorization)
+    with db() as con:
+        order_exists(con,order_id)
+        rows=con.execute('SELECT id,filename,content_type,octet_length(content),uploaded_by,created_at FROM order_attachments WHERE order_id=%s ORDER BY created_at,id',(order_id,)).fetchall()
+    return [{'id':r[0],'name':r[1],'type':r[2],'size':r[3],'uploadedBy':r[4],'createdAt':r[5].isoformat()} for r in rows]
+
+@app.post('/api/orders/{order_id}/attachments')
+async def upload_order_attachment(order_id: str, file: UploadFile = File(...), authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    name=Path(file.filename or '').name.strip()[:180]
+    content=await file.read(5*1024*1024+1)
+    if not name or not content or len(content)>5*1024*1024:
+        raise HTTPException(400, 'Comprovante vazio ou maior que 5 MB')
+    if content.startswith(b'%PDF-'): content_type='application/pdf'
+    elif content.startswith(b'\xff\xd8\xff'): content_type='image/jpeg'
+    elif content.startswith(b'\x89PNG\r\n\x1a\n'): content_type='image/png'
+    else: raise HTTPException(400, 'Envie somente PDF, JPG ou PNG')
+    attachment_id=secrets.token_hex(16)
+    with db() as con:
+        order_exists(con,order_id)
+        count=con.execute('SELECT count(*) FROM order_attachments WHERE order_id=%s',(order_id,)).fetchone()[0]
+        if count>=5: raise HTTPException(409,'Limite de cinco comprovantes por pedido')
+        con.execute('INSERT INTO order_attachments(id,order_id,filename,content_type,content,uploaded_by) VALUES(%s,%s,%s,%s,%s,%s)',(attachment_id,order_id,name,content_type,content,user))
+        con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,'order_attachment',attachment_id,'upload'))
+    return {'id':attachment_id,'name':name,'type':content_type,'size':len(content)}
+
+@app.get('/api/orders/{order_id}/attachments/{attachment_id}')
+def download_order_attachment(order_id: str, attachment_id: str, authorization: str | None = Header(default=None)):
+    auth(authorization)
+    with db() as con:
+        row=con.execute('SELECT filename,content_type,content FROM order_attachments WHERE id=%s AND order_id=%s',(attachment_id,order_id)).fetchone()
+    if not row: raise HTTPException(404,'Comprovante não encontrado')
+    safe_name=''.join(c if c.isalnum() or c in ' ._-()' else '_' for c in row[0])
+    return Response(content=bytes(row[2]),media_type=row[1],headers={'Content-Disposition':f'attachment; filename="{safe_name}"'})
+
+@app.delete('/api/orders/{order_id}/attachments/{attachment_id}')
+def delete_order_attachment(order_id: str, attachment_id: str, authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    with db() as con:
+        order=con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(order_id,)).fetchone()
+        if not order: raise HTTPException(404,'Pedido não encontrado')
+        if order[0].get('status') not in ('Pendente','Cancelado'):
+            raise HTTPException(409,'Comprovantes de pedidos confirmados devem ser preservados')
+        deleted=con.execute('DELETE FROM order_attachments WHERE id=%s AND order_id=%s RETURNING id',(attachment_id,order_id)).fetchone()
+        if not deleted: raise HTTPException(404,'Comprovante não encontrado')
+        con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,'order_attachment',attachment_id,'delete'))
+    return {'deleted':True}
 
 @app.get('/health')
 def health():
