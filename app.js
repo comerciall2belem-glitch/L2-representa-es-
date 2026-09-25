@@ -172,18 +172,17 @@ function orderPDFBlob(order){
  const short=(value,max=96)=>{let t=String(value??'').trim();return t.length>max?t.slice(0,max-3)+'...':t};
  const date=(value)=>{let m=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?`${m[3]}/${m[2]}/${m[1]}`:String(value||'—')};
  const escPDF=(value)=>pdfText(String(value??''));
- const textAt=(x,y,value,size=9,bold=false)=>`BT /${bold?'F2':'F1'} ${size} Tf ${x} ${y} Td (${escPDF(value)}) Tj ET\n`;
+ const textAt=(x,y,value,size=9,bold=false,color='dark')=>`${color==='white'?'1 1 1':color==='gold'?'.72 .55 .22':'.15 .13 .10'} rg BT /${bold?'F2':'F1'} ${size} Tf ${x} ${y} Td (${escPDF(value)}) Tj ET\n`;
  const measureCtx=typeof document==='undefined'?null:document.createElement('canvas').getContext('2d');
  const textWidth=(value,size,bold=false)=>{let label=String(value??'');if(!measureCtx)return label.length*size*.52;measureCtx.font=`${bold?'bold ':''}${size}px Helvetica, Arial, sans-serif`;return measureCtx.measureText(label).width};
  const fit=(value,maxWidth,size,bold=false)=>{let label=String(value??'');if(textWidth(label,size,bold)<=maxWidth)return label;while(label&&textWidth(label+'...',size,bold)>maxWidth)label=label.slice(0,-1);return label.trimEnd()+'...'};
  const rightAt=(right,y,value,size=9,bold=false)=>textAt(Math.max(42,right-textWidth(value,size,bold)),y,value,size,bold);
  const centerAt=(left,right,y,value,size=9,bold=false)=>textAt((left+right-textWidth(value,size,bold))/2,y,value,size,bold);
- const rule=(x1,y1,x2,y2,width=.5)=>`${width} w ${x1} ${y1} m ${x2} ${y2} l S\n`;
+ const rule=(x1,y1,x2,y2,width=.5)=>`.79 .73 .62 RG ${width} w ${x1} ${y1} m ${x2} ${y2} l S\n`;
  const fill=(x,y,w,h,r=.95,g=.96,b=.96)=>`${r} ${g} ${b} rg ${x} ${y} ${w} ${h} re f 0 0 0 rg\n`;
  const head=(number)=>{
-  let out=fill(42,787,511,32,.94,.94,.94)+rule(42,787,553,787,1)+textAt(52,798,'L2 ONE  |  PEDIDO COMERCIAL',14,true);
-  out+=rightAt(548,799,`Página ${number}`,8);
-  out+=textAt(42,768,`PEDIDO Nº ${orderLabel(order.orderNumber)}`,8.5,true)+rightAt(553,768,`Emissão: ${date(order.date)}`,8.5);
+  let out=fill(42,783,511,39,.08,.08,.07)+fill(42,781,511,2,.72,.55,.22)+textAt(54,797,'L2 ONE',17,true,'white')+textAt(163,800,'PEDIDO COMERCIAL',9,true,'gold');
+  out+=textAt(42,763,`PEDIDO Nº ${orderLabel(order.orderNumber)}`,11,true)+rightAt(553,763,`Emissão: ${date(order.date)}`,8.5);
   out+=rule(42,758,553,758,1);
   if(number===1){
    out+=textAt(42,742,fit(`Marca / indústria: ${order.brand||'Não informada'}`,370,9),9);
@@ -198,7 +197,7 @@ function orderPDFBlob(order){
    out+=rightAt(553,632,`Situação: ${order.status||'—'}`,8.5);
   }else out+=textAt(42,740,`Cliente: ${short(customer.name||'Não informado',80)}`,9,true);
   const top=number===1?610:722;
-  out+=fill(42,top-23,511,23,.90,.93,.93);
+  out+=fill(42,top-23,511,23,.95,.92,.85);
   for(const x of bounds)out+=rule(x,top,x,top-23);
   out+=rule(42,top,553,top,1)+rule(42,top-23,553,top-23,1);
   out+=centerAt(bounds[0],bounds[1],top-16,'CÓDIGO',8,true)+centerAt(bounds[1],bounds[2],top-16,'DESCRIÇÃO',8,true);
@@ -222,7 +221,7 @@ function orderPDFBlob(order){
    for(const x of bounds)stream+=rule(x,y,x,y+25);
   }
   if(index===items.length){
-   stream+=fill(42,y-34,511,34,.90,.93,.93)+rule(42,y,553,y,1)+rule(42,y-34,553,y-34,1);
+   stream+=fill(42,y-34,511,34,.95,.92,.85)+rule(42,y,553,y,1)+rule(42,y-34,553,y-34,1);
    stream+=textAt(48,y-22,'VALOR TOTAL DO PEDIDO',10,true)+rightAt(548,y-22,money(order.amount),11,true);
    stream+=textAt(42,y-52,'Espelho comercial para conferência. Não é DANFE nem documento fiscal.',7.5);
   }
