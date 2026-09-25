@@ -244,7 +244,7 @@ class PriceRow(BaseModel):
     description: str = ''
 
 class PriceImport(BaseModel):
-    prices: list[PriceRow] = Field(min_length=1, max_length=1000)
+    prices: list[PriceRow] = Field(min_length=1, max_length=5000)
 
 @app.post('/api/prices/import')
 def import_prices(data: PriceImport, authorization: str | None = Header(default=None)):
