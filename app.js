@@ -388,6 +388,20 @@ async function sync(){
   s.syncAt=new Date().toLocaleString('pt-BR');window.routeAttemptedDay='';save();show(tab);
  }catch(e){console.warn(e);window.lastSyncError=e.message;network();if(batch.length)alert('Os dados foram salvos neste aparelho, mas NÃO foram enviados à nuvem. '+e.message)}finally{syncing=false;if(!s.mustChangePassword&&s.pending.length&&s.server&&s.token&&navigator.onLine)setTimeout(sync,3000)}
 }
+
+let deferredInstallPrompt=null;
+function appInstalled(){return window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true}
+function refreshInstallButton(){const button=$('installAppButton');if(button)button.hidden=appInstalled()||(!deferredInstallPrompt&&!/Android|iPhone|iPad|iPod/i.test(navigator.userAgent))}
+window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();deferredInstallPrompt=event;refreshInstallButton()});
+window.addEventListener('appinstalled',()=>{deferredInstallPrompt=null;hideInstallGuide();refreshInstallButton()});
+async function showInstallGuide(){if(deferredInstallPrompt){const prompt=deferredInstallPrompt;deferredInstallPrompt=null;prompt.prompt();await prompt.userChoice;refreshInstallButton();return}
+ const ios=/iPhone|iPad|iPod/i.test(navigator.userAgent),steps=$('installSteps'),guide=$('installGuide');
+ if(!guide)return;
+ steps.textContent=ios?'No Safari, toque em Compartilhar (quadrado com seta para cima), escolha Adicionar à Tela de Início e confirme Adicionar.':'No Chrome, toque no menu ⋮ e escolha Instalar app ou Adicionar à tela inicial.';
+ guide.hidden=false;guide.querySelector('.install-close')?.focus();
+}
+function hideInstallGuide(){const guide=$('installGuide');if(guide)guide.hidden=true}
+refreshInstallButton();
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(b.dataset.tab));
 window.addEventListener('online',()=>{network();sync()});window.addEventListener('offline',network);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});setInterval(sync,30000);
