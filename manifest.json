@@ -1,1 +1,26 @@
-{"name": "L2 ONE CRM de Campo", "short_name": "L2 ONE", "start_url": "./index.html", "display": "standalone", "background_color": "#f2f6f6", "theme_color": "#173b47", "icons": []}
+{
+  "name": "L2 ONE | Gestão Comercial PA / AP",
+  "short_name": "L2 ONE",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8f6f0",
+  "theme_color": "#14120f",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "id": "/",
+  "scope": "/",
+  "description": "Carteira, rotas, pedidos e escritório da L2 Representações.",
+  "lang": "pt-BR"
+}
