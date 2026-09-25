@@ -323,4 +323,4 @@ async function sync(){
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(b.dataset.tab));
 window.addEventListener('online',()=>{network();sync()});window.addEventListener('offline',network);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});setInterval(sync,30000);
-(async()=>{if('serviceWorker'in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('./sw.js').catch(()=>{});if(!s.server&&location.protocol.startsWith('http'))s.server=location.origin;save();show('hoje');sync()})();
+(async()=>{if('serviceWorker'in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).catch(()=>{});if(!s.server&&location.protocol.startsWith('http'))s.server=location.origin;save();show('hoje');sync()})();
