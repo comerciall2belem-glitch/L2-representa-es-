@@ -74,9 +74,10 @@ def response_rule(text, name, first):
     if requires_handoff(t):
         return HANDOFF, True
     greeting = WELCOME.format(nome=f', {name.split()[0]}' if name else '')
+    asks_lookup = bool(re.search(r'\b(pedido|rastreio|catalogo|preco|valor|horario|estoque|disponibilidade)\b', t))
     if first:
-        return greeting, False
-    if re.search(r'\b(pedido|rastreio|catalogo|preco|valor|horario|estoque|disponibilidade)\b', t):
+        return greeting + ('\n\n' + PENDING if asks_lookup else ''), False
+    if asks_lookup:
         return PENDING, False
     return None, False
 

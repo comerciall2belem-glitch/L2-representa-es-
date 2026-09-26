@@ -24,6 +24,7 @@ class ZaraRulesTests(unittest.TestCase):
 
     def test_no_unverified_prices(self):
         self.assertEqual(zara.response_rule('Qual o preço?', '', False)[0], zara.PENDING)
+        self.assertIn(zara.PENDING, zara.response_rule('Qual o preço?', 'Mariana', True)[0])
 
     def test_signature_and_verification(self):
         from fastapi import FastAPI
