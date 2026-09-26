@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 import psycopg
 from psycopg.types.json import Jsonb
 from client_cleanup import plan as client_cleanup_plan
+import zara
 
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
@@ -48,6 +49,7 @@ def password_ok(password, stored):
 
 def initialize():
     with db() as con:
+        zara.setup(con)
         con.execute('CREATE TABLE IF NOT EXISTS entities (kind TEXT NOT NULL, id TEXT NOT NULL, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(kind,id))')
         con.execute('CREATE TABLE IF NOT EXISTS applied_changes (change_id TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE TABLE IF NOT EXISTS audit_log (id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, kind TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
@@ -163,6 +165,7 @@ async def lifespan(app):
     yield
 
 app = FastAPI(title='L2 ONE API', lifespan=lifespan, docs_url=None, redoc_url=None)
+app.include_router(zara.router)
 
 class Login(BaseModel):
     user: str
@@ -741,6 +744,9 @@ async def security_headers(request, call_next):
 @app.get('/')
 @app.get('/index.html')
 def home(): return FileResponse(BASE/'index.html',headers={'Cache-Control':'no-store'})
+
+@app.get('/zara.html')
+def zara_page(): return FileResponse(BASE/'zara.html',headers={'Cache-Control':'no-store'})
 
 @app.get('/{filename}')
 def asset(filename: str):
