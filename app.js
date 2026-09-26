@@ -208,7 +208,7 @@ function orderPDFBlob(order){
  const rule=(x1,y1,x2,y2,width=.5)=>`.79 .73 .62 RG ${width} w ${x1} ${y1} m ${x2} ${y2} l S\n`;
  const fill=(x,y,w,h,r=.95,g=.96,b=.96)=>`${r} ${g} ${b} rg ${x} ${y} ${w} ${h} re f 0 0 0 rg\n`;
  const head=(number)=>{
-  let out=fill(42,783,511,39,.08,.08,.07)+fill(42,781,511,2,.72,.55,.22)+'q 126 0 0 36 46 785 cm /Logo Do Q\n'+textAt(183,800,'PEDIDO COMERCIAL',9,true,'gold');
+  let out=fill(42,783,511,39,.01,.27,.31)+fill(42,781,511,2,.72,.55,.22)+'q 56 0 0 37 46 784 cm /Logo Do Q\n'+textAt(113,800,'PEDIDO COMERCIAL',9,true,'gold');
   out+=textAt(42,763,`PEDIDO Nº ${orderLabel(order.orderNumber)}`,11,true)+rightAt(553,763,`Emissão: ${date(order.date)}`,8.5);
   out+=rule(42,758,553,758,1);
   if(number===1){
@@ -262,7 +262,7 @@ function orderPDFBlob(order){
  objects[2]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
  objects[3]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
  const logoBinary=atob(L2_LOGO_JPEG_BASE64);
- objects[4]=`<< /Type /XObject /Subtype /Image /Width 740 /Height 212 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${logoBinary.length} >>\nstream\n${logoBinary}\nendstream`;
+ objects[4]=`<< /Type /XObject /Subtype /Image /Width 1152 /Height 768 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${logoBinary.length} >>\nstream\n${logoBinary}\nendstream`;
  for(let i=0;i<pages.length;i++){
   const stream=pages[i];objects[pageIds[i]-1]=`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /XObject << /Logo 5 0 R >> >> /Contents ${contentIds[i]} 0 R >>`;
   objects[contentIds[i]-1]=`<< /Length ${stream.length} >>\nstream\n${stream}endstream`;
