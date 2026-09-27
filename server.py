@@ -69,11 +69,14 @@ def initialize():
             table='entities' if source=='active' else 'archived_entities'
             con.execute(f"UPDATE {table} SET payload=jsonb_set(payload,'{{orderNumber}}',to_jsonb(%s::bigint)) WHERE kind='order' AND id=%s",(number,order_id))
         con.execute('CREATE TABLE IF NOT EXISTS order_attachments (id TEXT PRIMARY KEY, order_id TEXT NOT NULL, filename TEXT NOT NULL, content_type TEXT NOT NULL, content BYTEA NOT NULL, uploaded_by TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
+        con.execute('CREATE TABLE IF NOT EXISTS visit_photos (id TEXT PRIMARY KEY, visit_id TEXT NOT NULL, filename TEXT NOT NULL, content_type TEXT NOT NULL, content BYTEA NOT NULL, uploaded_by TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
+        con.execute('CREATE INDEX IF NOT EXISTS idx_visit_photos_visit ON visit_photos(visit_id)')
         con.execute('CREATE INDEX IF NOT EXISTS idx_order_attachments_order ON order_attachments(order_id)')
         con.execute('CREATE TABLE IF NOT EXISTS app_users (username TEXT PRIMARY KEY, password_hash TEXT NOT NULL, active BOOLEAN NOT NULL DEFAULT true, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false')
         con.execute('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS sectors JSONB')
         con.execute('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS role TEXT')
+        con.execute('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS department TEXT')
         con.execute('CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, username TEXT NOT NULL REFERENCES app_users(username), expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at)')
         for user, password in PASSWORDS.items():
@@ -288,8 +291,8 @@ def team_access(authorization: str | None = Header(default=None)):
     if auth(authorization) != 'Ana Paula':
         raise HTTPException(403, 'Acesso restrito à administradora')
     with db() as con:
-        rows = con.execute('SELECT username,active,must_change_password,sectors,role FROM app_users ORDER BY username').fetchall()
-    return [{'user': name, 'active': active, 'mustChangePassword': first_access,'sectors':sectors or [], 'role':role or ''} for name,active,first_access,sectors,role in rows]
+        rows = con.execute('SELECT username,active,must_change_password,sectors,role,department FROM app_users ORDER BY username').fetchall()
+    return [{'user': name, 'active': active, 'mustChangePassword': first_access,'sectors':sectors or [], 'role':role or '', 'department':department or ''} for name,active,first_access,sectors,role,department in rows]
 
 @app.post('/api/admin/team-access/reset')
 def reset_team_access(data: TeamAccessReset, authorization: str | None = Header(default=None)):
@@ -311,10 +314,12 @@ def reset_team_access(data: TeamAccessReset, authorization: str | None = Header(
 class TeamMember(BaseModel):
     user: str = Field(min_length=2,max_length=80)
     role: str
+    department: str = Field(default='',max_length=80)
     sectors: list[str] = Field(min_length=1,max_length=7)
 
 class TeamMemberUpdate(BaseModel):
     role: str
+    department: str = Field(default='',max_length=80)
     sectors: list[str] = Field(min_length=1,max_length=7)
     active: bool = True
 
@@ -335,7 +340,7 @@ def create_team_member(data: TeamMember, authorization: str | None = Header(defa
     with db() as con:
         if con.execute('SELECT 1 FROM app_users WHERE lower(username)=lower(%s)',(name,)).fetchone():
             raise HTTPException(409,'Usuário já cadastrado')
-        con.execute('INSERT INTO app_users(username,password_hash,must_change_password,sectors,role) VALUES(%s,%s,true,%s,%s)',(name,password_hash(provisional),Jsonb(data.sectors),data.role))
+        con.execute('INSERT INTO app_users(username,password_hash,must_change_password,sectors,role,department) VALUES(%s,%s,true,%s,%s,%s)',(name,password_hash(provisional),Jsonb(data.sectors),data.role,data.department.strip()))
         con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES('Ana Paula','app_user',%s,'create')",(name,))
     return {'user':name,'temporaryPassword':provisional,'mustChangePassword':True}
 
@@ -349,7 +354,7 @@ def update_team_member(member: str, data: TeamMemberUpdate, authorization: str |
     with db() as con:
         if not con.execute('SELECT 1 FROM app_users WHERE username=%s',(member,)).fetchone():
             raise HTTPException(404,'Usuário não encontrado')
-        con.execute('UPDATE app_users SET sectors=%s,role=%s,active=%s,updated_at=now() WHERE username=%s',(Jsonb(data.sectors),data.role,data.active,member))
+        con.execute('UPDATE app_users SET sectors=%s,role=%s,department=%s,active=%s,updated_at=now() WHERE username=%s',(Jsonb(data.sectors),data.role,data.department.strip(),data.active,member))
         con.execute('DELETE FROM sessions WHERE username=%s',(member,))
         con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES('Ana Paula','app_user',%s,'permissions_update')",(member,))
     return {'ok':True,'loginRequired':True}
@@ -522,6 +527,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     previous_crm = con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s',(target,entity_id)).fetchone()
                     if previous_crm:
                         con.execute('INSERT INTO archived_entities(kind,id,payload,reason) VALUES(%s,%s,%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,reason=excluded.reason,archived_at=now()',(target,entity_id,Jsonb(previous_crm[0]),'arquivado por '+user))
+                if target == 'visit':
+                    con.execute('DELETE FROM visit_photos WHERE visit_id=%s',(entity_id,))
                 if target == 'order' and previous:
                     con.execute("INSERT INTO archived_entities(kind,id,payload,reason) VALUES('order',%s,%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,reason=excluded.reason,archived_at=now()",(entity_id,Jsonb(previous[0]),'arquivado por '+user))
                 con.execute('DELETE FROM entities WHERE kind=%s AND id=%s',(target,entity_id))
@@ -827,6 +834,41 @@ def restore_archived_order(order_id: str, authorization: str | None = Header(def
         con.execute("DELETE FROM archived_entities WHERE kind='order' AND id=%s",(order_id,))
         con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES('Ana Paula','order',%s,'restore')",(order_id,))
     return {'id':order_id,'restored':True}
+
+@app.get('/api/visits/{visit_id}/photos')
+def list_visit_photos(visit_id: str, authorization: str | None = Header(default=None)):
+    require_sector(auth(authorization),'commercial','office')
+    with db() as con:
+        if not con.execute("SELECT 1 FROM entities WHERE kind='visit' AND id=%s",(visit_id,)).fetchone(): raise HTTPException(404,'Atendimento não encontrado')
+        rows=con.execute('SELECT id,filename,uploaded_by,octet_length(content) FROM visit_photos WHERE visit_id=%s ORDER BY created_at,id',(visit_id,)).fetchall()
+    return [{'id':r[0],'name':r[1],'uploadedBy':r[2],'size':r[3]} for r in rows]
+
+@app.post('/api/visits/{visit_id}/photos')
+async def upload_visit_photo(visit_id: str, file: UploadFile = File(...), authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    require_sector(user,'commercial','office')
+    name=Path(file.filename or '').name.strip()[:180]
+    content=await file.read(5*1024*1024+1)
+    if not name or not content or len(content)>5*1024*1024: raise HTTPException(400,'Foto inválida ou acima de 5 MB')
+    if content.startswith(b'\xff\xd8\xff') and name.lower().endswith(('.jpg','.jpeg')): content_type='image/jpeg'
+    elif content.startswith(b'\x89PNG\r\n\x1a\n') and name.lower().endswith('.png'): content_type='image/png'
+    else: raise HTTPException(400,'Envie uma foto JPG ou PNG válida')
+    photo_id=secrets.token_hex(16)
+    with db() as con:
+        if not con.execute("SELECT 1 FROM entities WHERE kind='visit' AND id=%s",(visit_id,)).fetchone(): raise HTTPException(404,'Sincronize o atendimento antes de enviar fotos')
+        if con.execute('SELECT count(*) FROM visit_photos WHERE visit_id=%s',(visit_id,)).fetchone()[0]>=3: raise HTTPException(409,'Limite de três fotos por atendimento')
+        con.execute('INSERT INTO visit_photos(id,visit_id,filename,content_type,content,uploaded_by) VALUES(%s,%s,%s,%s,%s,%s)',(photo_id,visit_id,name,content_type,content,user))
+        con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'visit_photo',%s,'upload')",(user,photo_id))
+    return {'id':photo_id,'name':name}
+
+@app.get('/api/visits/{visit_id}/photos/{photo_id}')
+def download_visit_photo(visit_id: str, photo_id: str, authorization: str | None = Header(default=None)):
+    require_sector(auth(authorization),'commercial','office')
+    with db() as con:
+        row=con.execute('SELECT filename,content_type,content FROM visit_photos WHERE id=%s AND visit_id=%s',(photo_id,visit_id)).fetchone()
+    if not row: raise HTTPException(404,'Foto não encontrada')
+    safe_name=''.join(c if (c.isascii() and c.isalnum()) or c in ' ._-()' else '_' for c in row[0])
+    return Response(content=bytes(row[2]),media_type=row[1],headers={'Content-Disposition':f'attachment; filename="{safe_name}"'})
 
 @app.get('/api/orders/{order_id}/attachments')
 def list_order_attachments(order_id: str, authorization: str | None = Header(default=None)):
