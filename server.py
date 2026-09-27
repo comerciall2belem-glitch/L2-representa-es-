@@ -229,13 +229,16 @@ def login(data: Login):
     with db() as con:
         con.execute("DELETE FROM sessions WHERE expires_at<=now()")
         con.execute("INSERT INTO sessions(token_hash,username,expires_at) VALUES(%s,%s,now()+(%s || ' hours')::interval)",(hashlib.sha256(token.encode()).hexdigest(),data.user,SESSION_HOURS))
+        con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'session',%s,'login')",(data.user,data.user))
     return {'token': token, 'user': data.user, 'expiresInHours': SESSION_HOURS, 'mustChangePassword': row[1], 'sectors':row[2] or []}
 
 @app.post('/api/logout')
 def logout(authorization: str | None = Header(default=None)):
-    auth(authorization, allow_password_change=True)
+    user=auth(authorization, allow_password_change=True)
     token_digest = hashlib.sha256(authorization[7:].encode()).hexdigest()
-    with db() as con: con.execute('DELETE FROM sessions WHERE token_hash=%s',(token_digest,))
+    with db() as con:
+        con.execute('DELETE FROM sessions WHERE token_hash=%s',(token_digest,))
+        con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'session',%s,'logout')",(user,user))
     return {'ok': True}
 
 
@@ -350,6 +353,58 @@ def update_team_member(member: str, data: TeamMemberUpdate, authorization: str |
         con.execute('DELETE FROM sessions WHERE username=%s',(member,))
         con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES('Ana Paula','app_user',%s,'permissions_update')",(member,))
     return {'ok':True,'loginRequired':True}
+
+
+@app.get('/api/admin/usage')
+def admin_usage(authorization: str | None = Header(default=None)):
+    if auth(authorization) != 'Ana Paula':
+        raise HTTPException(403,'Painel restrito à administradora')
+    with db() as con:
+        staff=con.execute('SELECT username,coalesce(role,\'\'),active,must_change_password,sectors FROM app_users ORDER BY username').fetchall()
+        activity=con.execute("""
+            SELECT username,
+              count(*) FILTER (WHERE created_at>=now()-interval '7 days' AND action NOT IN ('login','logout')) AS actions_7d,
+              count(*) FILTER (WHERE created_at>=now()-interval '30 days' AND action NOT IN ('login','logout')) AS actions_30d,
+              count(*) FILTER (WHERE created_at>=now()-interval '30 days' AND kind='visit' AND action='upsert') AS visits_30d,
+              count(*) FILTER (WHERE created_at>=now()-interval '30 days' AND kind='order' AND action='upsert') AS orders_30d,
+              count(*) FILTER (WHERE created_at>=now()-interval '30 days' AND kind='opportunity' AND action='upsert') AS opportunities_30d,
+              count(*) FILTER (WHERE created_at>=now()-interval '30 days' AND kind='interaction' AND action='upsert') AS interactions_30d,
+              count(*) FILTER (WHERE created_at>=now()-interval '30 days' AND action='login') AS logins_30d,
+              max(created_at) FILTER (WHERE action='login') AS last_login,
+              max(created_at) FILTER (WHERE action NOT IN ('login','logout')) AS last_action
+            FROM audit_log GROUP BY username
+        """).fetchall()
+        session_rows=con.execute('SELECT username,count(*) FROM sessions WHERE expires_at>now() GROUP BY username').fetchall()
+        task_rows=con.execute("""
+            SELECT payload->>'user',count(*),count(*) FILTER (WHERE nullif(payload->>'date','')<current_date::text)
+            FROM entities WHERE kind='task' AND coalesce(payload->>'status','')<>'Concluída'
+            GROUP BY payload->>'user'
+        """).fetchall()
+        op_rows=con.execute("""
+            SELECT payload->>'owner',count(*),count(*) FILTER (WHERE nullif(payload->>'due','')<current_date::text)
+            FROM entities WHERE kind='fulfillment' AND coalesce(payload->>'stage','') NOT IN ('Entregue','Pós-venda concluído')
+            GROUP BY payload->>'owner'
+        """).fetchall()
+        recent=con.execute("SELECT username,kind,action,created_at FROM audit_log WHERE action NOT IN ('login','logout') ORDER BY created_at DESC LIMIT 40").fetchall()
+    by_user={r[0]:r for r in activity}
+    sessions=dict(session_rows)
+    tasks={r[0]:(r[1],r[2]) for r in task_rows}
+    operations={r[0]:(r[1],r[2]) for r in op_rows}
+    rows=[]
+    for name,role,active,first_access,sectors in staff:
+        metrics=by_user.get(name)
+        rows.append({'user':name,'role':role,'active':active,'firstAccessPending':first_access,'sectors':sectors or [],
+            'actions7d':metrics[1] if metrics else 0,'actions30d':metrics[2] if metrics else 0,
+            'visits30d':metrics[3] if metrics else 0,'orders30d':metrics[4] if metrics else 0,
+            'opportunities30d':metrics[5] if metrics else 0,'interactions30d':metrics[6] if metrics else 0,
+            'logins30d':metrics[7] if metrics else 0,
+            'lastLogin':metrics[8].isoformat() if metrics and metrics[8] else None,
+            'lastAction':metrics[9].isoformat() if metrics and metrics[9] else None,
+            'activeSessions':sessions.get(name,0),'openTasks':tasks.get(name,(0,0))[0],
+            'overdueTasks':tasks.get(name,(0,0))[1],'openOperations':operations.get(name,(0,0))[0],
+            'overdueOperations':operations.get(name,(0,0))[1]})
+    return {'users':rows,'recent':[{'user':r[0],'kind':r[1],'action':r[2],'at':r[3].isoformat()} for r in recent],
+        'note':'Ações representam eventos auditados, não tempo conectado. Logins anteriores à implantação deste painel não foram registrados.'}
 
 def valid_cnpj(value):
     digits = ''.join(ch for ch in str(value or '') if ch.isdigit())
