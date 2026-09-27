@@ -126,7 +126,7 @@ def send_daily(con, report_day=None):
         return 0
     smtp_host=os.getenv('L2_SMTP_HOST')
     smtp_user=os.getenv('L2_SMTP_USER')
-    smtp_password=os.getenv('L2_SMTP_PASSWORD')
+    smtp_password=''.join(os.getenv('L2_SMTP_PASSWORD', '').split())
     if not (smtp_host and smtp_user and smtp_password):
         raise RuntimeError('Configure L2_SMTP_HOST, L2_SMTP_USER e L2_SMTP_PASSWORD no serviço de relatório.')
     pdf=build_pdf(read_data(con),day)
