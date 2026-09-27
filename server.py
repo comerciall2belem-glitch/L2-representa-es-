@@ -1004,9 +1004,10 @@ def client_document_access(con, client_id, user, category=None):
     if not con.execute("SELECT 1 FROM entities WHERE kind='client' AND id=%s",(client_id,)).fetchone():
         raise HTTPException(404,'Cliente não encontrado')
     if category == 'finance':
-        require_sector(user,'finance')
-    else:
-        require_sector(user,'commercial','office','finance')
+        if 'finance' not in sectors_for(user):
+            raise HTTPException(403,'Acesso financeiro restrito')
+    elif not ({'commercial','office','finance'} & sectors_for(user)):
+        raise HTTPException(403,'Acesso documental restrito')
 
 
 @app.get('/api/admin/export/portable')
