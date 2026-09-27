@@ -601,7 +601,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     try: datetime.fromisoformat(str(obj.get('at','')).replace('Z','+00:00'))
                     except (ValueError,TypeError): raise HTTPException(400,'Data da interação inválida')
                 else:
-                    stages = ('Prospectado','Qualificado','Visita agendada','Proposta enviada','Negociação','Pedido confirmado','Faturado','Entregue','Pós-venda','Perdido')
+                    stages = ('Prospectado','Qualificado','Visita agendada','Proposta enviada','Negociação','Ganho','Pedido confirmado','Faturado','Entregue','Pós-venda','Perdido')
                     if obj.get('stage') not in stages or not isinstance(obj.get('brand'),str) or not 1 <= len(obj['brand'].strip()) <= 120:
                         raise HTTPException(400,'Etapa ou indústria inválida')
                     if obj.get('stage') == 'Perdido' and not str(obj.get('lossReason','')).strip():
@@ -647,6 +647,17 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     raise HTTPException(400, 'Data de liquidação obrigatória')
                 if obj.get('Grupo DRE') and obj['Grupo DRE'] not in ('Receita operacional','Deduções','Custo direto','Despesa operacional','Resultado financeiro','Tributos sobre o resultado','Não classificado'):
                     raise HTTPException(400, 'Grupo DRE inválido')
+                if obj.get('clientId') and not con.execute("SELECT 1 FROM entities WHERE kind='client' AND id=%s",(obj['clientId'],)).fetchone():
+                    raise HTTPException(400, 'Cliente do lançamento não encontrado')
+                if len(str(obj.get('Centro de custo','')))>120:
+                    raise HTTPException(400, 'Centro de custo muito longo')
+                if obj.get('sourceOpportunityId'):
+                    source=con.execute("SELECT payload FROM entities WHERE kind='opportunity' AND id=%s",(obj['sourceOpportunityId'],)).fetchone()
+                    if not source or source[0].get('stage') not in ('Ganho','Pedido confirmado') or source[0].get('clientId')!=obj.get('clientId') or obj.get('Tipo')!='Receita':
+                        raise HTTPException(400, 'Vínculo com oportunidade inválido')
+                    duplicates=con.execute("SELECT 1 FROM entities WHERE kind='office_finance' AND id<>%s AND payload->>'sourceOpportunityId'=%s LIMIT 1",(entity_id,obj['sourceOpportunityId'])).fetchone()
+                    if duplicates:
+                        raise HTTPException(409, 'Oportunidade já vinculada a um recebível')
             if kind in ('commission_rate','commission_receipt'):
                 brand = str(obj.get('brand','')).strip()
                 normalized = re.sub(r'[^a-z0-9]+','-',unicodedata.normalize('NFKD',brand).encode('ascii','ignore').decode().lower()).strip('-')
@@ -1051,7 +1062,7 @@ def home(): return FileResponse(BASE/'index.html',headers={'Cache-Control':'no-s
 
 @app.get('/{filename}')
 def asset(filename: str):
-    if filename not in ('app.js','cash.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
+    if filename not in ('app.js','finance360.js','cash.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
         raise HTTPException(404)
     if filename in ('logo-l2-light.jpg','logo-l2-dark.jpg'):
         source={'logo-l2-light.jpg':'logo-light.jpg.b64','logo-l2-dark.jpg':'logo-dark.jpg.b64'}[filename]
