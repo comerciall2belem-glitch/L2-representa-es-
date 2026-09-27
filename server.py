@@ -1071,8 +1071,8 @@ async def upload_client_document(client_id: str, category: str, file: UploadFile
     content=await file.read(10*1024*1024+1)
     if not name or not content or len(content)>10*1024*1024: raise HTTPException(400,'Arquivo vazio ou maior que 10 MB')
     if content.startswith(b'%PDF-') and name.lower().endswith('.pdf'): content_type='application/pdf'
-    elif content.startswith(b'\\xff\\xd8\\xff') and name.lower().endswith(('.jpg','.jpeg')): content_type='image/jpeg'
-    elif content.startswith(b'\\x89PNG\\r\\n\\x1a\\n') and name.lower().endswith('.png'): content_type='image/png'
+    elif content.startswith(b'\xff\xd8\xff') and name.lower().endswith(('.jpg','.jpeg')): content_type='image/jpeg'
+    elif content.startswith(b'\x89PNG\r\n\x1a\n') and name.lower().endswith('.png'): content_type='image/png'
     elif category=='nfe' and name.lower().endswith('.xml'):
         try:
             from defusedxml import ElementTree
