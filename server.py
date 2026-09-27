@@ -77,6 +77,7 @@ def initialize():
         con.execute('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS sectors JSONB')
         con.execute('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS role TEXT')
         con.execute('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS department TEXT')
+        con.execute("UPDATE app_users SET department=CASE username WHEN 'Ana Paula' THEN 'Direção comercial' WHEN 'Euler' THEN 'Comercial' WHEN 'Laís' THEN 'Suporte administrativo' WHEN 'Marlene' THEN 'Operações administrativas' ELSE coalesce(role,'Equipe') END WHERE department IS NULL")
         con.execute('CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, username TEXT NOT NULL REFERENCES app_users(username), expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at)')
         for user, password in PASSWORDS.items():
