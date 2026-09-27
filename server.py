@@ -13,7 +13,13 @@ from client_cleanup import plan as client_cleanup_plan
 
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
-FINANCE_USERS = {'Ana Paula', 'Euler', 'Laís'}
+SECTORS = {'commercial','clients_edit','routes','office','management','finance','catalog'}
+DEFAULT_SECTORS = {
+ 'Ana Paula':sorted(SECTORS),
+ 'Euler':['commercial','routes','management','finance','catalog'],
+ 'Laís':['commercial','clients_edit','office','management','finance','catalog'],
+ 'Marlene':['commercial','clients_edit','office','catalog'],
+}
 INITIAL_PASSWORD = os.getenv('L2_INITIAL_PASSWORD', '')
 PASSWORDS = {u: INITIAL_PASSWORD or os.getenv(f'L2_PASSWORD_{i}', '') for i, u in enumerate(USERS, 1)}
 DATABASE_URL = os.getenv('DATABASE_URL', '')
@@ -66,12 +72,17 @@ def initialize():
         con.execute('CREATE INDEX IF NOT EXISTS idx_order_attachments_order ON order_attachments(order_id)')
         con.execute('CREATE TABLE IF NOT EXISTS app_users (username TEXT PRIMARY KEY, password_hash TEXT NOT NULL, active BOOLEAN NOT NULL DEFAULT true, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false')
+        con.execute('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS sectors JSONB')
+        con.execute('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS role TEXT')
         con.execute('CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, username TEXT NOT NULL REFERENCES app_users(username), expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at)')
         for user, password in PASSWORDS.items():
             exists = con.execute('SELECT 1 FROM app_users WHERE username=%s',(user,)).fetchone()
             if not exists:
-                con.execute('INSERT INTO app_users(username,password_hash,must_change_password) VALUES(%s,%s,true)',(user,password_hash(password)))
+                con.execute('INSERT INTO app_users(username,password_hash,must_change_password,sectors) VALUES(%s,%s,true,%s)',(user,password_hash(password),Jsonb(DEFAULT_SECTORS[user])))
+            else:
+                con.execute('UPDATE app_users SET sectors=%s WHERE username=%s AND sectors IS NULL',(Jsonb(DEFAULT_SECTORS[user]),user))
+            con.execute('UPDATE app_users SET role=%s WHERE username=%s AND role IS NULL',('Administradora' if user=='Ana Paula' else 'Vendedor' if user=='Euler' else 'Administrativo',user))
         # Importação inicial opcional por segredo do Render. O valor é gzip+base64,
         # nunca fica no repositório, e só é aplicado enquanto a carteira estiver vazia.
         initial_clients = os.getenv('L2_INITIAL_CLIENTS_B64', '')
@@ -120,6 +131,12 @@ def initialize():
                     con.execute("INSERT INTO entities(kind,id,payload) VALUES('price',%s,%s)", (key, Jsonb(payload)))
             except Exception as exc:
                 raise RuntimeError('Falha ao importar preços iniciais protegidos.') from exc
+        # Catálogos legados recebem indústria e tabela PA/AP sem alterar preços.
+        for (brand,) in con.execute("SELECT DISTINCT payload->>'brand' FROM entities WHERE kind='price' AND payload->>'brand' IS NOT NULL"):
+            con.execute("INSERT INTO entities(kind,id,payload) VALUES('industry',%s,%s) ON CONFLICT(kind,id) DO NOTHING",(brand,Jsonb({'id':brand,'name':brand,'active':True})))
+        for brand,state in con.execute("SELECT DISTINCT payload->>'brand',payload->>'state' FROM entities WHERE kind='price' AND payload->>'state' IN ('PA','AP')"):
+            key=f'{brand}|{state}'
+            con.execute("INSERT INTO entities(kind,id,payload) VALUES('price_table',%s,%s) ON CONFLICT(kind,id) DO NOTHING",(key,Jsonb({'id':key,'brand':brand,'state':state,'title':f'{brand} {state}','active':True})))
         office_seed = os.getenv('L2_OFFICE_SEED_B64', '')
         office_marker = 'office-management-seed-v1'
         already_imported = con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s', (office_marker,)).fetchone()
@@ -165,6 +182,15 @@ async def lifespan(app):
 
 app = FastAPI(title='L2 ONE API', lifespan=lifespan, docs_url=None, redoc_url=None)
 
+def sectors_for(user):
+    with db() as con:
+        row=con.execute('SELECT sectors FROM app_users WHERE username=%s AND active',(user,)).fetchone()
+    return set(row[0] or []) if row else set()
+
+def require_sector(user, *allowed):
+    if not (set(allowed) & sectors_for(user)):
+        raise HTTPException(403,'Setor sem permissão para pedidos')
+
 class Login(BaseModel):
     user: str
     password: str
@@ -195,7 +221,7 @@ def auth(header, allow_password_change=False):
 @app.post('/api/login')
 def login(data: Login):
     with db() as con:
-        row = con.execute('SELECT password_hash, must_change_password FROM app_users WHERE username=%s AND active',(data.user,)).fetchone()
+        row = con.execute('SELECT password_hash, must_change_password, sectors FROM app_users WHERE username=%s AND active',(data.user,)).fetchone()
     if not row or not password_ok(data.password, row[0]):
         time.sleep(0.25)
         raise HTTPException(401, 'Credenciais inválidas')
@@ -203,7 +229,7 @@ def login(data: Login):
     with db() as con:
         con.execute("DELETE FROM sessions WHERE expires_at<=now()")
         con.execute("INSERT INTO sessions(token_hash,username,expires_at) VALUES(%s,%s,now()+(%s || ' hours')::interval)",(hashlib.sha256(token.encode()).hexdigest(),data.user,SESSION_HOURS))
-    return {'token': token, 'user': data.user, 'expiresInHours': SESSION_HOURS, 'mustChangePassword': row[1]}
+    return {'token': token, 'user': data.user, 'expiresInHours': SESSION_HOURS, 'mustChangePassword': row[1], 'sectors':row[2] or []}
 
 @app.post('/api/logout')
 def logout(authorization: str | None = Header(default=None)):
@@ -259,14 +285,14 @@ def team_access(authorization: str | None = Header(default=None)):
     if auth(authorization) != 'Ana Paula':
         raise HTTPException(403, 'Acesso restrito à administradora')
     with db() as con:
-        rows = con.execute('SELECT username,active,must_change_password FROM app_users ORDER BY username').fetchall()
-    return [{'user': name, 'active': active, 'mustChangePassword': first_access} for name,active,first_access in rows]
+        rows = con.execute('SELECT username,active,must_change_password,sectors,role FROM app_users ORDER BY username').fetchall()
+    return [{'user': name, 'active': active, 'mustChangePassword': first_access,'sectors':sectors or [], 'role':role or ''} for name,active,first_access,sectors,role in rows]
 
 @app.post('/api/admin/team-access/reset')
 def reset_team_access(data: TeamAccessReset, authorization: str | None = Header(default=None)):
     if auth(authorization) != 'Ana Paula':
         raise HTTPException(403, 'Acesso restrito à administradora')
-    if data.user not in USERS or data.user == 'Ana Paula':
+    if data.user == 'Ana Paula':
         raise HTTPException(400, 'Selecione um integrante da equipe')
     provisional = secrets.token_urlsafe(24)
     with db() as con:
@@ -277,6 +303,53 @@ def reset_team_access(data: TeamAccessReset, authorization: str | None = Header(
         con.execute('DELETE FROM sessions WHERE username=%s', (data.user,))
         con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)', ('Ana Paula','app_user',data.user,'team_access_reset'))
     return {'user': data.user, 'temporaryPassword': provisional, 'mustChangePassword': True}
+
+
+class TeamMember(BaseModel):
+    user: str = Field(min_length=2,max_length=80)
+    role: str
+    sectors: list[str] = Field(min_length=1,max_length=7)
+
+class TeamMemberUpdate(BaseModel):
+    role: str
+    sectors: list[str] = Field(min_length=1,max_length=7)
+    active: bool = True
+
+def validate_member(user, role, sectors):
+    name = user.strip()
+    if not re.fullmatch(r"[\wÀ-ÿ .'-]{2,80}",name) or role not in ('Vendedor','Administrativo','Gestão') or set(sectors)-SECTORS or len(set(sectors))!=len(sectors):
+        raise HTTPException(400,'Nome, função ou setores inválidos')
+    if role=='Vendedor' and 'commercial' not in sectors:
+        raise HTTPException(400,'Vendedor precisa de acesso Comercial')
+    return name
+
+@app.post('/api/admin/team-access')
+def create_team_member(data: TeamMember, authorization: str | None = Header(default=None)):
+    if auth(authorization) != 'Ana Paula':
+        raise HTTPException(403,'Acesso restrito à administradora')
+    name=validate_member(data.user,data.role,data.sectors)
+    provisional=secrets.token_urlsafe(24)
+    with db() as con:
+        if con.execute('SELECT 1 FROM app_users WHERE lower(username)=lower(%s)',(name,)).fetchone():
+            raise HTTPException(409,'Usuário já cadastrado')
+        con.execute('INSERT INTO app_users(username,password_hash,must_change_password,sectors,role) VALUES(%s,%s,true,%s,%s)',(name,password_hash(provisional),Jsonb(data.sectors),data.role))
+        con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES('Ana Paula','app_user',%s,'create')",(name,))
+    return {'user':name,'temporaryPassword':provisional,'mustChangePassword':True}
+
+@app.put('/api/admin/team-access/{member}')
+def update_team_member(member: str, data: TeamMemberUpdate, authorization: str | None = Header(default=None)):
+    if auth(authorization) != 'Ana Paula':
+        raise HTTPException(403,'Acesso restrito à administradora')
+    if member=='Ana Paula':
+        raise HTTPException(400,'A conta administradora não pode ser alterada aqui')
+    validate_member(member,data.role,data.sectors)
+    with db() as con:
+        if not con.execute('SELECT 1 FROM app_users WHERE username=%s',(member,)).fetchone():
+            raise HTTPException(404,'Usuário não encontrado')
+        con.execute('UPDATE app_users SET sectors=%s,role=%s,active=%s,updated_at=now() WHERE username=%s',(Jsonb(data.sectors),data.role,data.active,member))
+        con.execute('DELETE FROM sessions WHERE username=%s',(member,))
+        con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES('Ana Paula','app_user',%s,'permissions_update')",(member,))
+    return {'ok':True,'loginRequired':True}
 
 def valid_cnpj(value):
     digits = ''.join(ch for ch in str(value or '') if ch.isdigit())
@@ -323,12 +396,15 @@ def import_prices(data: PriceImport, authorization: str | None = Header(default=
                          'price':str(row.price),'description':row.description}
     with db() as con:
         for key, payload in prepared.items():
+            table=con.execute("SELECT payload FROM entities WHERE kind='price_table' AND id=%s",(f"{payload['brand']}|{payload['state']}",)).fetchone()
+            if not table or not table[0].get('active'): raise HTTPException(400, f"Cadastre a tabela {payload['brand']} / {payload['state']} antes de importar")
             con.execute("INSERT INTO entities(kind,id,payload) VALUES('price',%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,updated_at=now()", (key,Jsonb(payload)))
     return {'imported':len(prepared)}
 
 @app.get('/api/prices/{client_id}')
 def prices_for_client(client_id: str, authorization: str | None = Header(default=None)):
-    auth(authorization)
+    user=auth(authorization)
+    if not ({'catalog','commercial'} & sectors_for(user)): raise HTTPException(403,'Catálogo sem permissão')
     with db() as con:
         row = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s",(client_id,)).fetchone()
         if not row:
@@ -343,15 +419,23 @@ def prices_for_client(client_id: str, authorization: str | None = Header(default
 def sync(data: Sync, authorization: str | None = Header(default=None)):
     user = auth(authorization)
     with db() as con:
+        permissions=set((con.execute('SELECT sectors FROM app_users WHERE username=%s',(user,)).fetchone() or [[]])[0] or [])
         for change in data.changes:
             kind, obj = change.type, dict(change.data)
             entity_id = obj.get('id')
-            deletable = {'delete_opportunity':'opportunity','delete_interaction':'interaction','delete_whatsapp_template':'whatsapp_template','delete_client':'client','delete_visit':'visit','delete_task':'task','delete_goal':'goal','delete_route':'route','delete_order':'order','delete_price':'price','delete_cash_entry':'cash_entry','delete_commission_rate':'commission_rate','delete_commission_receipt':'commission_receipt','delete_office_process':'office_process','delete_office_action':'office_action','delete_office_commercial':'office_commercial','delete_office_administrative':'office_administrative','delete_office_ritual':'office_ritual','delete_office_role':'office_role','delete_office_finance':'office_finance','delete_office_budget':'office_budget','delete_office_monthly_close':'office_monthly_close'}
-            if kind not in ('opportunity','interaction','whatsapp_template','client','visit','order','task','route','goal','price','commission_rate','commission_receipt','office_action','office_commercial','office_administrative','office_ritual','office_role','office_finance','office_budget','office_monthly_close','office_process','cash_day','cash_entry',*deletable) or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
+            deletable = {'delete_industry':'industry','delete_price_table':'price_table','delete_fulfillment':'fulfillment','delete_settlement':'settlement','delete_opportunity':'opportunity','delete_interaction':'interaction','delete_whatsapp_template':'whatsapp_template','delete_client':'client','delete_visit':'visit','delete_task':'task','delete_goal':'goal','delete_route':'route','delete_order':'order','delete_price':'price','delete_cash_entry':'cash_entry','delete_commission_rate':'commission_rate','delete_commission_receipt':'commission_receipt','delete_office_process':'office_process','delete_office_action':'office_action','delete_office_commercial':'office_commercial','delete_office_administrative':'office_administrative','delete_office_ritual':'office_ritual','delete_office_role':'office_role','delete_office_finance':'office_finance','delete_office_budget':'office_budget','delete_office_monthly_close':'office_monthly_close'}
+            if kind not in ('industry','price_table','fulfillment','settlement','opportunity','interaction','whatsapp_template','client','visit','order','task','route','goal','price','commission_rate','commission_receipt','office_action','office_commercial','office_administrative','office_ritual','office_role','office_finance','office_budget','office_monthly_close','office_process','cash_day','cash_entry',*deletable) or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
                 raise HTTPException(400, 'Alteração inválida')
+            if kind.startswith('delete_') and kind not in ('delete_industry','delete_price_table','delete_price','delete_client','delete_order'):
+                base=kind[7:]
+                required='finance' if base in ('settlement','cash_entry','commission_rate','commission_receipt','office_finance','office_budget','office_monthly_close') else 'routes' if base=='route' else 'office' if base.startswith('office_') or base=='fulfillment' else 'commercial'
+                if required not in permissions and not (base=='fulfillment' and 'commercial' in permissions): raise HTTPException(403,'Setor sem permissão')
             if kind in deletable:
                 target = deletable[kind]
-                if target in ('office_finance','office_budget','office_monthly_close','cash_entry','commission_rate','commission_receipt') and user not in FINANCE_USERS:
+                if target in ('industry','price_table') and user != 'Ana Paula': raise HTTPException(403,'Catálogo restrito à administradora')
+                if target == 'industry' and con.execute("SELECT 1 FROM entities WHERE kind='price_table' AND payload->>'brand'=%s LIMIT 1",(entity_id,)).fetchone(): raise HTTPException(409,'Indústria possui tabelas cadastradas')
+                if target == 'price_table' and con.execute("SELECT 1 FROM entities WHERE kind='price' AND concat(payload->>'brand','|',payload->>'state')=%s LIMIT 1",(entity_id,)).fetchone(): raise HTTPException(409,'Tabela possui produtos cadastrados')
+                if target in ('office_finance','office_budget','office_monthly_close','cash_entry','commission_rate','commission_receipt','settlement') and 'finance' not in permissions:
                     raise HTTPException(403, 'Acesso financeiro restrito')
                 if target == 'cash_entry':
                     previous = con.execute("SELECT payload FROM entities WHERE kind='cash_entry' AND id=%s",(entity_id,)).fetchone()
@@ -359,25 +443,27 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         day = con.execute("SELECT payload FROM entities WHERE kind='cash_day' AND payload->>'date'=%s",(previous[0].get('date'),)).fetchone()
                         if not day or day[0].get('status') != 'Aberto':
                             raise HTTPException(409, 'Caixa fechado não permite excluir lançamentos')
-                if target == 'route' and user in ('Laís','Marlene'):
+                if target == 'route' and 'routes' not in permissions:
                     raise HTTPException(403, 'Roteirização restrita a representantes')
                 if target in ('price','client') and user != 'Ana Paula':
                     raise HTTPException(403, 'Exclusão restrita à administradora')
-                if target == 'office_process' and user not in FINANCE_USERS:
+                if target == 'office_process' and 'finance' not in permissions:
                     previous = con.execute("SELECT payload FROM entities WHERE kind=%s AND id=%s", (target,entity_id)).fetchone()
                     if previous and previous[0].get('Área') == 'Financeiro':
                         raise HTTPException(403, 'Acesso financeiro restrito')
                 if target == 'client':
-                    for dependent in ('order','visit','route','task','opportunity','interaction'):
+                    for dependent in ('order','visit','route','task','opportunity','interaction','fulfillment','settlement'):
                         if con.execute("SELECT 1 FROM entities WHERE kind=%s AND payload->>'clientId'=%s LIMIT 1",(dependent,entity_id)).fetchone():
                             raise HTTPException(409, 'Cliente possui histórico vinculado; preserve o cadastro')
                 if target == 'order':
+                    if con.execute("SELECT 1 FROM entities WHERE kind='settlement' AND payload->>'orderId'=%s LIMIT 1",(entity_id,)).fetchone():
+                        raise HTTPException(409,'Pedido com faturamento vinculado deve ser conciliado antes de arquivar')
                     previous = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
                     if previous and previous[0].get('status') not in ('Pendente','Cancelado') and user != 'Ana Paula':
                         raise HTTPException(403, 'Somente Ana Paula pode arquivar pedido confirmado ou faturado')
                 if con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s',(change.changeId,)).fetchone():
                     continue
-                if target in ('opportunity','interaction'):
+                if target in ('opportunity','interaction','fulfillment','settlement'):
                     previous_crm = con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s',(target,entity_id)).fetchone()
                     if previous_crm:
                         con.execute('INSERT INTO archived_entities(kind,id,payload,reason) VALUES(%s,%s,%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,reason=excluded.reason,archived_at=now()',(target,entity_id,Jsonb(previous_crm[0]),'arquivado por '+user))
@@ -387,10 +473,63 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
                 con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,target,entity_id,'delete'))
                 continue
+            if kind in ('opportunity','interaction','visit','order','task','goal','whatsapp_template','client') and 'commercial' not in permissions and 'office' not in permissions:
+                raise HTTPException(403,'Setor comercial sem permissão')
+            if kind in ('fulfillment',) and not ({'office','commercial'} & permissions): raise HTTPException(403,'Setor operacional sem permissão')
+            if kind.startswith('office_') and kind not in ('office_finance','office_budget','office_monthly_close') and 'office' not in permissions: raise HTTPException(403,'Setor escritório sem permissão')
+            if kind in ('industry','price_table'):
+                if user != 'Ana Paula': raise HTTPException(403,'Catálogo restrito à administradora')
+                brand=str(obj.get('name' if kind=='industry' else 'brand','')).strip()
+                if not brand or len(brand)>120 or '|' in brand: raise HTTPException(400,'Indústria inválida')
+                if kind=='industry':
+                    if con.execute("SELECT 1 FROM entities WHERE kind='industry' AND lower(id)=lower(%s) AND id<>%s LIMIT 1",(brand,entity_id)).fetchone(): raise HTTPException(409,'Indústria já cadastrada')
+                    if entity_id!=brand: raise HTTPException(400,'Identificação da indústria inválida')
+                    if not isinstance(obj.get('active'),bool): raise HTTPException(400,'Situação inválida')
+                else:
+                    state=normalize_uf(obj.get('state'))
+                    if not state or entity_id!=f'{brand}|{state}': raise HTTPException(400,'Tabela PA/AP inválida')
+                    industry=con.execute("SELECT payload FROM entities WHERE kind='industry' AND id=%s",(brand,)).fetchone()
+                    if not industry or not industry[0].get('active'): raise HTTPException(400,'Cadastre uma indústria ativa antes da tabela')
+                    if not isinstance(obj.get('active'),bool): raise HTTPException(400,'Situação inválida')
+                    obj['state']=state
+            if kind in ('fulfillment','settlement'):
+                order_ref = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(obj.get('orderId'),)).fetchone()
+                if not order_ref or obj.get('clientId') != order_ref[0].get('clientId'):
+                    raise HTTPException(400,'Pedido e cliente não correspondem')
+                if kind == 'fulfillment':
+                    if obj.get('stage') not in ('Conferência','Enviado à indústria','Confirmado pela indústria','Faturado','Em transporte','Entregue','Pós-venda concluído','Ocorrência') or not con.execute('SELECT 1 FROM app_users WHERE username=%s AND active',(obj.get('owner'),)).fetchone():
+                        raise HTTPException(400,'Etapa operacional ou responsável inválido')
+                    other = con.execute("SELECT 1 FROM entities WHERE kind='fulfillment' AND payload->>'orderId'=%s AND id<>%s LIMIT 1",(obj.get('orderId'),entity_id)).fetchone()
+                    if other: raise HTTPException(409,'Pedido já tem acompanhamento')
+                else:
+                    if 'finance' not in permissions: raise HTTPException(403,'Acesso financeiro restrito')
+                    if not isinstance(obj.get('invoiceNumber'),str) or not 1<=len(obj['invoiceNumber'].strip())<=80:
+                        raise HTTPException(400,'Documento de faturamento inválido')
+                    other = con.execute("SELECT 1 FROM entities WHERE kind='settlement' AND payload->>'orderId'=%s AND payload->>'invoiceNumber'=%s AND id<>%s LIMIT 1",(obj.get('orderId'),obj['invoiceNumber'],entity_id)).fetchone()
+                    if other: raise HTTPException(409,'Documento de faturamento já cadastrado')
+                    values={}
+                    for field in ('billed','commissionReceived','allocatedCost'):
+                        try: value=Decimal(str(obj.get(field,'0')))
+                        except (ValueError,TypeError,InvalidOperation): raise HTTPException(400,'Valor financeiro inválido')
+                        if not value.is_finite() or value<0 or value>Decimal('10000000000') or value.as_tuple().exponent < -2: raise HTTPException(400,'Valor financeiro inválido')
+                        values[field]=value
+                    try: rate=Decimal(str(obj.get('rate','')))
+                    except (ValueError,TypeError,InvalidOperation): raise HTTPException(400,'Percentual inválido')
+                    if not rate.is_finite() or rate<0 or rate>100 or rate.as_tuple().exponent < -2: raise HTTPException(400,'Percentual inválido')
+                    calculated=(values['billed']*rate/100).quantize(Decimal('0.01'))
+                    if values['commissionReceived']>calculated: raise HTTPException(400,'Recebimento maior que comissão prevista')
+                    if values['commissionReceived']>0 and not obj.get('receivedDate'): raise HTTPException(400,'Data de recebimento obrigatória')
+                    obj['commissionDue']=str(calculated)
+                    if obj.get('brand')!=order_ref[0].get('brand'): raise HTTPException(400,'Indústria do lançamento não corresponde ao pedido')
+                    for field in ('billedDate','due','receivedDate'):
+                        if obj.get(field):
+                            try: date.fromisoformat(str(obj[field]))
+                            except (ValueError,TypeError): raise HTTPException(400,'Data financeira inválida')
+                    if not obj.get('billedDate'): raise HTTPException(400,'Data do faturamento obrigatória')
             if kind in ('opportunity','interaction'):
                 if not isinstance(obj.get('clientId'),str) or not con.execute("SELECT 1 FROM entities WHERE kind='client' AND id=%s",(obj.get('clientId'),)).fetchone():
                     raise HTTPException(400,'Cliente da oportunidade ou interação não encontrado')
-                if obj.get('owner') not in ('Ana Paula','Euler','Laís','Marlene'):
+                if not con.execute('SELECT 1 FROM app_users WHERE username=%s AND active',(obj.get('owner'),)).fetchone():
                     raise HTTPException(400,'Responsável inválido')
                 if kind == 'interaction':
                     if obj.get('type') not in ('Conversa','Ligação','WhatsApp','E-mail','Reunião','Ocorrência','Pós-venda') or not isinstance(obj.get('text'),str) or not 1 <= len(obj['text'].strip()) <= 2000:
@@ -414,6 +553,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                             except (ValueError,TypeError): raise HTTPException(400,'Data da oportunidade inválida')
                     if len(str(obj.get('notes','')))>2000: raise HTTPException(400,'Contexto muito extenso')
             if kind == 'price':
+                table=con.execute("SELECT payload FROM entities WHERE kind='price_table' AND id=%s",(f"{obj.get('brand','').strip()}|{normalize_uf(obj.get('state')) or ''}",)).fetchone()
+                if not table or not table[0].get('active'): raise HTTPException(400,'Cadastre a tabela da indústria para PA/AP antes dos produtos')
                 if user != 'Ana Paula':
                     raise HTTPException(403, 'Preço restrito à administradora')
                 brand,sku,state = str(obj.get('brand','')).strip(),str(obj.get('sku','')).strip(),normalize_uf(obj.get('state'))
@@ -422,7 +563,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 if not brand or not sku or not state or entity_id != f'{brand}|{state}|{sku}' or not price.is_finite() or price <= 0 or price.as_tuple().exponent < -2:
                     raise HTTPException(400,'Preço ou identificação inválida')
                 obj.update(brand=brand,sku=sku,state=state,price=str(price))
-            if (kind in ('office_finance','office_budget','office_monthly_close','cash_day','cash_entry','commission_rate','commission_receipt') or (kind == 'office_process' and str(obj.get('Área','')) == 'Financeiro')) and user not in FINANCE_USERS:
+            if (kind in ('office_finance','office_budget','office_monthly_close','cash_day','cash_entry','commission_rate','commission_receipt') or (kind == 'office_process' and str(obj.get('Área','')) == 'Financeiro')) and 'finance' not in permissions:
                 raise HTTPException(403, 'Acesso financeiro restrito')
             if kind in ('commission_rate','commission_receipt'):
                 brand = str(obj.get('brand','')).strip()
@@ -441,7 +582,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     raise HTTPException(400, 'Mês de comissão inválido')
                 if entity_id != expected_id:
                     raise HTTPException(400, 'Identificação de comissão inválida')
-            if kind == 'office_process' and user not in FINANCE_USERS:
+            if kind == 'office_process' and 'finance' not in permissions:
                 previous_process = con.execute("SELECT payload FROM entities WHERE kind='office_process' AND id=%s",(entity_id,)).fetchone()
                 if previous_process and str(previous_process[0].get('Área','')) == 'Financeiro':
                     raise HTTPException(403, 'Acesso financeiro restrito')
@@ -569,11 +710,11 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 except (TypeError, ValueError): raise HTTPException(400,'Meta inválida')
                 if not re.fullmatch(r'\d{4}-\d{2}',str(obj.get('month',''))) or not 0 <= amount <= 1e10:
                     raise HTTPException(400,'Meta inválida')
-            if kind == 'route' and user in ('Laís','Marlene'):
+            if kind == 'route' and 'routes' not in permissions:
                 raise HTTPException(403,'Roteirização restrita a representantes')
-            if kind == 'delete_route' and user in ('Laís','Marlene'):
+            if kind == 'delete_route' and 'routes' not in permissions:
                 raise HTTPException(403,'Roteirização restrita a representantes')
-            if kind == 'client' and user == 'Euler' and con.execute('SELECT 1 FROM entities WHERE kind=%s AND id=%s',('client',entity_id)).fetchone():
+            if kind == 'client' and 'clients_edit' not in permissions and con.execute('SELECT 1 FROM entities WHERE kind=%s AND id=%s',('client',entity_id)).fetchone():
                 # A repeated, previously applied change is accepted below.
                 if not con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s',(change.changeId,)).fetchone():
                     raise HTTPException(403,'Sem permissão para editar cadastro existente')
@@ -586,15 +727,23 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 con.execute('INSERT INTO entities(kind,id,payload) VALUES(%s,%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,updated_at=now()', (kind,entity_id,Jsonb(obj)))
             con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
             con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,kind,entity_id,'delete' if kind=='delete_route' else 'upsert'))
-        result = {}
-        public_kinds = [('opportunity','opportunities'),('interaction','interactions'),('whatsapp_template','whatsappTemplates'),('client','clients'),('visit','visits'),('order','orders'),('task','tasks'),('route','routes'),('goal','goals'),('price','prices'),('office_process','officeProcesses'),('office_action','officeActions'),('office_commercial','officeCommercial'),('office_administrative','officeAdministrative'),('office_ritual','officeRituals'),('office_role','officeRoles')]
+        result = {'sectors':sorted(permissions),'team':[row[0] for row in con.execute('SELECT username FROM app_users WHERE active ORDER BY username')]}
+        public_kinds = [('industry','industries'),('price_table','priceTables'),('fulfillment','fulfillments'),('opportunity','opportunities'),('interaction','interactions'),('whatsapp_template','whatsappTemplates'),('client','clients'),('visit','visits'),('order','orders'),('task','tasks'),('route','routes'),('goal','goals'),('price','prices'),('office_process','officeProcesses'),('office_action','officeActions'),('office_commercial','officeCommercial'),('office_administrative','officeAdministrative'),('office_ritual','officeRituals'),('office_role','officeRoles')]
         for kind, name in public_kinds:
-            if kind == 'office_process' and user not in FINANCE_USERS:
+            if kind in ('office_process','office_action','office_commercial','office_administrative','office_ritual','office_role','fulfillment') and not ({'office','commercial'} & permissions):
+                result[name]=[];continue
+            if kind in ('client','visit','order','task','goal','opportunity','interaction','whatsapp_template') and not ({'commercial','office','finance','management'} & permissions):
+                result[name]=[];continue
+            if kind == 'route' and 'routes' not in permissions:
+                result[name]=[];continue
+            if kind in ('price','industry','price_table') and not ({'catalog','commercial'} & permissions):
+                result[name]=[];continue
+            if kind == 'office_process' and 'finance' not in permissions:
                 result[name] = [row[0] for row in con.execute("SELECT payload FROM entities WHERE kind=%s AND coalesce(payload->>'Área','')<>'Financeiro' ORDER BY updated_at,id", (kind,))]
             else:
                 result[name] = [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))]
-        for kind, name in [('office_finance','officeFinance'),('office_budget','officeBudget'),('office_monthly_close','officeMonthlyClose'),('cash_day','cashDays'),('cash_entry','cashEntries'),('commission_rate','commissionRates'),('commission_receipt','commissionReceipts')]:
-            result[name] = [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))] if user in FINANCE_USERS else []
+        for kind, name in [('settlement','settlements'),('office_finance','officeFinance'),('office_budget','officeBudget'),('office_monthly_close','officeMonthlyClose'),('cash_day','cashDays'),('cash_entry','cashEntries'),('commission_rate','commissionRates'),('commission_receipt','commissionReceipts')]:
+            result[name] = [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))] if 'finance' in permissions else []
         return result
 
 def order_exists(con, order_id: str):
@@ -626,7 +775,7 @@ def restore_archived_order(order_id: str, authorization: str | None = Header(def
 
 @app.get('/api/orders/{order_id}/attachments')
 def list_order_attachments(order_id: str, authorization: str | None = Header(default=None)):
-    auth(authorization)
+    require_sector(auth(authorization),'commercial','office')
     with db() as con:
         order_exists(con,order_id)
         rows=con.execute('SELECT id,filename,content_type,octet_length(content),uploaded_by,created_at FROM order_attachments WHERE order_id=%s ORDER BY created_at,id',(order_id,)).fetchall()
@@ -635,6 +784,7 @@ def list_order_attachments(order_id: str, authorization: str | None = Header(def
 @app.post('/api/orders/{order_id}/attachments')
 async def upload_order_attachment(order_id: str, file: UploadFile = File(...), authorization: str | None = Header(default=None)):
     user=auth(authorization)
+    require_sector(user,'commercial','office')
     name=Path(file.filename or '').name.strip()[:180]
     content=await file.read(5*1024*1024+1)
     if not name or not content or len(content)>5*1024*1024:
@@ -657,7 +807,7 @@ async def upload_order_attachment(order_id: str, file: UploadFile = File(...), a
 
 @app.get('/api/orders/{order_id}/attachments/{attachment_id}')
 def download_order_attachment(order_id: str, attachment_id: str, authorization: str | None = Header(default=None)):
-    auth(authorization)
+    require_sector(auth(authorization),'commercial','office')
     with db() as con:
         row=con.execute('SELECT filename,content_type,content FROM order_attachments WHERE id=%s AND order_id=%s',(attachment_id,order_id)).fetchone()
     if not row: raise HTTPException(404,'Comprovante não encontrado')
@@ -667,6 +817,7 @@ def download_order_attachment(order_id: str, attachment_id: str, authorization: 
 @app.delete('/api/orders/{order_id}/attachments/{attachment_id}')
 def delete_order_attachment(order_id: str, attachment_id: str, authorization: str | None = Header(default=None)):
     user=auth(authorization)
+    require_sector(user,'commercial','office')
     with db() as con:
         order=con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(order_id,)).fetchone()
         if not order: raise HTTPException(404,'Pedido não encontrado')
