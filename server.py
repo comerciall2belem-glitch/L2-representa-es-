@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 import psycopg
 from psycopg.types.json import Jsonb
 from client_cleanup import plan as client_cleanup_plan
+from daily_report import build_pdf, read_data, TZ
 
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
@@ -628,6 +629,24 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 obj.update(brand=brand,sku=sku,state=state,price=str(price))
             if (kind in ('office_finance','office_budget','office_monthly_close','cash_day','cash_entry','commission_rate','commission_receipt') or (kind == 'office_process' and str(obj.get('Área','')) == 'Financeiro')) and 'finance' not in permissions:
                 raise HTTPException(403, 'Acesso financeiro restrito')
+            if kind == 'office_finance' and obj.get('Data'):
+                try:
+                    date.fromisoformat(str(obj['Data']))
+                    if obj.get('Vencimento'): date.fromisoformat(str(obj['Vencimento']))
+                    if obj.get('Liquidação'): date.fromisoformat(str(obj['Liquidação']))
+                    amount=Decimal(str(obj['Valor']))
+                except (ValueError, TypeError, KeyError, InvalidOperation):
+                    raise HTTPException(400, 'Data ou valor financeiro inválido')
+                if not amount.is_finite() or amount<=0 or amount.as_tuple().exponent < -2 or amount>Decimal('10000000000'):
+                    raise HTTPException(400, 'Valor financeiro inválido')
+                if obj.get('Tipo') not in ('Receita','Despesa') or obj.get('Situação') not in ('Previsto','Pago/Recebido'):
+                    raise HTTPException(400, 'Tipo ou situação financeira inválida')
+                if not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])',str(obj.get('Competência') or obj['Data'][:7])):
+                    raise HTTPException(400, 'Competência inválida')
+                if obj['Situação']=='Pago/Recebido' and obj.get('Grupo DRE') and not obj.get('Liquidação'):
+                    raise HTTPException(400, 'Data de liquidação obrigatória')
+                if obj.get('Grupo DRE') and obj['Grupo DRE'] not in ('Receita operacional','Deduções','Custo direto','Despesa operacional','Resultado financeiro','Tributos sobre o resultado','Não classificado'):
+                    raise HTTPException(400, 'Grupo DRE inválido')
             if kind in ('commission_rate','commission_receipt'):
                 brand = str(obj.get('brand','')).strip()
                 normalized = re.sub(r'[^a-z0-9]+','-',unicodedata.normalize('NFKD',brand).encode('ascii','ignore').decode().lower()).strip('-')
@@ -978,6 +997,14 @@ def apply_client_cleanup(data: CleanupConfirmation, authorization: str | None = 
             con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'client',%s,'archive: outside PA/AP')",(user,row['id']))
     return {'archivedOutside':len(proposal['outside']),'mergedDuplicates':len(proposal['duplicates']),
             'remaining':total-len(proposal['outside'])-len(proposal['duplicates'])}
+
+@app.get('/api/reports/daily.pdf')
+def daily_pdf(authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    require_sector(user,'finance')
+    with db() as con:
+        content=build_pdf(read_data(con),datetime.now(TZ).date())
+    return Response(content=content,media_type='application/pdf',headers={'Cache-Control':'no-store','Content-Disposition':'attachment; filename="L2_ONE_relatorio_diario.pdf"'})
 
 @app.get('/health')
 def health():
