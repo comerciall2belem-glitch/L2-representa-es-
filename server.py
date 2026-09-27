@@ -1011,7 +1011,7 @@ async def security_headers(request, call_next):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['Referrer-Policy'] = 'same-origin'
-    response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
+    response.headers['Permissions-Policy'] = 'camera=(self), microphone=(), geolocation=()'
     response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:; img-src 'self' data:; frame-ancestors 'none'"
     if request.url.path.startswith('/api/'):
         response.headers['Cache-Control'] = 'no-store'
@@ -1026,7 +1026,8 @@ def asset(filename: str):
     if filename not in ('app.js','cash.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
         raise HTTPException(404)
     if filename in ('logo-l2-light.jpg','logo-l2-dark.jpg'):
-        return Response(content=base64.b64decode((BASE/(filename+'.b64')).read_text()), media_type='image/jpeg', headers={'Cache-Control':'no-store'})
+        source={'logo-l2-light.jpg':'logo-light.jpg.b64','logo-l2-dark.jpg':'logo-dark.jpg.b64'}[filename]
+        return Response(content=base64.b64decode((BASE/source).read_text()), media_type='image/jpeg', headers={'Cache-Control':'no-store'})
     if filename in ('icon-192.png','icon-512.png','apple-touch-icon.png'):
         return Response(content=base64.b64decode((BASE/(filename+'.b64')).read_text()), media_type='image/png', headers={'Cache-Control':'public, max-age=86400'})
     return FileResponse(BASE/filename,headers={'Cache-Control':'no-store'})
