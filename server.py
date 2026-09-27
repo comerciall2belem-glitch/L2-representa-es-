@@ -1,5 +1,5 @@
 """L2 ONE: secure FastAPI/PostgreSQL application for Render."""
-import os, json, time, hashlib, secrets, re, base64, gzip, unicodedata
+import os, json, time, hashlib, secrets, re, base64, gzip, unicodedata, io, zipfile
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Header, UploadFile, File
@@ -54,9 +54,48 @@ def password_ok(password, stored):
     except (ValueError, TypeError):
         return False
 
+
+MARCO_ZERO = date(2026, 9, 28)
+
+def operational_date(value):
+    try:
+        parsed=datetime.fromisoformat(str(value).replace('Z','+00:00'))
+        return parsed if parsed.date() >= MARCO_ZERO else None
+    except (ValueError, TypeError):
+        return None
+
+def project_attendance(con,kind,entity_id,payload,created_at=None,updated_at=None):
+    client_id=payload.get('clientId')
+    if not client_id or not con.execute('SELECT 1 FROM clientes WHERE id=%s',(client_id,)).fetchone(): return
+    user=payload.get('user') if kind=='visit' else payload.get('owner')
+    if not con.execute('SELECT 1 FROM app_users WHERE username=%s',(user,)).fetchone(): user=None
+    contact='visita' if kind=='visit' else {'Ligação':'ligacao','WhatsApp':'whatsapp','E-mail':'email'}.get(payload.get('type'))
+    at=operational_date(payload.get('date') if kind=='visit' else payload.get('at'))
+    note=(payload.get('notes') or payload.get('result') or '') if kind=='visit' else payload.get('text','')
+    con.execute("""INSERT INTO atendimentos(id,cliente_id,usuario_id,tipo_contato,observacao,data_atendimento,created_at,updated_at)
+        VALUES(%s,%s,%s,%s,%s,%s,coalesce(%s,now()),coalesce(%s,now()))
+        ON CONFLICT(id) DO UPDATE SET cliente_id=excluded.cliente_id,usuario_id=excluded.usuario_id,
+          tipo_contato=excluded.tipo_contato,observacao=excluded.observacao,data_atendimento=excluded.data_atendimento,updated_at=now()""",
+        (kind+':'+entity_id,client_id,user,contact,note,at,created_at,updated_at))
+
+def project_order(con,entity_id,payload,created_at=None,updated_at=None):
+    client_id=payload.get('clientId')
+    if not client_id or not con.execute('SELECT 1 FROM clientes WHERE id=%s',(client_id,)).fetchone(): return
+    try:
+        value=Decimal(str(payload.get('amount'))) if payload.get('amount') not in (None,'') else None
+        if value is not None and (not value.is_finite() or value<0): value=None
+    except (ValueError,TypeError,InvalidOperation): value=None
+    con.execute("""INSERT INTO faturamento_pedidos(id,cliente_id,pedido_erp_id,valor_total,data_pedido,status_pedido,created_at,updated_at)
+        VALUES(%s,%s,%s,%s,%s,%s,coalesce(%s,now()),coalesce(%s,now()))
+        ON CONFLICT(id) DO UPDATE SET cliente_id=excluded.cliente_id,pedido_erp_id=excluded.pedido_erp_id,
+          valor_total=excluded.valor_total,data_pedido=excluded.data_pedido,status_pedido=excluded.status_pedido,updated_at=now()""",
+        (entity_id,client_id,str(payload.get('orderNumber') or '') or None,value,operational_date(payload.get('date')),str(payload.get('status') or 'Sem status'),created_at,updated_at))
+
 def initialize():
     with db() as con:
         con.execute('CREATE TABLE IF NOT EXISTS entities (kind TEXT NOT NULL, id TEXT NOT NULL, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(kind,id))')
+        con.execute('ALTER TABLE entities ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ')
+        con.execute('ALTER TABLE entities ALTER COLUMN created_at SET DEFAULT now()')
         con.execute('CREATE TABLE IF NOT EXISTS applied_changes (change_id TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE TABLE IF NOT EXISTS audit_log (id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, kind TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE TABLE IF NOT EXISTS archived_entities (kind TEXT NOT NULL, id TEXT NOT NULL, payload JSONB NOT NULL, reason TEXT NOT NULL, archived_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(kind,id))')
@@ -176,6 +215,47 @@ def initialize():
                 con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)', (office_marker,))
             except Exception as exc:
                 raise RuntimeError('Falha ao importar a gestão integrada do escritório.') from exc
+
+        # Relational projection of the existing sync entities; IDs remain stable across exports.
+        con.execute("""CREATE TABLE IF NOT EXISTS clientes (
+            id TEXT PRIMARY KEY, razao_social VARCHAR(180) NOT NULL,
+            nome_fantasia VARCHAR(180), documento VARCHAR(20) UNIQUE,
+            curva_abc CHAR(1) CHECK(curva_abc IN ('A','B','C')),
+            status VARCHAR(12) NOT NULL DEFAULT 'ativo' CHECK(status IN ('ativo','inativo','em_risco')),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())""")
+        con.execute("""CREATE TABLE IF NOT EXISTS atendimentos (
+            id TEXT PRIMARY KEY, cliente_id TEXT NOT NULL REFERENCES clientes(id) ON DELETE RESTRICT,
+            usuario_id TEXT REFERENCES app_users(username) ON DELETE SET NULL,
+            tipo_contato VARCHAR(12) CHECK(tipo_contato IN ('ligacao','whatsapp','visita','email')),
+            observacao TEXT, data_atendimento TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())""")
+        con.execute("""CREATE TABLE IF NOT EXISTS faturamento_pedidos (
+            id TEXT PRIMARY KEY, cliente_id TEXT NOT NULL REFERENCES clientes(id) ON DELETE RESTRICT,
+            pedido_erp_id VARCHAR(128), valor_total NUMERIC(15,2),
+            data_pedido TIMESTAMPTZ, status_pedido VARCHAR(50) NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())""")
+        con.execute("""CREATE TABLE IF NOT EXISTS documentos_cliente (
+            id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clientes(id) ON DELETE RESTRICT,
+            category TEXT NOT NULL CHECK(category IN ('nfe','finance','contract','note')),
+            filename TEXT, content_type TEXT, content BYTEA, note TEXT,
+            numero_documento VARCHAR(80), caminho_arquivo TEXT, data_emissao DATE,
+            uploaded_by TEXT NOT NULL REFERENCES app_users(username) ON DELETE RESTRICT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())""")
+        con.execute('CREATE INDEX IF NOT EXISTS idx_client_docs_client ON documentos_cliente(client_id,category,created_at DESC)')
+        con.execute('CREATE INDEX IF NOT EXISTS idx_atendimentos_client_date ON atendimentos(cliente_id,data_atendimento DESC)')
+        con.execute('CREATE INDEX IF NOT EXISTS idx_faturamento_client_date ON faturamento_pedidos(cliente_id,data_pedido DESC)')
+        # Idempotent projection; legacy missing dates remain NULL (no backfilled business history).
+        con.execute("""INSERT INTO clientes(id,razao_social,nome_fantasia,documento,curva_abc,created_at,updated_at)
+            SELECT id,coalesce(nullif(payload->>'name',''),id),nullif(payload->>'tradeName',''),
+                   nullif(payload->>'taxId',''),CASE WHEN payload->>'abc' IN ('A','B','C') THEN payload->>'abc' ELSE NULL END,
+                   coalesce(created_at,now()),updated_at FROM entities WHERE kind='client'
+            ON CONFLICT(id) DO UPDATE SET razao_social=excluded.razao_social,nome_fantasia=excluded.nome_fantasia,
+              documento=excluded.documento,curva_abc=excluded.curva_abc,updated_at=excluded.updated_at""")
+        for kind in ('visit','interaction'):
+            for entity_id,payload,created_at,updated_at in con.execute('SELECT id,payload,created_at,updated_at FROM entities WHERE kind=%s',(kind,)).fetchall():
+                project_attendance(con,kind,entity_id,payload,created_at,updated_at)
+        for entity_id,payload,created_at,updated_at in con.execute("SELECT id,payload,created_at,updated_at FROM entities WHERE kind='order'").fetchall():
+            project_order(con,entity_id,payload,created_at,updated_at)
 
         # Nunca excluir clientes automaticamente por divergência de UF.
         # O cadastro permanece disponível para correção; pedidos exigem PA/AP.
@@ -514,6 +594,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     if previous and previous[0].get('Área') == 'Financeiro':
                         raise HTTPException(403, 'Acesso financeiro restrito')
                 if target == 'client':
+                    if con.execute('SELECT 1 FROM documentos_cliente WHERE client_id=%s LIMIT 1',(entity_id,)).fetchone():
+                        raise HTTPException(409, 'Cliente possui documentos; preserve o cadastro')
                     for dependent in ('order','visit','route','task','opportunity','interaction','fulfillment','settlement'):
                         if con.execute("SELECT 1 FROM entities WHERE kind=%s AND payload->>'clientId'=%s LIMIT 1",(dependent,entity_id)).fetchone():
                             raise HTTPException(409, 'Cliente possui histórico vinculado; preserve o cadastro')
@@ -533,6 +615,12 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     con.execute('DELETE FROM visit_photos WHERE visit_id=%s',(entity_id,))
                 if target == 'order' and previous:
                     con.execute("INSERT INTO archived_entities(kind,id,payload,reason) VALUES('order',%s,%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,reason=excluded.reason,archived_at=now()",(entity_id,Jsonb(previous[0]),'arquivado por '+user))
+                if target in ('visit','interaction'):
+                    con.execute('DELETE FROM atendimentos WHERE id=%s',(target+':'+entity_id,))
+                elif target=='order':
+                    con.execute("UPDATE faturamento_pedidos SET status_pedido='Arquivado',updated_at=now() WHERE id=%s",(entity_id,))
+                elif target=='client':
+                    con.execute('DELETE FROM clientes WHERE id=%s',(entity_id,))
                 con.execute('DELETE FROM entities WHERE kind=%s AND id=%s',(target,entity_id))
                 con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
                 con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,target,entity_id,'delete'))
@@ -818,6 +906,14 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
             else:
                 obj['updatedBy'] = user
                 con.execute('INSERT INTO entities(kind,id,payload) VALUES(%s,%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,updated_at=now()', (kind,entity_id,Jsonb(obj)))
+                if kind=='client':
+                    con.execute("""INSERT INTO clientes(id,razao_social,nome_fantasia,documento,curva_abc)
+                        VALUES(%s,%s,%s,%s,%s) ON CONFLICT(id) DO UPDATE SET
+                        razao_social=excluded.razao_social,nome_fantasia=excluded.nome_fantasia,
+                        documento=excluded.documento,curva_abc=excluded.curva_abc,updated_at=now()""",
+                        (entity_id,obj['name'],obj.get('tradeName') or None,obj.get('taxId') or None,obj.get('abc') if obj.get('abc') in ('A','B','C') else None))
+                elif kind in ('visit','interaction'): project_attendance(con,kind,entity_id,obj)
+                elif kind=='order': project_order(con,entity_id,obj)
             con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
             con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,kind,entity_id,'delete' if kind=='delete_route' else 'upsert'))
         result = {'sectors':sorted(permissions),'team':[row[0] for row in con.execute('SELECT username FROM app_users WHERE active ORDER BY username')]}
@@ -900,6 +996,139 @@ def download_visit_photo(visit_id: str, photo_id: str, authorization: str | None
     if not row: raise HTTPException(404,'Foto não encontrada')
     safe_name=''.join(c if (c.isascii() and c.isalnum()) or c in ' ._-()' else '_' for c in row[0])
     return Response(content=bytes(row[2]),media_type=row[1],headers={'Content-Disposition':f'attachment; filename="{safe_name}"'})
+
+
+# Client repositories are virtual: every active client automatically has these four sections.
+# Binary files stay in PostgreSQL and are never included in offline sync or JSON backups.
+def client_document_access(con, client_id, user, category=None):
+    if not con.execute("SELECT 1 FROM entities WHERE kind='client' AND id=%s",(client_id,)).fetchone():
+        raise HTTPException(404,'Cliente não encontrado')
+    if category == 'finance':
+        require_sector(user,'finance')
+    else:
+        require_sector(user,'commercial','office','finance')
+
+
+@app.get('/api/admin/export/portable')
+def export_portable(authorization: str | None = Header(default=None)):
+    if auth(authorization)!='Ana Paula': raise HTTPException(403,'Exportação restrita à administradora')
+    out=io.BytesIO()
+    with db() as con, zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as archive:
+        # Only business data; never export password hashes, tokens or active sessions.
+        bundle={'marco_zero':'2026-09-28','tables':{},'entities':[],'files':[]}
+        for table,columns in (
+            ('clientes','id,razao_social,nome_fantasia,documento,curva_abc,status,created_at,updated_at'),
+            ('atendimentos','id,cliente_id,usuario_id,tipo_contato,observacao,data_atendimento,created_at,updated_at'),
+            ('faturamento_pedidos','id,cliente_id,pedido_erp_id,valor_total,data_pedido,status_pedido,created_at,updated_at'),
+            ('documentos_cliente','id,client_id,category,filename,content_type,note,numero_documento,caminho_arquivo,data_emissao,uploaded_by,created_at,updated_at')):
+            names=columns.split(',')
+            records=con.execute(f'SELECT {columns} FROM {table} ORDER BY id').fetchall()
+            bundle['tables'][table]=[dict(zip(names,(v.isoformat() if isinstance(v,(date,datetime)) else str(v) if isinstance(v,Decimal) else v for v in row))) for row in records]
+        for kind,entity_id,payload in con.execute('SELECT kind,id,payload FROM entities ORDER BY kind,id'):
+            bundle['entities'].append({'kind':kind,'id':entity_id,'payload':payload})
+        for path,content in con.execute('SELECT caminho_arquivo,content FROM documentos_cliente WHERE content IS NOT NULL ORDER BY id'):
+            if not path or not path.startswith('/storage/clientes/'): continue
+            safe=path.lstrip('/')
+            archive.writestr(safe,bytes(content))
+            bundle['files'].append(safe)
+        archive.writestr('dados.json',json.dumps(bundle,ensure_ascii=False,indent=2,default=str))
+        archive.writestr('LEIA-ME.txt','L2 ONE - Exportacao portavel\nMarco zero operacional: 28/09/2026.\nDados estruturados: dados.json (tabelas relacionais e entidades legadas).\nEstrutura PostgreSQL de referencia: schema.sql.\nArquivos: storage/clientes/{documento}/{categoria}/{ano_mes}/.\nDatas anteriores indisponiveis permanecem nulas nos registros operacionais normalizados.\nCredenciais e sessoes nao fazem parte desta exportacao.\n')
+        archive.writestr('schema.sql',"""-- L2 ONE: esquema relacional de referência (PostgreSQL)
+CREATE TABLE clientes (id TEXT PRIMARY KEY, razao_social VARCHAR(180) NOT NULL,
+ nome_fantasia VARCHAR(180), documento VARCHAR(20) UNIQUE, curva_abc CHAR(1),
+ status VARCHAR(12) NOT NULL, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL);
+CREATE TABLE atendimentos (id TEXT PRIMARY KEY, cliente_id TEXT NOT NULL REFERENCES clientes(id),
+ usuario_id TEXT, tipo_contato VARCHAR(12), observacao TEXT, data_atendimento TIMESTAMPTZ,
+ created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL);
+CREATE TABLE faturamento_pedidos (id TEXT PRIMARY KEY, cliente_id TEXT NOT NULL REFERENCES clientes(id),
+ pedido_erp_id VARCHAR(128), valor_total NUMERIC(15,2), data_pedido TIMESTAMPTZ,
+ status_pedido VARCHAR(50) NOT NULL, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL);
+CREATE TABLE documentos_cliente (id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clientes(id),
+ category TEXT NOT NULL, filename TEXT, content_type TEXT, note TEXT, numero_documento VARCHAR(80),
+ caminho_arquivo TEXT, data_emissao DATE, uploaded_by TEXT NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL);
+-- Registros estão em dados.json; anexos nos caminhos listados em files.
+""")
+    out.seek(0)
+    return Response(content=out.getvalue(),media_type='application/zip',
+                    headers={'Content-Disposition':'attachment; filename="l2-one-portabilidade.zip"','Cache-Control':'no-store'})
+
+@app.get('/api/clients/{client_id}/documents')
+def list_documentos_cliente(client_id: str, authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    with db() as con:
+        client_document_access(con,client_id,user)
+        rows=con.execute('SELECT id,category,filename,content_type,octet_length(content),note,data_emissao,uploaded_by,created_at FROM documentos_cliente WHERE client_id=%s ORDER BY created_at DESC,id',(client_id,)).fetchall()
+    if 'finance' not in sectors_for(user):
+        rows=[row for row in rows if row[1]!='finance']
+    return [{'id':r[0],'category':r[1],'name':r[2],'type':r[3],'size':r[4] or 0,'note':r[5],'documentDate':r[6].isoformat() if r[6] else None,'uploadedBy':r[7],'createdAt':r[8].isoformat()} for r in rows]
+
+@app.post('/api/clients/{client_id}/documents')
+async def upload_client_document(client_id: str, category: str, file: UploadFile = File(...), authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    if category not in ('nfe','finance','contract'): raise HTTPException(400,'Categoria inválida')
+    name=Path(file.filename or '').name.strip()[:180]
+    content=await file.read(10*1024*1024+1)
+    if not name or not content or len(content)>10*1024*1024: raise HTTPException(400,'Arquivo vazio ou maior que 10 MB')
+    if content.startswith(b'%PDF-') and name.lower().endswith('.pdf'): content_type='application/pdf'
+    elif content.startswith(b'\\xff\\xd8\\xff') and name.lower().endswith(('.jpg','.jpeg')): content_type='image/jpeg'
+    elif content.startswith(b'\\x89PNG\\r\\n\\x1a\\n') and name.lower().endswith('.png'): content_type='image/png'
+    elif category=='nfe' and name.lower().endswith('.xml'):
+        try:
+            from defusedxml import ElementTree
+            ElementTree.fromstring(content)
+        except Exception:
+            raise HTTPException(400,'XML inválido ou inseguro')
+        content_type='application/xml'
+    else: raise HTTPException(400,'Envie PDF, JPG ou PNG; XML é permitido apenas para NFE')
+    doc_id=secrets.token_hex(16)
+    with db() as con:
+        client_document_access(con,client_id,user,category)
+        row=con.execute("SELECT nullif(documento,'') FROM clientes WHERE id=%s",(client_id,)).fetchone()
+        directory=re.sub(r'[^A-Za-z0-9_-]','',row[0] or client_id)
+        category_dir={'nfe':'nfe','finance':'boleto','contract':'contrato'}[category]
+        folder=f"/storage/clientes/{directory}/{category_dir}/{date.today().strftime('%Y_%m')}/"
+        path=folder+doc_id+'_'+re.sub(r'[^A-Za-z0-9._-]','_',name)
+        con.execute('INSERT INTO documentos_cliente(id,client_id,category,filename,content_type,content,caminho_arquivo,uploaded_by) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)',(doc_id,client_id,category,name,content_type,content,path,user))
+        con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,'client_document',doc_id,'upload'))
+    return {'id':doc_id,'name':name,'category':category}
+
+class ClientNote(BaseModel):
+    text: str
+
+@app.post('/api/clients/{client_id}/notes')
+def add_client_note(client_id: str, data: ClientNote, authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    note=data.text.strip()
+    if not note or len(note)>4000: raise HTTPException(400,'Anotação deve conter de 1 a 4000 caracteres')
+    doc_id=secrets.token_hex(16)
+    with db() as con:
+        client_document_access(con,client_id,user,'note')
+        con.execute("INSERT INTO documentos_cliente(id,client_id,category,note,uploaded_by) VALUES(%s,%s,'note',%s,%s)",(doc_id,client_id,note,user))
+        con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,'client_note',doc_id,'create'))
+    return {'id':doc_id,'category':'note'}
+
+@app.get('/api/clients/{client_id}/documents/{doc_id}')
+def download_client_document(client_id: str, doc_id: str, authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    with db() as con:
+        row=con.execute('SELECT category,filename,content_type,content FROM documentos_cliente WHERE id=%s AND client_id=%s',(doc_id,client_id)).fetchone()
+        if not row or row[0]=='note': raise HTTPException(404,'Documento não encontrado')
+        client_document_access(con,client_id,user,row[0])
+    safe_name=''.join(c if (c.isascii() and c.isalnum()) or c in ' ._-()' else '_' for c in row[1])
+    return Response(content=bytes(row[3]),media_type=row[2],headers={'Content-Disposition':f'attachment; filename="{safe_name}"','X-Content-Type-Options':'nosniff'})
+
+@app.delete('/api/clients/{client_id}/documents/{doc_id}')
+def delete_client_document(client_id: str, doc_id: str, authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    with db() as con:
+        row=con.execute('SELECT category,uploaded_by FROM documentos_cliente WHERE id=%s AND client_id=%s',(doc_id,client_id)).fetchone()
+        if not row: raise HTTPException(404,'Registro não encontrado')
+        client_document_access(con,client_id,user,row[0])
+        if user!='Ana Paula' and user!=row[1]: raise HTTPException(403,'Somente o autor ou a administradora podem excluir')
+        con.execute('DELETE FROM documentos_cliente WHERE id=%s AND client_id=%s',(doc_id,client_id))
+        con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,'client_document',doc_id,'delete'))
+    return {'deleted':True}
 
 @app.get('/api/orders/{order_id}/attachments')
 def list_order_attachments(order_id: str, authorization: str | None = Header(default=None)):
