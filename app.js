@@ -113,12 +113,19 @@ function renderClientRepository(c){
  <div class="card"><h4>📝 Contratos e cadastros</h4><div id="clientDocsContract"></div><label>+ Novo Arquivo<input type="file" accept=".pdf,.jpg,.jpeg,.png" onchange="uploadClientDocument('${id}','contract',this)"></label></div>
  <div class="card"><h4>💬 Notas de atendimento e histórico</h4><div id="clientDocsNote"></div><form onsubmit="saveClientNote(event,'${id}')"><label>Registrar interação<textarea name="text" rows="3" maxlength="4000" required></textarea></label><button>Salvar registro</button></form></div></div></section>`;
 }
+async function clientDocumentError(response, fallback){
+ const data=await response.json().catch(()=>({}));
+ if(response.status===401)return Error('Sessão expirada ou inválida. Abra Configurações e entre novamente.');
+ if(response.status===403)return Error('Seu acesso não permite consultar ou alterar esta seção documental. Solicite acesso à administradora.');
+ return Error(typeof data.detail==='string'&&data.detail?data.detail:fallback);
+}
 async function loadClientRepository(id){
  const status=$('clientDocsStatus');if(!status)return;
  if(!s.token){status.textContent='Entre no sistema para acessar documentos protegidos.';return}
  try{
   const response=await fetch(s.server+'/api/clients/'+encodeURIComponent(id)+'/documents',{headers:{Authorization:'Bearer '+s.token}});
-  const rows=await response.json();if(!response.ok)throw Error(rows.detail||'Consulta recusada');
+  if(!response.ok)throw await clientDocumentError(response,'Consulta recusada');
+  const rows=await response.json();
   status.textContent=rows.length?rows.length+' registro(s) neste cliente.':'Nenhum documento ou registro anexado a este cliente.';
   for(const [category,target] of [['nfe','clientDocsNfe'],['finance','clientDocsFinance'],['contract','clientDocsContract'],['note','clientDocsNote']]){
    const area=$(target);if(!area)continue;const files=rows.filter(x=>x.category===category);
@@ -130,18 +137,18 @@ async function loadClientRepository(id){
 async function uploadClientDocument(id,category,input){
  const file=input.files?.[0];if(!file)return;if(file.size===0||file.size>10*1024*1024){alert('Arquivo deve ter até 10 MB.');input.value='';return}
  const body=new FormData();body.append('file',file);
- try{const response=await fetch(s.server+'/api/clients/'+encodeURIComponent(id)+'/documents?category='+encodeURIComponent(category),{method:'POST',headers:{Authorization:'Bearer '+s.token},body});const data=await response.json();if(!response.ok)throw Error(data.detail||'Upload recusado');input.value='';await loadClientRepository(id)}catch(err){alert(err.message)}
+ try{const response=await fetch(s.server+'/api/clients/'+encodeURIComponent(id)+'/documents?category='+encodeURIComponent(category),{method:'POST',headers:{Authorization:'Bearer '+s.token},body});if(!response.ok)throw await clientDocumentError(response,'Upload recusado');input.value='';await loadClientRepository(id)}catch(err){alert(err.message)}
 }
 async function saveClientNote(event,id){
  event.preventDefault();const text=event.target.elements.text.value.trim();if(!text)return;
- try{const response=await fetch(s.server+'/api/clients/'+encodeURIComponent(id)+'/notes',{method:'POST',headers:{Authorization:'Bearer '+s.token,'Content-Type':'application/json'},body:JSON.stringify({text})});const data=await response.json();if(!response.ok)throw Error(data.detail||'Registro recusado');event.target.reset();await loadClientRepository(id)}catch(err){alert(err.message)}
+ try{const response=await fetch(s.server+'/api/clients/'+encodeURIComponent(id)+'/notes',{method:'POST',headers:{Authorization:'Bearer '+s.token,'Content-Type':'application/json'},body:JSON.stringify({text})});if(!response.ok)throw await clientDocumentError(response,'Registro recusado');event.target.reset();await loadClientRepository(id)}catch(err){alert(err.message)}
 }
 async function downloadClientDocument(id,docId,name){
- try{const response=await fetch(s.server+'/api/clients/'+encodeURIComponent(id)+'/documents/'+encodeURIComponent(docId),{headers:{Authorization:'Bearer '+s.token}});if(!response.ok)throw Error('Download recusado');downloadBlob(await response.blob(),decodeURIComponent(name))}catch(err){alert(err.message)}
+ try{const response=await fetch(s.server+'/api/clients/'+encodeURIComponent(id)+'/documents/'+encodeURIComponent(docId),{headers:{Authorization:'Bearer '+s.token}});if(!response.ok)throw await clientDocumentError(response,'Download recusado');downloadBlob(await response.blob(),decodeURIComponent(name))}catch(err){alert(err.message)}
 }
 async function deleteClientDocument(id,docId){
  if(!confirm('Excluir este documento ou anotação?'))return;
- try{const response=await fetch(s.server+'/api/clients/'+encodeURIComponent(id)+'/documents/'+encodeURIComponent(docId),{method:'DELETE',headers:{Authorization:'Bearer '+s.token}});if(!response.ok){const data=await response.json().catch(()=>({}));throw Error(data.detail||'Exclusão recusada')}await loadClientRepository(id)}catch(err){alert(err.message)}
+ try{const response=await fetch(s.server+'/api/clients/'+encodeURIComponent(id)+'/documents/'+encodeURIComponent(docId),{method:'DELETE',headers:{Authorization:'Bearer '+s.token}});if(!response.ok)throw await clientDocumentError(response,'Exclusão recusada');await loadClientRepository(id)}catch(err){alert(err.message)}
 }
 
 const CRM_STAGES=['Prospectado','Qualificado','Visita agendada','Proposta enviada','Negociação','Ganho','Pedido confirmado','Faturado','Entregue','Pós-venda','Perdido'];
