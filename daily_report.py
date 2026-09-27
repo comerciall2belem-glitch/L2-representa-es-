@@ -137,8 +137,16 @@ def send_daily(con, report_day=None):
     msg.set_content('Relatório diário L2 ONE em anexo. Dados financeiros e comerciais referentes a '+day.strftime('%d/%m/%Y')+'.')
     msg.add_attachment(pdf,maintype='application',subtype='pdf',filename='L2_ONE_relatorio_'+day.isoformat()+'.pdf')
     port=int(os.getenv('L2_SMTP_PORT','465'))
-    with smtplib.SMTP_SSL(smtp_host,port,context=ssl.create_default_context(),timeout=30) as smtp:
-        smtp.login(smtp_user,smtp_password)
+    if port == 465:
+        smtp = smtplib.SMTP_SSL(smtp_host, port, context=ssl.create_default_context(), timeout=30)
+    else:
+        smtp = smtplib.SMTP(smtp_host, port, timeout=30)
+    with smtp:
+        if port != 465:
+            smtp.ehlo()
+            smtp.starttls(context=ssl.create_default_context())
+            smtp.ehlo()
+        smtp.login(smtp_user, smtp_password)
         smtp.send_message(msg)
     con.execute('INSERT INTO report_delivery(report_date,recipient) VALUES(%s,%s)',(day,'comerciall2belem@gmail.com'))
     return len(pdf)
