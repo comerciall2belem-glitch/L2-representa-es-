@@ -42,6 +42,10 @@ class Uploaded:
 
 namespace = {'Path':Path,'secrets':secrets,'HTTPException':HTTPException,'UploadFile':UploadFile,'File':File,'Header':Header}
 exec(compile(ast.Module(body=functions, type_ignores=[]), '<attachments>', 'exec'), namespace)
+def require_sector(user, *allowed):
+    if user != 'Ana Paula' or not {'commercial', 'office'}.intersection(allowed):
+        raise HTTPException(403, 'Setor sem permissão')
+namespace['require_sector'] = require_sector
 
 class AttachmentTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
