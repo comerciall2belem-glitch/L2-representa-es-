@@ -22,6 +22,8 @@ class Cursor:
 class FakeCon:
     def __init__(self): self.orders={};self.number=0
     def execute(self,sql,params=None):
+        if sql.startswith('SELECT sectors FROM app_users WHERE username='):
+            return Cursor((['commercial', 'office'],))
         if sql.startswith('UPDATE order_counter SET value=value+1'):
             self.number+=1
             return Cursor((self.number,))
@@ -44,7 +46,7 @@ class FakeDB:
 namespace={'Sync':object,'Header':lambda *args,**kwargs:None,'HTTPException':HTTPException,
            'FINANCE_USERS':{'Ana Paula'},'Decimal':Decimal,'InvalidOperation':InvalidOperation,
            'normalize_uf':lambda value:value,'price_table_matches_client':lambda a,b:a==b,
-           'Jsonb':lambda value:value,'re':re}
+           'Jsonb':lambda value:value,'re':re,'project_order':lambda con,identifier,obj:None}
 exec(compile(ast.Module(body=functions,type_ignores=[]),'<order-numbering>','exec'),namespace)
 
 class OrderNumberTests(unittest.TestCase):
