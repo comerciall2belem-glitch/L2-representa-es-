@@ -46,6 +46,7 @@ def require_sector(user, *allowed):
     if user != 'Ana Paula' or not {'commercial', 'office'}.intersection(allowed):
         raise HTTPException(403, 'Setor sem permissão')
 namespace['require_sector'] = require_sector
+namespace['check_order_scope'] = lambda con,user,order_id: None
 
 class AttachmentTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):

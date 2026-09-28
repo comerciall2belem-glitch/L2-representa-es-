@@ -46,7 +46,8 @@ class FakeDB:
 namespace={'Sync':object,'Header':lambda *args,**kwargs:None,'HTTPException':HTTPException,
            'FINANCE_USERS':{'Ana Paula'},'Decimal':Decimal,'InvalidOperation':InvalidOperation,
            'normalize_uf':lambda value:value,'price_table_matches_client':lambda a,b:a==b,
-           'Jsonb':lambda value:value,'re':re,'project_order':lambda con,identifier,obj:None}
+           'Jsonb':lambda value:value,'re':re,'project_order':lambda con,identifier,obj:None,
+           'check_client_scope':lambda con,user,client_id:None,'scoped_rows':lambda con,kind,user:[row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))]}
 exec(compile(ast.Module(body=functions,type_ignores=[]),'<order-numbering>','exec'),namespace)
 
 class OrderNumberTests(unittest.TestCase):

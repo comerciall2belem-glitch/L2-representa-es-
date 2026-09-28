@@ -22,7 +22,7 @@ class Connection:
     def fetchone(self):
         return (1,) if self.exists else None
 
-namespace = {'HTTPException': HTTPException}
+namespace = {'HTTPException': HTTPException,'check_client_scope':lambda con,user,client_id:None}
 exec(compile(ast.Module(body=nodes, type_ignores=[]), '<documents>', 'exec'), namespace)
 
 class DocumentAccessTests(unittest.TestCase):
