@@ -1,7 +1,7 @@
 name: Validacao L2 ONE
 on:
   push:
-    branches: [feature/precos-uf-cliente]
+    branches: [main, feature/precos-uf-cliente]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -17,10 +17,12 @@ jobs:
         with:
           node-version: '22'
       - name: Verificar sintaxe Python
-        run: python -m py_compile server.py
+        run: python -m py_compile server.py speedio_integration.py
       - name: Verificar sintaxe JavaScript
         run: |
           node --check app.js
           node --check cash.js
       - name: Testar regras fiscais
         run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Testar fluxos comerciais
+        run: node tests/test_commercial_workflow.cjs
