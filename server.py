@@ -11,6 +11,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 from client_cleanup import plan as client_cleanup_plan
 from daily_report import build_pdf, read_data, TZ
+from speedio_integration import lookup_cnpj, SpeedioError
 
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
@@ -275,6 +276,25 @@ def sectors_for(user):
 def require_sector(user, *allowed):
     if not (set(allowed) & sectors_for(user)):
         raise HTTPException(403,'Setor sem permissão para pedidos')
+
+class SpeedioQuery(BaseModel):
+    cnpj: str = Field(min_length=14, max_length=18)
+
+@app.post('/api/integrations/speedio/lookup')
+def speedio_lookup(query: SpeedioQuery, authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    require_sector(user, 'commercial', 'office')
+    cnpj = re.sub(r'\\D', '', query.cnpj)
+    if not valid_cnpj(cnpj):
+        raise HTTPException(400, 'Informe um CNPJ válido')
+    try:
+        lead = lookup_cnpj(cnpj, os.getenv('SPEEDIO_USERNAME', ''), os.getenv('SPEEDIO_PASSWORD', ''))
+    except SpeedioError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+    with db() as con:
+        existing = con.execute("SELECT 1 FROM clientes WHERE regexp_replace(coalesce(documento,''),'[^0-9]','','g')=%s LIMIT 1", (cnpj,)).fetchone()
+        staged = con.execute("SELECT 1 FROM entities WHERE kind='lead' AND id=%s", ('speedio:' + cnpj,)).fetchone()
+    return {'lead': lead, 'alreadyRegistered': bool(existing), 'alreadyStaged': bool(staged)}
 
 class Login(BaseModel):
     user: str
