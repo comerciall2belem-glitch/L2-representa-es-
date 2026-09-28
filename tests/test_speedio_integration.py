@@ -2,6 +2,7 @@ import io
 import json
 import unittest
 import urllib.error
+from unittest.mock import patch
 from speedio_integration import lookup_cnpj, SpeedioError, ENDPOINT
 
 
@@ -11,6 +12,12 @@ class Reply(io.BytesIO):
 
 
 class SpeedioTests(unittest.TestCase):
+    def setUp(self):
+        self.network_guard = patch('speedio_integration.urllib.request.urlopen',
+                                   side_effect=AssertionError('Teste não pode acessar a rede'))
+        self.network_guard.start()
+        self.addCleanup(self.network_guard.stop)
+
     def test_authenticated_lookup_and_pa_mapping(self):
         def opener(request, timeout):
             self.assertEqual(timeout, 10)
