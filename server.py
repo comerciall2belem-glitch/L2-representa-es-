@@ -565,8 +565,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
         for change in data.changes:
             kind, obj = change.type, dict(change.data)
             entity_id = obj.get('id')
-            deletable = {'delete_industry':'industry','delete_price_table':'price_table','delete_fulfillment':'fulfillment','delete_settlement':'settlement','delete_opportunity':'opportunity','delete_interaction':'interaction','delete_whatsapp_template':'whatsapp_template','delete_client':'client','delete_visit':'visit','delete_task':'task','delete_goal':'goal','delete_route':'route','delete_order':'order','delete_price':'price','delete_cash_entry':'cash_entry','delete_commission_rate':'commission_rate','delete_commission_receipt':'commission_receipt','delete_office_process':'office_process','delete_office_action':'office_action','delete_office_commercial':'office_commercial','delete_office_administrative':'office_administrative','delete_office_ritual':'office_ritual','delete_office_role':'office_role','delete_office_finance':'office_finance','delete_office_budget':'office_budget','delete_office_monthly_close':'office_monthly_close'}
-            if kind not in ('industry','price_table','fulfillment','settlement','opportunity','interaction','whatsapp_template','client','visit','order','task','route','goal','price','commission_rate','commission_receipt','office_action','office_commercial','office_administrative','office_ritual','office_role','office_finance','office_budget','office_monthly_close','office_process','cash_day','cash_entry',*deletable) or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
+            deletable = {'delete_industry':'industry','delete_price_table':'price_table','delete_fulfillment':'fulfillment','delete_settlement':'settlement','delete_opportunity':'opportunity','delete_lead':'lead','delete_interaction':'interaction','delete_whatsapp_template':'whatsapp_template','delete_client':'client','delete_visit':'visit','delete_task':'task','delete_goal':'goal','delete_route':'route','delete_order':'order','delete_price':'price','delete_cash_entry':'cash_entry','delete_commission_rate':'commission_rate','delete_commission_receipt':'commission_receipt','delete_office_process':'office_process','delete_office_action':'office_action','delete_office_commercial':'office_commercial','delete_office_administrative':'office_administrative','delete_office_ritual':'office_ritual','delete_office_role':'office_role','delete_office_finance':'office_finance','delete_office_budget':'office_budget','delete_office_monthly_close':'office_monthly_close'}
+            if kind not in ('industry','price_table','fulfillment','settlement','opportunity','interaction','lead','whatsapp_template','client','visit','order','task','route','goal','price','commission_rate','commission_receipt','office_action','office_commercial','office_administrative','office_ritual','office_role','office_finance','office_budget','office_monthly_close','office_process','cash_day','cash_entry',*deletable) or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
                 raise HTTPException(400, 'Alteração inválida')
             if kind.startswith('delete_') and kind not in ('delete_industry','delete_price_table','delete_price','delete_client','delete_order'):
                 base=kind[7:]
@@ -607,7 +607,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         raise HTTPException(403, 'Somente Ana Paula pode arquivar pedido confirmado ou faturado')
                 if con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s',(change.changeId,)).fetchone():
                     continue
-                if target in ('opportunity','interaction','fulfillment','settlement'):
+                if target in ('opportunity','interaction','fulfillment','settlement','lead'):
                     previous_crm = con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s',(target,entity_id)).fetchone()
                     if previous_crm:
                         con.execute('INSERT INTO archived_entities(kind,id,payload,reason) VALUES(%s,%s,%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,reason=excluded.reason,archived_at=now()',(target,entity_id,Jsonb(previous_crm[0]),'arquivado por '+user))
@@ -625,7 +625,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
                 con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,target,entity_id,'delete'))
                 continue
-            if kind in ('opportunity','interaction','visit','order','task','goal','whatsapp_template','client') and 'commercial' not in permissions and 'office' not in permissions:
+            if kind in ('opportunity','interaction','lead','visit','order','task','goal','whatsapp_template','client') and 'commercial' not in permissions and 'office' not in permissions:
                 raise HTTPException(403,'Setor comercial sem permissão')
             if kind in ('fulfillment',) and not ({'office','commercial'} & permissions): raise HTTPException(403,'Setor operacional sem permissão')
             if kind.startswith('office_') and kind not in ('office_finance','office_budget','office_monthly_close') and 'office' not in permissions: raise HTTPException(403,'Setor escritório sem permissão')
@@ -678,6 +678,20 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                             try: date.fromisoformat(str(obj[field]))
                             except (ValueError,TypeError): raise HTTPException(400,'Data financeira inválida')
                     if not obj.get('billedDate'): raise HTTPException(400,'Data do faturamento obrigatória')
+            if kind == 'lead':
+                tax=re.sub(r'\D','',str(obj.get('taxId','')))
+                uf=normalize_uf(obj.get('state'))
+                name=str(obj.get('name','')).strip()
+                if not re.fullmatch(r'\d{14}',tax) or entity_id != 'speedio:'+tax or not uf or not name or len(name)>180:
+                    raise HTTPException(400,'Lead: CNPJ, UF PA/AP ou nome inválido')
+                if any(len(str(obj.get(field,'')))>length for field,length in (('city',120),('contact',120),('phone',30))):
+                    raise HTTPException(400,'Dados do lead excedem o limite')
+                if not con.execute('SELECT 1 FROM app_users WHERE username=%s AND active',(obj.get('owner'),)).fetchone():
+                    raise HTTPException(400,'Responsável inválido')
+                if con.execute("SELECT 1 FROM clientes WHERE regexp_replace(coalesce(documento,''),'[^0-9]','','g')=%s LIMIT 1",(tax,)).fetchone():
+                    raise HTTPException(409,'CNPJ já cadastrado como cliente')
+                obj={key:obj.get(key) for key in ('id','name','taxId','state','city','contact','phone','owner','origin','createdAt')}
+                obj['taxId'],obj['state'],obj['origin']=tax,uf,'Speedio'
             if kind in ('opportunity','interaction'):
                 if not isinstance(obj.get('clientId'),str) or not con.execute("SELECT 1 FROM entities WHERE kind='client' AND id=%s",(obj.get('clientId'),)).fetchone():
                     raise HTTPException(400,'Cliente da oportunidade ou interação não encontrado')
@@ -917,11 +931,11 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
             con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
             con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,kind,entity_id,'delete' if kind=='delete_route' else 'upsert'))
         result = {'sectors':sorted(permissions),'team':[row[0] for row in con.execute('SELECT username FROM app_users WHERE active ORDER BY username')]}
-        public_kinds = [('industry','industries'),('price_table','priceTables'),('fulfillment','fulfillments'),('opportunity','opportunities'),('interaction','interactions'),('whatsapp_template','whatsappTemplates'),('client','clients'),('visit','visits'),('order','orders'),('task','tasks'),('route','routes'),('goal','goals'),('price','prices'),('office_process','officeProcesses'),('office_action','officeActions'),('office_commercial','officeCommercial'),('office_administrative','officeAdministrative'),('office_ritual','officeRituals'),('office_role','officeRoles')]
+        public_kinds = [('industry','industries'),('price_table','priceTables'),('fulfillment','fulfillments'),('opportunity','opportunities'),('interaction','interactions'),('lead','leads'),('whatsapp_template','whatsappTemplates'),('client','clients'),('visit','visits'),('order','orders'),('task','tasks'),('route','routes'),('goal','goals'),('price','prices'),('office_process','officeProcesses'),('office_action','officeActions'),('office_commercial','officeCommercial'),('office_administrative','officeAdministrative'),('office_ritual','officeRituals'),('office_role','officeRoles')]
         for kind, name in public_kinds:
             if kind in ('office_process','office_action','office_commercial','office_administrative','office_ritual','office_role','fulfillment') and not ({'office','commercial'} & permissions):
                 result[name]=[];continue
-            if kind in ('client','visit','order','task','goal','opportunity','interaction','whatsapp_template') and not ({'commercial','office','finance','management'} & permissions):
+            if kind in ('client','visit','order','task','goal','opportunity','interaction','lead','whatsapp_template') and not ({'commercial','office','finance','management'} & permissions):
                 result[name]=[];continue
             if kind == 'route' and 'routes' not in permissions:
                 result[name]=[];continue
