@@ -16,12 +16,12 @@ from order_reconciliation import reconcile_invoice, InvoiceError
 
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
-SECTORS = {'commercial','clients_edit','routes','office','management','finance','catalog'}
+SECTORS = {'commercial','clients_edit','routes','office','management','finance','catalog','admin'}
 DEFAULT_SECTORS = {
  'Ana Paula':sorted(SECTORS),
  'Euler':['commercial','routes','management','finance','catalog'],
  'Laís':['commercial','clients_edit','office','management','finance','catalog'],
- 'Marlene':['commercial','clients_edit','routes','office','management','catalog'],
+ 'Marlene':['commercial','clients_edit','routes','office','management','catalog','admin'],
 }
 INITIAL_PASSWORD = os.getenv('L2_INITIAL_PASSWORD', '')
 PASSWORDS = {u: INITIAL_PASSWORD or os.getenv(f'L2_PASSWORD_{i}', '') for i, u in enumerate(USERS, 1)}
@@ -288,6 +288,9 @@ def sectors_for(user):
         row=con.execute('SELECT sectors FROM app_users WHERE username=%s AND active',(user,)).fetchone()
     return set(row[0] or []) if row else set()
 
+def admin_access(user):
+    return user=='Ana Paula' or 'admin' in sectors_for(user)
+
 def require_sector(user, *allowed):
     if not (set(allowed) & sectors_for(user)):
         raise HTTPException(403,'Setor sem permissão para pedidos')
@@ -430,7 +433,7 @@ class TeamAccessReset(BaseModel):
 
 @app.get('/api/admin/team-access')
 def team_access(authorization: str | None = Header(default=None)):
-    if auth(authorization) != 'Ana Paula':
+    if not admin_access(auth(authorization)):
         raise HTTPException(403, 'Acesso restrito à administradora')
     with db() as con:
         rows = con.execute('SELECT username,active,must_change_password,sectors,role,department FROM app_users ORDER BY username').fetchall()
@@ -438,18 +441,20 @@ def team_access(authorization: str | None = Header(default=None)):
 
 @app.post('/api/admin/team-access/reset')
 def reset_team_access(data: TeamAccessReset, authorization: str | None = Header(default=None)):
-    if auth(authorization) != 'Ana Paula':
+    if not admin_access(auth(authorization)):
         raise HTTPException(403, 'Acesso restrito à administradora')
-    if data.user == 'Ana Paula':
+    actor=auth(authorization)
+    if data.user == 'Ana Paula' or (actor!='Ana Paula' and data.user=='Marlene'):
         raise HTTPException(400, 'Selecione um integrante da equipe')
     provisional = secrets.token_urlsafe(24)
     with db() as con:
-        row = con.execute('SELECT active FROM app_users WHERE username=%s FOR UPDATE', (data.user,)).fetchone()
+        row = con.execute('SELECT active,sectors FROM app_users WHERE username=%s FOR UPDATE', (data.user,)).fetchone()
+        if actor!='Ana Paula' and row and ('finance' in (row[1] or []) or 'admin' in (row[1] or [])): raise HTTPException(403,'Conta protegida')
         if not row or not row[0]:
             raise HTTPException(404, 'Conta não está ativa')
         con.execute('UPDATE app_users SET password_hash=%s,must_change_password=true,updated_at=now() WHERE username=%s', (password_hash(provisional),data.user))
         con.execute('DELETE FROM sessions WHERE username=%s', (data.user,))
-        con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)', ('Ana Paula','app_user',data.user,'team_access_reset'))
+        con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)', (actor,'app_user',data.user,'team_access_reset'))
     return {'user': data.user, 'temporaryPassword': provisional, 'mustChangePassword': True}
 
 
@@ -457,13 +462,13 @@ class TeamMember(BaseModel):
     user: str = Field(min_length=2,max_length=80)
     role: str
     department: str = Field(default='',max_length=80)
-    sectors: list[str] = Field(min_length=1,max_length=7)
+    sectors: list[str] = Field(min_length=1,max_length=8)
     profile: dict | None = None
 
 class TeamMemberUpdate(BaseModel):
     role: str
     department: str = Field(default='',max_length=80)
-    sectors: list[str] = Field(min_length=1,max_length=7)
+    sectors: list[str] = Field(min_length=1,max_length=8)
     active: bool = True
 
 class AssignPortfolio(BaseModel):
@@ -476,7 +481,8 @@ class AssignPortfolio(BaseModel):
 
 @app.post('/api/admin/clients/assign')
 def assign_portfolio(data: AssignPortfolio, authorization: str | None = Header(default=None)):
-    if auth(authorization)!='Ana Paula': raise HTTPException(403,'Atribuição restrita à administradora')
+    actor=auth(authorization)
+    if not admin_access(actor): raise HTTPException(403,'Atribuição restrita à administradora')
     uf=normalize_uf(data.state)
     if not uf: raise HTTPException(400,'Selecione PA ou AP para a divisão')
     with db() as con:
@@ -488,9 +494,9 @@ def assign_portfolio(data: AssignPortfolio, authorization: str | None = Header(d
                   and (not data.onlyUnassigned or not p.get('owner'))]
         if not data.dryRun:
             for cid,p in selected:
-                edited=dict(p,owner=data.seller,updatedBy='Ana Paula')
+                edited=dict(p,owner=data.seller,updatedBy=actor)
                 con.execute("UPDATE entities SET payload=%s,updated_at=now() WHERE kind='client' AND id=%s",(Jsonb(edited),cid))
-                con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES('Ana Paula','client',%s,'assign')",(cid,))
+                con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'client',%s,'assign')",(actor,cid))
     return {'count':len(selected),'sample':[p.get('name','') for _,p in selected[:10]],'applied':not data.dryRun}
 
 def validate_member(user, role, sectors):
@@ -511,8 +517,10 @@ def validate_seller_profile(profile):
 
 @app.post('/api/admin/team-access')
 def create_team_member(data: TeamMember, authorization: str | None = Header(default=None)):
-    if auth(authorization) != 'Ana Paula':
+    if not admin_access(auth(authorization)):
         raise HTTPException(403,'Acesso restrito à administradora')
+    actor=auth(authorization)
+    if actor!='Ana Paula' and ('finance' in data.sectors or 'admin' in data.sectors): raise HTTPException(403,'Setor protegido')
     name=validate_member(data.user,data.role,data.sectors)
     profile=validate_seller_profile(data.profile) if data.role=='Vendedor' else None
     provisional=secrets.token_urlsafe(24)
@@ -522,7 +530,7 @@ def create_team_member(data: TeamMember, authorization: str | None = Header(defa
         con.execute('INSERT INTO app_users(username,password_hash,must_change_password,sectors,role,department) VALUES(%s,%s,true,%s,%s,%s)',(name,password_hash(provisional),Jsonb(data.sectors),data.role,data.department.strip()))
         if profile:
             con.execute('INSERT INTO seller_profiles(username,full_name,document,email,phone,bank,account_type,branch,account_number,pix_key) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',(name,*profile))
-        con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES('Ana Paula','app_user',%s,'create')",(name,))
+        con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'app_user',%s,'create')",(actor,name))
     return {'user':name,'temporaryPassword':provisional,'mustChangePassword':True}
 
 @app.get('/api/admin/sellers/{member}/profile')
@@ -551,25 +559,29 @@ def update_seller_profile(member: str, profile: dict, authorization: str | None 
 
 @app.put('/api/admin/team-access/{member}')
 def update_team_member(member: str, data: TeamMemberUpdate, authorization: str | None = Header(default=None)):
-    if auth(authorization) != 'Ana Paula':
+    if not admin_access(auth(authorization)):
         raise HTTPException(403,'Acesso restrito à administradora')
-    if member=='Ana Paula':
+    actor=auth(authorization)
+    if member=='Ana Paula' or (actor!='Ana Paula' and member=='Marlene'):
         raise HTTPException(400,'A conta administradora não pode ser alterada aqui')
     validate_member(member,data.role,data.sectors)
+    if actor!='Ana Paula' and ('finance' in data.sectors or 'admin' in data.sectors): raise HTTPException(403,'Setor protegido')
     with db() as con:
-        if not con.execute('SELECT 1 FROM app_users WHERE username=%s',(member,)).fetchone():
+        existing=con.execute('SELECT sectors FROM app_users WHERE username=%s',(member,)).fetchone()
+        if not existing:
             raise HTTPException(404,'Usuário não encontrado')
+        if actor!='Ana Paula' and ('finance' in (existing[0] or []) or 'admin' in (existing[0] or [])): raise HTTPException(403,'Conta protegida')
         if data.role=='Vendedor' and not con.execute('SELECT 1 FROM seller_profiles WHERE username=%s',(member,)).fetchone():
             raise HTTPException(409,'Preencha os dados bancários antes de ativar a função Vendedor')
         con.execute('UPDATE app_users SET sectors=%s,role=%s,department=%s,active=%s,updated_at=now() WHERE username=%s',(Jsonb(data.sectors),data.role,data.department.strip(),data.active,member))
         con.execute('DELETE FROM sessions WHERE username=%s',(member,))
-        con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES('Ana Paula','app_user',%s,'permissions_update')",(member,))
+        con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'app_user',%s,'permissions_update')",(actor,member))
     return {'ok':True,'loginRequired':True}
 
 
 @app.get('/api/admin/usage')
 def admin_usage(authorization: str | None = Header(default=None)):
-    if auth(authorization) != 'Ana Paula':
+    if not admin_access(auth(authorization)):
         raise HTTPException(403,'Painel restrito à administradora')
     with db() as con:
         staff=con.execute('SELECT username,coalesce(role,\'\'),active,must_change_password,sectors FROM app_users ORDER BY username').fetchall()
@@ -649,7 +661,7 @@ class PriceImport(BaseModel):
 
 @app.post('/api/prices/import')
 def import_prices(data: PriceImport, authorization: str | None = Header(default=None)):
-    if auth(authorization) != 'Ana Paula':
+    if not admin_access(auth(authorization)):
         raise HTTPException(403, 'Importação restrita à administradora')
     prepared = {}
     for row in data.prices:
@@ -715,7 +727,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 if required not in permissions and not (base=='fulfillment' and 'commercial' in permissions): raise HTTPException(403,'Setor sem permissão')
             if kind in deletable:
                 target = deletable[kind]
-                if target in ('industry','price_table') and user != 'Ana Paula': raise HTTPException(403,'Catálogo restrito à administradora')
+                if target in ('industry','price_table') and not admin_access(user): raise HTTPException(403,'Catálogo restrito à administradora')
                 if target == 'industry' and con.execute("SELECT 1 FROM entities WHERE kind='price_table' AND payload->>'brand'=%s LIMIT 1",(entity_id,)).fetchone(): raise HTTPException(409,'Indústria possui tabelas cadastradas')
                 if target == 'price_table' and con.execute("SELECT 1 FROM entities WHERE kind='price' AND concat(payload->>'brand','|',payload->>'state')=%s LIMIT 1",(entity_id,)).fetchone(): raise HTTPException(409,'Tabela possui produtos cadastrados')
                 if target in ('office_finance','office_budget','office_monthly_close','cash_entry','commission_rate','commission_receipt','settlement') and 'finance' not in permissions:
@@ -728,7 +740,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                             raise HTTPException(409, 'Caixa fechado não permite excluir lançamentos')
                 if target == 'route' and 'routes' not in permissions:
                     raise HTTPException(403, 'Roteirização restrita a representantes')
-                if target in ('price','client') and user != 'Ana Paula':
+                if target in ('price','client') and not admin_access(user):
                     raise HTTPException(403, 'Exclusão restrita à administradora')
                 if target == 'office_process' and 'finance' not in permissions:
                     previous = con.execute("SELECT payload FROM entities WHERE kind=%s AND id=%s", (target,entity_id)).fetchone()
@@ -771,7 +783,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
             if kind in ('fulfillment',) and not ({'office','commercial'} & permissions): raise HTTPException(403,'Setor operacional sem permissão')
             if kind.startswith('office_') and kind not in ('office_finance','office_budget','office_monthly_close') and 'office' not in permissions: raise HTTPException(403,'Setor escritório sem permissão')
             if kind in ('industry','price_table'):
-                if user != 'Ana Paula': raise HTTPException(403,'Catálogo restrito à administradora')
+                if not admin_access(user): raise HTTPException(403,'Catálogo restrito à administração')
                 brand=str(obj.get('name' if kind=='industry' else 'brand','')).strip()
                 if not brand or len(brand)>120 or '|' in brand: raise HTTPException(400,'Indústria inválida')
                 if kind=='industry':
@@ -864,8 +876,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
             if kind == 'price':
                 table=con.execute("SELECT payload FROM entities WHERE kind='price_table' AND id=%s",(f"{obj.get('brand','').strip()}|{normalize_uf(obj.get('state')) or ''}",)).fetchone()
                 if not table or not table[0].get('active'): raise HTTPException(400,'Cadastre a tabela da indústria para PA/AP antes dos produtos')
-                if user != 'Ana Paula':
-                    raise HTTPException(403, 'Preço restrito à administradora')
+                if not admin_access(user):
+                    raise HTTPException(403, 'Preço restrito à administração')
                 brand,sku,state = str(obj.get('brand','')).strip(),str(obj.get('sku','')).strip(),normalize_uf(obj.get('state'))
                 try: price=Decimal(str(obj.get('price','')))
                 except (ValueError,InvalidOperation): raise HTTPException(400,'Preço inválido')
