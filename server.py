@@ -535,7 +535,7 @@ def create_team_member(data: TeamMember, authorization: str | None = Header(defa
 
 @app.get('/api/admin/sellers/{member}/profile')
 def seller_profile(member: str, response: Response, authorization: str | None = Header(default=None)):
-    if auth(authorization)!='Ana Paula': raise HTTPException(403,'Dados bancários restritos à administradora')
+    if not admin_access(auth(authorization)): raise HTTPException(403,'Dados bancários restritos à administração')
     response.headers['Cache-Control']='no-store'
     with db() as con:
         row=con.execute('SELECT full_name,document,email,phone,bank,account_type,branch,account_number,pix_key FROM seller_profiles WHERE username=%s',(member,)).fetchone()
@@ -544,7 +544,7 @@ def seller_profile(member: str, response: Response, authorization: str | None = 
 
 @app.put('/api/admin/sellers/{member}/profile')
 def update_seller_profile(member: str, profile: dict, authorization: str | None = Header(default=None)):
-    if auth(authorization)!='Ana Paula': raise HTTPException(403,'Dados bancários restritos à administradora')
+    if not admin_access(auth(authorization)): raise HTTPException(403,'Dados bancários restritos à administração')
     values=validate_seller_profile(profile)
     with db() as con:
         if not con.execute("SELECT 1 FROM app_users WHERE username=%s AND role='Vendedor'",(member,)).fetchone():
@@ -756,7 +756,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     if con.execute("SELECT 1 FROM entities WHERE kind='settlement' AND payload->>'orderId'=%s LIMIT 1",(entity_id,)).fetchone():
                         raise HTTPException(409,'Pedido com faturamento vinculado deve ser conciliado antes de arquivar')
                     previous = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
-                    if previous and previous[0].get('status') not in ('Pendente','Cancelado') and user != 'Ana Paula':
+                    if previous and previous[0].get('status') not in ('Pendente','Cancelado') and not admin_access(user):
                         raise HTTPException(403, 'Somente Ana Paula pode arquivar pedido confirmado ou faturado')
                 if con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s',(change.changeId,)).fetchone():
                     continue
@@ -1122,7 +1122,7 @@ def check_order_scope(con,user,order_id):
 
 @app.get('/api/admin/orders/archived')
 def archived_orders(authorization: str | None = Header(default=None)):
-    if auth(authorization) != 'Ana Paula':
+    if not admin_access(auth(authorization)):
         raise HTTPException(403, 'Consulta restrita à administradora')
     with db() as con:
         rows=con.execute("SELECT id,payload,reason,archived_at FROM archived_entities WHERE kind='order' ORDER BY archived_at DESC LIMIT 200").fetchall()
@@ -1130,7 +1130,8 @@ def archived_orders(authorization: str | None = Header(default=None)):
 
 @app.post('/api/admin/orders/{order_id}/restore')
 def restore_archived_order(order_id: str, authorization: str | None = Header(default=None)):
-    if auth(authorization) != 'Ana Paula':
+    actor=auth(authorization)
+    if not admin_access(actor):
         raise HTTPException(403, 'Restauração restrita à administradora')
     with db() as con:
         row=con.execute("SELECT payload FROM archived_entities WHERE kind='order' AND id=%s FOR UPDATE",(order_id,)).fetchone()
@@ -1140,7 +1141,7 @@ def restore_archived_order(order_id: str, authorization: str | None = Header(def
             raise HTTPException(409, 'Pedido já está ativo')
         con.execute("INSERT INTO entities(kind,id,payload) VALUES('order',%s,%s)",(order_id,Jsonb(row[0])))
         con.execute("DELETE FROM archived_entities WHERE kind='order' AND id=%s",(order_id,))
-        con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES('Ana Paula','order',%s,'restore')",(order_id,))
+        con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'order',%s,'restore')",(actor,order_id))
     return {'id':order_id,'restored':True}
 
 @app.get('/api/visits/{visit_id}/photos')
@@ -1425,7 +1426,7 @@ class CleanupConfirmation(BaseModel):
 
 @app.get('/api/admin/clients/cleanup')
 def preview_client_cleanup(authorization: str | None = Header(default=None)):
-    if auth(authorization)!='Ana Paula': raise HTTPException(403,'Acesso restrito à administradora')
+    if not admin_access(auth(authorization)): raise HTTPException(403,'Acesso restrito à administradora')
     with db() as con:
         proposal,digest,total=cleanup_snapshot(con)
     return {'total':total,'outside':len(proposal['outside']),'duplicates':len(proposal['duplicates']),
@@ -1437,7 +1438,7 @@ def preview_client_cleanup(authorization: str | None = Header(default=None)):
 @app.post('/api/admin/clients/cleanup')
 def apply_client_cleanup(data: CleanupConfirmation, authorization: str | None = Header(default=None)):
     user=auth(authorization)
-    if user!='Ana Paula': raise HTTPException(403,'Acesso restrito à administradora')
+    if not admin_access(user): raise HTTPException(403,'Acesso restrito à administradora')
     with db() as con:
         con.execute('SELECT pg_advisory_xact_lock(%s)',(12422026,))
         proposal,digest,total=cleanup_snapshot(con)

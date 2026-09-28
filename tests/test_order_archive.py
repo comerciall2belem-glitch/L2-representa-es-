@@ -35,7 +35,7 @@ class FakeDB:
     def __enter__(self):return self.con
     def __exit__(self,*args):return False
 
-namespace={'HTTPException':HTTPException,'Header':Header,'Jsonb':lambda x:x,'Sync':object,'FINANCE_USERS':{'Ana Paula','Euler','Laís'}}
+namespace={'HTTPException':HTTPException,'Header':Header,'Jsonb':lambda x:x,'Sync':object,'FINANCE_USERS':{'Ana Paula','Euler','Laís'},'admin_access':lambda user:user in ('Ana Paula','Marlene')}
 exec(compile(ast.Module(body=[function,sync_function],type_ignores=[]),'<archive>','exec'),namespace)
 
 class ArchiveCon(FakeCon):
@@ -71,6 +71,10 @@ class ArchiveTests(unittest.TestCase):
         self.assertIn("INSERT INTO entities(kind,id,payload)",statements)
         self.assertIn("DELETE FROM archived_entities",statements)
         self.assertNotIn("DELETE FROM order_attachments",statements)
+
+    def test_marlene_can_restore_commercial_order(self):
+        con=FakeCon();namespace['db']=lambda:FakeDB(con);namespace['auth']=lambda _: 'Marlene'
+        self.assertTrue(namespace['restore_archived_order']('p1','token')['restored'])
 
     def test_other_user_cannot_restore(self):
         namespace['auth']=lambda _: 'Euler'
