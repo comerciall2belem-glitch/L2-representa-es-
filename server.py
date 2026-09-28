@@ -133,6 +133,12 @@ def initialize():
         con.execute("UPDATE app_users SET department=CASE username WHEN 'Ana Paula' THEN 'Direção comercial' WHEN 'Euler' THEN 'Comercial' WHEN 'Laís' THEN 'Suporte administrativo' WHEN 'Marlene' THEN 'Operações administrativas' ELSE coalesce(role,'Equipe') END WHERE department IS NULL")
         con.execute('CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, username TEXT NOT NULL REFERENCES app_users(username), expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at)')
+        con.execute("""CREATE TABLE IF NOT EXISTS client_seller_authorizations (
+            client_id TEXT NOT NULL, seller_username TEXT NOT NULL REFERENCES app_users(username),
+            approved_by TEXT NOT NULL REFERENCES app_users(username), active BOOLEAN NOT NULL DEFAULT true,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            PRIMARY KEY(client_id,seller_username))""")
+        con.execute('CREATE INDEX IF NOT EXISTS idx_client_seller_active ON client_seller_authorizations(seller_username,client_id) WHERE active')
         for user, password in PASSWORDS.items():
             exists = con.execute('SELECT 1 FROM app_users WHERE username=%s',(user,)).fetchone()
             if not exists:
@@ -303,22 +309,58 @@ def check_client_scope(con, user, client_id):
     """A carteira de um vendedor é definida no servidor, inclusive para anexos."""
     if not is_seller(con,user): return
     row=con.execute("SELECT payload->>'owner' FROM entities WHERE kind='client' AND id=%s",(client_id,)).fetchone()
-    if not row or row[0]!=user: raise HTTPException(403,'Cliente fora da sua carteira')
+    authorized=con.execute('SELECT 1 FROM client_seller_authorizations WHERE client_id=%s AND seller_username=%s AND active',(client_id,user)).fetchone()
+    if not row or (row[0]!=user and not authorized): raise HTTPException(403,'Cliente fora da sua carteira autorizada')
 
 def scoped_rows(con, kind, user):
     if not is_seller(con,user):
         return [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))]
+    allowed={row[0] for row in con.execute('SELECT client_id FROM client_seller_authorizations WHERE seller_username=%s AND active',(user,))}
     if kind=='client':
-        return [row[0] for row in con.execute("SELECT payload FROM entities WHERE kind='client' AND payload->>'owner'=%s ORDER BY updated_at,id",(user,))]
+        return [row[1] for row in con.execute("SELECT id,payload FROM entities WHERE kind='client' ORDER BY updated_at,id") if row[0] in allowed or row[1].get('owner')==user]
     if kind in ('visit','order','task','opportunity','interaction','fulfillment','lead','settlement'):
-        return [row[0] for row in con.execute("SELECT e.payload FROM entities e JOIN entities c ON c.kind='client' AND c.id=e.payload->>'clientId' WHERE e.kind=%s AND c.payload->>'owner'=%s ORDER BY e.updated_at,e.id",(kind,user))]
+        client_ids={row[0] for row in con.execute("SELECT id FROM entities WHERE kind='client' AND payload->>'owner'=%s",(user,))}|allowed
+        return [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,)) if row[0].get('clientId') in client_ids]
     if kind=='route':
-        return [row[0] for row in con.execute("SELECT e.payload FROM entities e JOIN entities c ON c.kind='client' AND c.id=e.payload->>'clientId' WHERE e.kind='route' AND c.payload->>'owner'=%s AND e.payload->>'user'=%s ORDER BY e.updated_at,e.id",(user,user))]
+        client_ids={row[0] for row in con.execute("SELECT id FROM entities WHERE kind='client' AND payload->>'owner'=%s",(user,))}|allowed
+        return [row[0] for row in con.execute("SELECT payload FROM entities WHERE kind='route' ORDER BY updated_at,id") if row[0].get('clientId') in client_ids and row[0].get('user')==user]
     if kind=='goal':
         return [row[0] for row in con.execute("SELECT payload FROM entities WHERE kind='goal' AND payload->>'user'=%s ORDER BY updated_at,id",(user,))]
     if kind=='office_finance':
-        return [row[0] for row in con.execute("SELECT e.payload FROM entities e JOIN entities c ON c.kind='client' AND c.id=e.payload->>'clientId' WHERE e.kind='office_finance' AND c.payload->>'owner'=%s ORDER BY e.updated_at,e.id",(user,))]
+        client_ids={row[0] for row in con.execute("SELECT id FROM entities WHERE kind='client' AND payload->>'owner'=%s",(user,))}|allowed
+        return [row[0] for row in con.execute("SELECT payload FROM entities WHERE kind='office_finance' ORDER BY updated_at,id") if row[0].get('clientId') in client_ids]
     return [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))]
+
+class PortfolioAuthorization(BaseModel):
+    approved: bool
+
+@app.get('/api/portfolio/erika/pa')
+def erika_pa_portfolio(authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    if user not in ('Erika','Marlene','Ana Paula'): raise HTTPException(403,'Carteira restrita')
+    with db() as con:
+        approved={row[0] for row in con.execute("SELECT client_id FROM client_seller_authorizations WHERE seller_username='Erika' AND active")}
+        rows=con.execute("SELECT id,payload FROM entities WHERE kind='client' ORDER BY payload->>'city',payload->>'district',payload->>'name'")
+        clients=[{'id':client_id,'name':p.get('name',''),'city':p.get('city',''),'district':p.get('district',''),
+                  'approved':client_id in approved} for client_id,p in rows if normalize_uf(p.get('state'))=='PA']
+    return {'total':len(clients),'approved':sum(c['approved'] for c in clients),'clients':clients}
+
+@app.put('/api/portfolio/erika/pa/{client_id}')
+def authorize_erika_pa_client(client_id: str, data: PortfolioAuthorization, authorization: str | None = Header(default=None)):
+    actor=auth(authorization)
+    if actor!='Marlene': raise HTTPException(403,'A autorização da carteira da Erika cabe à Marlene')
+    with db() as con:
+        seller=con.execute("SELECT 1 FROM app_users WHERE username='Erika' AND active AND role='Vendedor'").fetchone()
+        if not seller: raise HTTPException(409,'Conta de Erika não está ativa como vendedora')
+        row=con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s",(client_id,)).fetchone()
+        if not row or normalize_uf(row[0].get('state'))!='PA': raise HTTPException(404,'Cliente do Pará não encontrado')
+        con.execute('''INSERT INTO client_seller_authorizations(client_id,seller_username,approved_by,active)
+          VALUES(%s,'Erika',%s,%s) ON CONFLICT(client_id,seller_username)
+          DO UPDATE SET active=excluded.active,approved_by=excluded.approved_by,updated_at=now()''',
+          (client_id,actor,data.approved))
+        con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'client_authorization',%s,%s)",
+                    (actor,client_id,'approve_erika' if data.approved else 'revoke_erika'))
+    return {'id':client_id,'approved':data.approved,'seller':'Erika','approvedBy':actor}
 
 class SpeedioQuery(BaseModel):
     cnpj: str = Field(min_length=14, max_length=18)
