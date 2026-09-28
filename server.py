@@ -284,7 +284,7 @@ class SpeedioQuery(BaseModel):
 def speedio_lookup(query: SpeedioQuery, authorization: str | None = Header(default=None)):
     user = auth(authorization)
     require_sector(user, 'commercial', 'office')
-    cnpj = re.sub(r'\\D', '', query.cnpj)
+    cnpj = re.sub(r'\D', '', query.cnpj)
     if not valid_cnpj(cnpj):
         raise HTTPException(400, 'Informe um CNPJ válido')
     try:
