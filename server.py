@@ -297,6 +297,10 @@ def sectors_for(user):
 def admin_access(user):
     return user=='Ana Paula' or 'admin' in sectors_for(user)
 
+def valid_client_responsible(con, username):
+    member=con.execute('SELECT role,sectors FROM app_users WHERE username=%s AND active',(username,)).fetchone()
+    return bool(member and (member[0]=='Vendedor' or 'admin' in (member[1] or [])))
+
 def require_sector(user, *allowed):
     if not (set(allowed) & sectors_for(user)):
         raise HTTPException(403,'Setor sem permissão para pedidos')
@@ -755,8 +759,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     raise HTTPException(403,'Somente a administradora pode transferir a carteira')
                 if not admin_access(user) and not previous_client and obj.get('owner')!=user:
                     raise HTTPException(403,'Novo cliente deve pertencer ao seu usuário')
-                if obj.get('owner') and not con.execute("SELECT 1 FROM app_users WHERE username=%s AND active AND role='Vendedor'",(obj['owner'],)).fetchone() and obj.get('owner')!='Ana Paula' and not (previous_client and obj['owner']==previous_client[0].get('owner')):
-                    raise HTTPException(400,'Responsável precisa ser vendedor ativo')
+                if obj.get('owner') and not valid_client_responsible(con,obj['owner']) and obj['owner']!='Ana Paula' and not (previous_client and obj['owner']==previous_client[0].get('owner')):
+                    raise HTTPException(400,'Responsável precisa ser vendedor ou administrador ativo')
                 if previous_client: check_client_scope(con,user,entity_id)
             elif target_kind in ('order','visit','task','route','opportunity','interaction','fulfillment','lead','settlement','office_finance'):
                 previous_entity=con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s',(target_kind,entity_id)).fetchone()
