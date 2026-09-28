@@ -682,7 +682,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 tax=re.sub(r'\D','',str(obj.get('taxId','')))
                 uf=normalize_uf(obj.get('state'))
                 name=str(obj.get('name','')).strip()
-                if not re.fullmatch(r'\d{14}',tax) or entity_id != 'speedio:'+tax or not uf or not name or len(name)>180:
+                if not valid_cnpj(tax) or entity_id != 'speedio:'+tax or not uf or not name or len(name)>180:
                     raise HTTPException(400,'Lead: CNPJ, UF PA/AP ou nome inválido')
                 if any(len(str(obj.get(field,'')))>length for field,length in (('city',120),('contact',120),('phone',30))):
                     raise HTTPException(400,'Dados do lead excedem o limite')
