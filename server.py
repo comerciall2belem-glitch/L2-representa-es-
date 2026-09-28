@@ -297,7 +297,7 @@ def require_sector(user, *allowed):
 
 def is_seller(con, user):
     row=con.execute('SELECT role FROM app_users WHERE username=%s AND active',(user,)).fetchone()
-    return bool(row and row[0]=='Vendedor' and user!='Ana Paula')
+    return bool(row and row[0]=='Vendedor' and not admin_access(user))
 
 def check_client_scope(con, user, client_id):
     """A carteira de um vendedor é definida no servidor, inclusive para anexos."""
@@ -709,11 +709,11 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
             target_kind=deletable.get(kind,kind)
             if target_kind=='client':
                 previous_client=con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s",(entity_id,)).fetchone()
-                if user!='Ana Paula' and previous_client and obj.get('owner',previous_client[0].get('owner'))!=previous_client[0].get('owner'):
+                if not admin_access(user) and previous_client and obj.get('owner',previous_client[0].get('owner'))!=previous_client[0].get('owner'):
                     raise HTTPException(403,'Somente a administradora pode transferir a carteira')
-                if user!='Ana Paula' and not previous_client and obj.get('owner')!=user:
+                if not admin_access(user) and not previous_client and obj.get('owner')!=user:
                     raise HTTPException(403,'Novo cliente deve pertencer ao seu usuário')
-                if obj.get('owner') and not con.execute("SELECT 1 FROM app_users WHERE username=%s AND active AND role='Vendedor'",(obj['owner'],)).fetchone() and obj.get('owner')!='Ana Paula':
+                if obj.get('owner') and not con.execute("SELECT 1 FROM app_users WHERE username=%s AND active AND role='Vendedor'",(obj['owner'],)).fetchone() and obj.get('owner')!='Ana Paula' and not (previous_client and obj['owner']==previous_client[0].get('owner')):
                     raise HTTPException(400,'Responsável precisa ser vendedor ativo')
                 if previous_client: check_client_scope(con,user,entity_id)
             elif target_kind in ('order','visit','task','route','opportunity','interaction','fulfillment','lead','settlement','office_finance'):

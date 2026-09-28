@@ -7,7 +7,7 @@ nodes=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ('is_
 class HTTPException(Exception):
     def __init__(self,status_code,detail): self.status_code,self.detail=status_code,detail
 
-namespace={'HTTPException':HTTPException}
+namespace={'HTTPException':HTTPException,'admin_access':lambda user:user in ('Ana Paula','Marlene')}
 exec(compile(ast.Module(body=nodes,type_ignores=[]),'<scope>','exec'),namespace)
 
 class Cursor:
@@ -34,5 +34,6 @@ class ClientScopeTests(unittest.TestCase):
         self.assertEqual(namespace['scoped_rows'](con,'client','Euler'),[{'id':'c1'}])
         self.assertEqual(namespace['scoped_rows'](con,'order','Euler'),[{'id':'c1'}])
         self.assertEqual(len(namespace['scoped_rows'](con,'client','Ana Paula')),2)
+        self.assertEqual(len(namespace['scoped_rows'](con,'client','Marlene')),2)
 
 if __name__=='__main__': unittest.main()
