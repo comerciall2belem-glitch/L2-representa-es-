@@ -13,6 +13,7 @@ from client_cleanup import plan as client_cleanup_plan
 from daily_report import build_pdf, read_data, TZ
 from speedio_integration import lookup_cnpj, SpeedioError
 from order_reconciliation import reconcile_invoice, InvoiceError
+from lead_capture import LeadIntake, normalize_intake, ingest_lead, lead_sla
 
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
@@ -133,6 +134,33 @@ def initialize():
         con.execute("UPDATE app_users SET department=CASE username WHEN 'Ana Paula' THEN 'Direção comercial' WHEN 'Euler' THEN 'Comercial' WHEN 'Laís' THEN 'Suporte administrativo' WHEN 'Marlene' THEN 'Operações administrativas' ELSE coalesce(role,'Equipe') END WHERE department IS NULL")
         con.execute('CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, username TEXT NOT NULL REFERENCES app_users(username), expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at)')
+        con.execute('''CREATE TABLE IF NOT EXISTS capture_accounts (
+            id TEXT PRIMARY KEY, name TEXT NOT NULL, tax_id TEXT UNIQUE, state TEXT, city TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())''')
+        con.execute('''CREATE TABLE IF NOT EXISTS capture_contacts (
+            id TEXT PRIMARY KEY, account_id TEXT REFERENCES capture_accounts(id), name TEXT NOT NULL,
+            email_norm TEXT, phone_norm TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now())''')
+        con.execute('''CREATE TABLE IF NOT EXISTS capture_leads (
+            id TEXT PRIMARY KEY, account_id TEXT REFERENCES capture_accounts(id),
+            contact_id TEXT NOT NULL REFERENCES capture_contacts(id), owner TEXT REFERENCES app_users(username),
+            status TEXT NOT NULL, origin TEXT NOT NULL, campaign TEXT, landing_page TEXT,
+            utm_source TEXT, utm_medium TEXT, utm_campaign TEXT, utm_content TEXT, utm_term TEXT,
+            custom_fields JSONB NOT NULL DEFAULT '{}'::jsonb, email_norm TEXT, phone_norm TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            assigned_at TIMESTAMPTZ, first_response_at TIMESTAMPTZ)''')
+        con.execute('CREATE INDEX IF NOT EXISTS idx_capture_leads_email ON capture_leads(email_norm) WHERE email_norm IS NOT NULL')
+        con.execute('CREATE INDEX IF NOT EXISTS idx_capture_leads_phone ON capture_leads(phone_norm) WHERE phone_norm IS NOT NULL')
+        con.execute('CREATE INDEX IF NOT EXISTS idx_capture_leads_owner ON capture_leads(owner,created_at DESC)')
+        con.execute('''CREATE TABLE IF NOT EXISTS capture_lead_events (
+            id BIGSERIAL PRIMARY KEY, lead_id TEXT NOT NULL REFERENCES capture_leads(id),
+            event_type TEXT NOT NULL, actor TEXT, details JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now())''')
+        con.execute('CREATE INDEX IF NOT EXISTS idx_capture_events_lead ON capture_lead_events(lead_id,created_at)')
+        con.execute('''CREATE TABLE IF NOT EXISTS capture_routing_state (
+            id SMALLINT PRIMARY KEY CHECK(id=1), last_username TEXT,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now())''')
+        con.execute('INSERT INTO capture_routing_state(id) VALUES(1) ON CONFLICT(id) DO NOTHING')
         con.execute("""CREATE TABLE IF NOT EXISTS client_seller_authorizations (
             client_id TEXT NOT NULL, seller_username TEXT NOT NULL REFERENCES app_users(username),
             approved_by TEXT NOT NULL REFERENCES app_users(username), active BOOLEAN NOT NULL DEFAULT true,
@@ -365,6 +393,66 @@ def authorize_erika_pa_client(client_id: str, data: PortfolioAuthorization, auth
         con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'client_authorization',%s,%s)",
                     (actor,client_id,'approve_erika' if data.approved else 'revoke_erika'))
     return {'id':client_id,'approved':data.approved,'seller':'Erika','approvedBy':actor}
+
+@app.post('/api/leads/webhook', status_code=201)
+def capture_lead_webhook(data: LeadIntake, x_l2_webhook_key: str | None = Header(default=None)):
+    configured=os.getenv('L2_LEAD_WEBHOOK_TOKEN','')
+    if not configured:
+        raise HTTPException(503,'Captação externa ainda não configurada')
+    if not x_l2_webhook_key or not secrets.compare_digest(x_l2_webhook_key,configured):
+        raise HTTPException(401,'Credencial de captação inválida')
+    item=normalize_intake(data,valid_cnpj)
+    with db() as con:
+        result=ingest_lead(con,item)
+    return result
+
+@app.post('/api/leads/intake', status_code=201)
+def capture_lead_internal(data: LeadIntake, authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    require_sector(user,'commercial','office')
+    item=normalize_intake(data,valid_cnpj)
+    with db() as con:
+        return ingest_lead(con,item,source='backoffice:'+user)
+
+@app.get('/api/leads/inbox')
+def capture_lead_inbox(authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    require_sector(user,'commercial','office')
+    with db() as con:
+        can_view_all=not is_seller(con,user)
+        rows=con.execute('''SELECT l.id,c.name,c.email_norm,c.phone_norm,a.name,l.origin,l.campaign,
+             l.utm_source,l.utm_medium,l.utm_campaign,l.utm_content,l.utm_term,l.landing_page,
+             l.custom_fields,l.status,l.owner,l.created_at,l.assigned_at,l.first_response_at
+             FROM capture_leads l JOIN capture_contacts c ON c.id=l.contact_id
+             LEFT JOIN capture_accounts a ON a.id=l.account_id
+             WHERE (%s OR l.owner=%s) ORDER BY l.created_at DESC LIMIT 200''',(can_view_all,user)).fetchall()
+        ids=[r[0] for r in rows]
+        history=con.execute('''SELECT lead_id,event_type,actor,details,created_at FROM capture_lead_events
+             WHERE lead_id=ANY(%s) ORDER BY created_at,id''',(ids,)).fetchall() if ids else []
+    events={lead_id:[] for lead_id in ids}
+    for lead_id,kind,actor,details,at in history:
+        events[lead_id].append({'type':kind,'actor':actor,'details':details,'at':at.isoformat()})
+    sla_minutes=max(1,min(int(os.getenv('L2_LEAD_SLA_MINUTES','120')),10080))
+    return [{'id':r[0],'name':r[1],'email':r[2],'phone':r[3],'company':r[4],
+             'origin':r[5],'campaign':r[6],'utms':{'source':r[7],'medium':r[8],
+             'campaign':r[9],'content':r[10],'term':r[11]},'landingPage':r[12],
+             'customFields':r[13],'status':r[14],'owner':r[15],
+             'createdAt':r[16].isoformat(),'assignedAt':r[17].isoformat() if r[17] else None,
+             'firstResponseAt':r[18].isoformat() if r[18] else None,
+             'sla':lead_sla(r[16],r[18],minutes=sla_minutes),'history':events[r[0]]} for r in rows]
+
+@app.post('/api/leads/{lead_id}/contacted')
+def capture_lead_contacted(lead_id: str, authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    require_sector(user,'commercial','office')
+    with db() as con:
+        row=con.execute('SELECT owner,first_response_at FROM capture_leads WHERE id=%s FOR UPDATE',(lead_id,)).fetchone()
+        if not row:raise HTTPException(404,'Lead não encontrado')
+        if is_seller(con,user) and row[0]!=user:raise HTTPException(403,'Lead fora da sua fila')
+        if row[1]:return {'id':lead_id,'alreadyContacted':True}
+        con.execute("UPDATE capture_leads SET first_response_at=now(),status='Em Atendimento',updated_at=now() WHERE id=%s",(lead_id,))
+        con.execute('INSERT INTO capture_lead_events(lead_id,event_type,actor) VALUES(%s,%s,%s)',(lead_id,'first_contact',user))
+    return {'id':lead_id,'alreadyContacted':False}
 
 class SpeedioQuery(BaseModel):
     cnpj: str = Field(min_length=14, max_length=18)
