@@ -2,7 +2,7 @@ import json
 import os
 import unittest
 from unittest.mock import patch
-from whatsapp_media import MediaError, validate_media, media_message_payload, send_media
+from whatsapp_media import MediaError, validate_media, media_message_payload, provider_config, send_media
 
 
 class WhatsAppMediaTests(unittest.TestCase):
@@ -23,7 +23,7 @@ class WhatsAppMediaTests(unittest.TestCase):
             validate_media('a.png', 'image/png', b'\x89PNG\r\n\x1a\n', 'x'*1025)
 
     @patch.dict(os.environ, {'WHATSAPP_ACCESS_TOKEN':'mock-token',
-                              'WHATSAPP_PHONE_NUMBER_ID':'12345', 'WHATSAPP_GRAPH_VERSION':'v23.0'})
+                              'WHATSAPP_PHONE_NUMBER_ID':'12345', 'WHATSAPP_GRAPH_VERSION':'v27.0'})
     @patch('whatsapp_media._post')
     def test_upload_then_single_captioned_message(self, post):
         post.side_effect = [{'id':'media-123'}, {'messages':[{'id':'wamid.mock'}]}]
@@ -32,10 +32,24 @@ class WhatsAppMediaTests(unittest.TestCase):
         self.assertEqual(post.call_count, 2)
         self.assertTrue(post.call_args_list[0].args[0].endswith('/media'))
         self.assertTrue(post.call_args_list[1].args[0].endswith('/messages'))
+        self.assertIn('/v27.0/12345/', post.call_args_list[0].args[0])
+        self.assertIn('/v27.0/12345/', post.call_args_list[1].args[0])
         message = json.loads(post.call_args_list[1].args[2])
         self.assertEqual(message['video'], {'id':'media-123','caption':'Veja o lançamento'})
 
     def test_missing_provider_config_is_explicit(self):
         with patch.dict(os.environ, {'WHATSAPP_ACCESS_TOKEN':'', 'WHATSAPP_PHONE_NUMBER_ID':''}):
+            self.assertIsNone(provider_config())
             with self.assertRaisesRegex(MediaError, 'configure o acesso'):
                 send_media('5591999999999','a.jpg','image/jpeg',b'\xff\xd8\xff','Olá')
+
+    def test_switch_needs_all_three_valid_settings(self):
+        values={'WHATSAPP_ACCESS_TOKEN':'mock-token','WHATSAPP_PHONE_NUMBER_ID':'12345',
+                'WHATSAPP_GRAPH_VERSION':'v27.0'}
+        with patch.dict(os.environ, values):
+            self.assertEqual(provider_config(), ('mock-token','12345','v27.0'))
+        for missing in values:
+            with self.subTest(missing=missing), patch.dict(os.environ, {**values, missing:''}):
+                self.assertIsNone(provider_config())
+        with patch.dict(os.environ, {**values,'WHATSAPP_GRAPH_VERSION':'https://evil.test'}):
+            self.assertIsNone(provider_config())

@@ -15,6 +15,15 @@ LIMITS = {'image/jpeg': 5 * 1024 * 1024, 'image/png': 5 * 1024 * 1024,
           'video/mp4': 16 * 1024 * 1024}
 
 
+def provider_config():
+    token = os.getenv('WHATSAPP_ACCESS_TOKEN', '')
+    phone_id = os.getenv('WHATSAPP_PHONE_NUMBER_ID', '')
+    version = os.getenv('WHATSAPP_GRAPH_VERSION', '')
+    if not token or not re.fullmatch(r'\d+', phone_id) or not re.fullmatch(r'v\d+\.\d+', version):
+        return None
+    return token, phone_id, version
+
+
 def validate_media(filename, declared_type, content, caption):
     name = (filename or '').lower()
     types = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.mp4': 'video/mp4'}
@@ -52,11 +61,10 @@ def _post(url, token, data, content_type):
 
 
 def send_media(to, filename, mime, content, caption):
-    token = os.getenv('WHATSAPP_ACCESS_TOKEN', '')
-    phone_id = os.getenv('WHATSAPP_PHONE_NUMBER_ID', '')
-    version = os.getenv('WHATSAPP_GRAPH_VERSION', 'v23.0')
-    if not token or not re.fullmatch(r'\d+', phone_id) or not re.fullmatch(r'v\d+\.\d+', version):
+    config = provider_config()
+    if not config:
         raise MediaError('Envio pela API indisponível: configure o acesso do WhatsApp no servidor.')
+    token, phone_id, version = config
     mime, kind = validate_media(filename, mime, content, caption)
     base = f'https://graph.facebook.com/{version}/{phone_id}'
     boundary = secrets.token_hex(16)

@@ -14,7 +14,7 @@ from daily_report import build_pdf, read_data, TZ
 from speedio_integration import lookup_cnpj, SpeedioError
 from order_reconciliation import reconcile_invoice, InvoiceError
 from lead_capture import LeadIntake, normalize_intake, ingest_lead, lead_sla
-from whatsapp_media import send_media, validate_media, MediaError
+from whatsapp_media import send_media, validate_media, provider_config, MediaError
 
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
@@ -1279,12 +1279,18 @@ def restore_archived_order(order_id: str, authorization: str | None = Header(def
         con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'order',%s,'restore')",(actor,order_id))
     return {'id':order_id,'restored':True}
 
+@app.get('/api/whatsapp/capabilities')
+def whatsapp_capabilities(authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    require_sector(user, 'commercial', 'office')
+    return {'mediaWithCaption': bool(provider_config())}
+
 @app.post('/api/whatsapp/media')
 async def send_whatsapp_media(client_id: str = Form(...), caption: str = Form(''),
                               file: UploadFile = File(...), authorization: str | None = Header(default=None)):
     user = auth(authorization)
     require_sector(user, 'commercial', 'office')
-    if not os.getenv('WHATSAPP_ACCESS_TOKEN') or not os.getenv('WHATSAPP_PHONE_NUMBER_ID'):
+    if not provider_config():
         raise HTTPException(503, 'Envio de mídia indisponível até configurar a API oficial do WhatsApp')
     content = await file.read(16 * 1024 * 1024 + 1)
     try:
