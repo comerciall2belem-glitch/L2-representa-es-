@@ -19,6 +19,8 @@ class Cursor:
 
 class IntakeDB:
     def __init__(self):self.leads={};self.last=None;self.events=[];self.sellers=['Erika','Euler']
+    def __enter__(self):return self
+    def __exit__(self,*args):return False
     def execute(self,sql,params=None):
         if sql.startswith('SELECT pg_advisory'):return Cursor()
         if sql.startswith('SELECT id FROM capture_leads'):
@@ -77,5 +79,14 @@ class LeadCaptureTests(unittest.TestCase):
         with patch.dict(os.environ,{'L2_LEAD_WEBHOOK_TOKEN':'correct-secret'}):
             with self.assertRaises(HTTPException) as error:server.capture_lead_webhook(data,'invalid')
             self.assertEqual(error.exception.status_code,401)
+
+    def test_webhook_ingests_and_routes_without_duplicates(self):
+        con=IntakeDB()
+        with patch.dict(os.environ,{'L2_LEAD_WEBHOOK_TOKEN':'test-secret'}),patch.object(server,'db',return_value=con):
+            first=server.capture_lead_webhook(LeadIntake(name='Maria Silva',email='MARIA@example.com',utmSource='campanha',utmCampaign='outubro'),'test-secret')
+            self.assertEqual((first['owner'],first['status']),('Erika','Em Qualificação / Distribuído'))
+            second=server.capture_lead_webhook(LeadIntake(name='Maria Silva',email='maria@example.com'),'test-secret')
+            self.assertEqual(second['id'],first['id'])
+            self.assertEqual(len(con.leads),1)
 
 if __name__=='__main__':unittest.main()
