@@ -25,6 +25,7 @@ DEFAULT_SECTORS = {
  'Laís':['commercial','clients_edit','office','management','finance','catalog'],
  'Marlene':['commercial','clients_edit','routes','office','management','catalog','admin'],
 }
+CATALOG_EDITORS = {'Ana Paula', 'Laís', 'Marlene'}
 INITIAL_PASSWORD = os.getenv('L2_INITIAL_PASSWORD', '')
 PASSWORDS = {u: INITIAL_PASSWORD or os.getenv(f'L2_PASSWORD_{i}', '') for i, u in enumerate(USERS, 1)}
 DATABASE_URL = os.getenv('DATABASE_URL', '')
@@ -796,13 +797,16 @@ class PriceImport(BaseModel):
 
 @app.post('/api/prices/import')
 def import_prices(data: PriceImport, authorization: str | None = Header(default=None)):
-    if not admin_access(auth(authorization)):
-        raise HTTPException(403, 'Importação restrita à administradora')
+    user = auth(authorization)
+    if user not in CATALOG_EDITORS or 'catalog' not in sectors_for(user):
+        raise HTTPException(403, 'Importação restrita às editoras do catálogo')
     prepared = {}
     for row in data.prices:
         uf = normalize_uf(row.state)
         if not uf:
             raise HTTPException(400, 'Tabela deve identificar PA ou AP em cada produto')
+        if not row.price.is_finite() or row.price <= 0 or row.price.as_tuple().exponent < -2 or not 1 <= len(row.description.strip()) <= 250:
+            raise HTTPException(400, 'Preço ou descrição inválida')
         key = f"{row.brand.strip()}|{uf}|{row.sku.strip()}"
         if key in prepared:
             raise HTTPException(400, f'SKU duplicado para marca e UF: {key}')
@@ -918,7 +922,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
             if kind in ('fulfillment',) and not ({'office','commercial'} & permissions): raise HTTPException(403,'Setor operacional sem permissão')
             if kind.startswith('office_') and kind not in ('office_finance','office_budget','office_monthly_close') and 'office' not in permissions: raise HTTPException(403,'Setor escritório sem permissão')
             if kind in ('industry','price_table'):
-                if not admin_access(user): raise HTTPException(403,'Catálogo restrito à administração')
+                if not admin_access(user) and not (kind == 'price_table' and user in CATALOG_EDITORS and 'catalog' in permissions): raise HTTPException(403,'Catálogo restrito à administração')
                 brand=str(obj.get('name' if kind=='industry' else 'brand','')).strip()
                 if not brand or len(brand)>120 or '|' in brand: raise HTTPException(400,'Indústria inválida')
                 if kind=='industry':
@@ -928,6 +932,10 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 else:
                     state=normalize_uf(obj.get('state'))
                     if not state or entity_id!=f'{brand}|{state}': raise HTTPException(400,'Tabela PA/AP inválida')
+                    if not admin_access(user):
+                        previous_table=con.execute("SELECT payload FROM entities WHERE kind='price_table' AND id=%s",(entity_id,)).fetchone()
+                        if not previous_table or obj.get('active') != previous_table[0].get('active'):
+                            raise HTTPException(403,'Somente a administração altera a situação da tabela')
                     industry=con.execute("SELECT payload FROM entities WHERE kind='industry' AND id=%s",(brand,)).fetchone()
                     if not industry or not industry[0].get('active'): raise HTTPException(400,'Cadastre uma indústria ativa antes da tabela')
                     if not isinstance(obj.get('active'),bool): raise HTTPException(400,'Situação inválida')
@@ -1011,14 +1019,16 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
             if kind == 'price':
                 table=con.execute("SELECT payload FROM entities WHERE kind='price_table' AND id=%s",(f"{obj.get('brand','').strip()}|{normalize_uf(obj.get('state')) or ''}",)).fetchone()
                 if not table or not table[0].get('active'): raise HTTPException(400,'Cadastre a tabela da indústria para PA/AP antes dos produtos')
-                if not admin_access(user):
+                if user not in CATALOG_EDITORS or 'catalog' not in permissions:
                     raise HTTPException(403, 'Preço restrito à administração')
                 brand,sku,state = str(obj.get('brand','')).strip(),str(obj.get('sku','')).strip(),normalize_uf(obj.get('state'))
                 try: price=Decimal(str(obj.get('price','')))
                 except (ValueError,InvalidOperation): raise HTTPException(400,'Preço inválido')
                 if not brand or not sku or not state or entity_id != f'{brand}|{state}|{sku}' or not price.is_finite() or price <= 0 or price.as_tuple().exponent < -2:
                     raise HTTPException(400,'Preço ou identificação inválida')
-                obj.update(brand=brand,sku=sku,state=state,price=str(price))
+                description=str(obj.get('description','')).strip()
+                if not 1 <= len(description) <= 250: raise HTTPException(400,'Descrição inválida')
+                obj.update(brand=brand,sku=sku,state=state,price=str(price),description=description)
             if (kind in ('office_finance','office_budget','office_monthly_close','cash_day','cash_entry','commission_rate','commission_receipt') or (kind == 'office_process' and str(obj.get('Área','')) == 'Financeiro')) and 'finance' not in permissions:
                 raise HTTPException(403, 'Acesso financeiro restrito')
             if kind == 'office_finance' and obj.get('Data'):
