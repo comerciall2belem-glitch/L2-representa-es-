@@ -1,5 +1,5 @@
 """L2 ONE: secure FastAPI/PostgreSQL application for Render."""
-import os, json, time, hashlib, secrets, re, base64, gzip, unicodedata, io, zipfile
+import os, json, time, hashlib, secrets, re, base64, gzip, unicodedata, io, zipfile, asyncio
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Header, UploadFile, File, Form
@@ -14,6 +14,7 @@ from daily_report import build_pdf, read_data, TZ
 from speedio_integration import lookup_cnpj, SpeedioError
 from order_reconciliation import reconcile_invoice, InvoiceError
 from lead_capture import LeadIntake, normalize_intake, ingest_lead, lead_sla
+from whatsapp_media import send_media, validate_media, MediaError
 
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
@@ -1277,6 +1278,35 @@ def restore_archived_order(order_id: str, authorization: str | None = Header(def
         con.execute("DELETE FROM archived_entities WHERE kind='order' AND id=%s",(order_id,))
         con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'order',%s,'restore')",(actor,order_id))
     return {'id':order_id,'restored':True}
+
+@app.post('/api/whatsapp/media')
+async def send_whatsapp_media(client_id: str = Form(...), caption: str = Form(''),
+                              file: UploadFile = File(...), authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    require_sector(user, 'commercial', 'office')
+    if not os.getenv('WHATSAPP_ACCESS_TOKEN') or not os.getenv('WHATSAPP_PHONE_NUMBER_ID'):
+        raise HTTPException(503, 'Envio de mídia indisponível até configurar a API oficial do WhatsApp')
+    content = await file.read(16 * 1024 * 1024 + 1)
+    try:
+        mime, kind = validate_media(file.filename, file.content_type, content, caption)
+    except MediaError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    with db() as con:
+        check_client_scope(con, user, client_id)
+        row = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (client_id,)).fetchone()
+        if not row: raise HTTPException(404, 'Cliente não encontrado')
+        phone = re.sub(r'\D', '', str(row[0].get('phone') or ''))
+        if len(phone) in (10, 11): phone = '55' + phone
+        if not re.fullmatch(r'55\d{10,11}', phone):
+            raise HTTPException(400, 'Cadastre um telefone brasileiro com DDD para o cliente')
+    try:
+        message_id = await asyncio.to_thread(send_media, phone, file.filename, mime, content, caption)
+    except MediaError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    with db() as con:
+        con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'whatsapp_media',%s,%s)",
+                    (user, client_id, 'sent_'+kind))
+    return {'status': 'sent', 'messageId': message_id}
 
 @app.get('/api/visits/{visit_id}/photos')
 def list_visit_photos(visit_id: str, authorization: str | None = Header(default=None)):
