@@ -658,13 +658,17 @@ function changeOrder(id,status){
 }
 async function previewClientCleanup(){const panel=$('cleanupPreview');panel.textContent='Conferindo a base…';try{const r=await fetch(s.server+'/api/admin/clients/cleanup',{headers:{Authorization:'Bearer '+s.token}});const data=await r.json();if(!r.ok)throw Error(data.detail||'Consulta recusada');panel.innerHTML='<p>Base: '+data.total+' · Fora de PA/AP: '+data.outside+' · Duplicados inequívocos: '+data.duplicates+' · Após limpeza: '+data.remaining+'.</p><p class="muted">Cadastros retirados ficam arquivados; histórico de pedidos e visitas é preservado. Lojas com endereços diferentes são mantidas.</p>'+(data.outside||data.duplicates?'<button type="button" id="applyCleanup">Aplicar limpeza da base</button>':'<p>Não há registros para retirar.</p>');const button=$('applyCleanup');if(button)button.onclick=()=>applyClientCleanup(data)}catch(err){panel.textContent=err.message}}
 async function applyClientCleanup(preview){if(!confirm('Arquivar '+preview.outside+' cliente(s) fora de PA/AP e unir '+preview.duplicates+' duplicado(s) confirmado(s)?'))return;try{const r=await fetch(s.server+'/api/admin/clients/cleanup',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+s.token},body:JSON.stringify({previewHash:preview.previewHash})});const result=await r.json();if(!r.ok)throw Error(result.detail||'Limpeza recusada');await sync();alert('Base atualizada: '+result.remaining+' clientes PA/AP.');show('config')}catch(err){alert(err.message)}}
-function pendingClientRepairsHTML(){
+function pendingClientRegistrationIssues(){
  const issues=[...new Map(s.pending.filter(x=>x.type==='client').map(x=>[x.data.id,x])).values()].filter(x=>{
   const ie=String(x.data.stateRegistration||'').trim().toUpperCase();
   return (x.data.taxId||ie)&&ie!=='ISENTO'&&!/^\d{7,14}$/.test(ie.replace(/[.\-/\s]/g,''));
  });
+ return issues;
+}
+function pendingClientRepairsHTML(){
+ const issues=pendingClientRegistrationIssues();
  if(!issues.length)return '';
- return `<div class="box"><h3>Cadastros pendentes que precisam de correção</h3><p>Corrija a inscrição estadual e sincronize novamente. As demais alterações continuam salvas neste aparelho.</p>${issues.map(x=>`<form onsubmit="repairPendingClientRegistration(event,'${esc(x.changeId)}')"><label>${esc(x.data.name||x.data.id)} · CNPJ ${esc(x.data.taxId||'não informado')}<input name="registration" required value="${esc(x.data.stateRegistration||'')}" placeholder="7 a 14 dígitos ou ISENTO"></label><button>Corrigir cadastro pendente</button></form>`).join('')}</div>`;
+ return `<div id="pendingClientRepairs" class="box"><h3>Cadastros pendentes que precisam de correção</h3><p>Corrija a inscrição estadual e sincronize novamente. As demais alterações continuam salvas neste aparelho.</p>${issues.map(x=>`<form onsubmit="repairPendingClientRegistration(event,'${esc(x.changeId)}')"><label>${esc(x.data.name||x.data.id)} · CNPJ ${esc(x.data.taxId||'não informado')}<input name="registration" required value="${esc(x.data.stateRegistration||'')}" placeholder="7 a 14 dígitos ou ISENTO"></label><button>Corrigir cadastro pendente</button></form>`).join('')}</div>`;
 }
 function repairPendingClientRegistration(event,changeId){
  event.preventDefault();const change=s.pending.find(x=>x.changeId===changeId&&x.type==='client');if(!change)return;
@@ -733,6 +737,12 @@ async function logout(){
 }
 async function sync(){
  if(s.mustChangePassword||syncing||!s.server||!s.token||!navigator.onLine)return;
+ if(pendingClientRegistrationIssues().length){
+  window.lastSyncError='Corrija a inscrição estadual dos cadastros pendentes antes de sincronizar.';
+  show('config');
+  document.querySelector('#pendingClientRepairs')?.scrollIntoView({behavior:'smooth',block:'center'});
+  return;
+ }
  syncing=true;network();
  const batch=s.pending.slice(0,500), user=s.user, server=s.server, token=s.token;
  try{
