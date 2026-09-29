@@ -1176,11 +1176,14 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     raise HTTPException(400, 'UF PA ou AP obrigatória para novo cliente')
                 tax_id = ''.join(ch for ch in str(obj.get('taxId') or '') if ch.isdigit())
                 registration = str(obj.get('stateRegistration') or '').strip().upper()
+                # Aceita pontuação comum da IE sem converter palavras inválidas em números.
+                if registration != 'ISENTO' and re.fullmatch(r'[\d.\-/\s]+', registration):
+                    registration = re.sub(r'\D', '', registration)
                 if not existing or tax_id or registration:
                     if not valid_cnpj(tax_id):
                         raise HTTPException(400, 'CNPJ inválido; informe os 14 dígitos corretos')
                     if registration != 'ISENTO' and not (registration.isdigit() and 7 <= len(registration) <= 14):
-                        raise HTTPException(400, 'Informe inscrição estadual numérica ou ISENTO')
+                        raise HTTPException(400, f"Cliente {obj['name'].strip()} ({entity_id}): informe inscrição estadual numérica de 7 a 14 dígitos ou ISENTO")
                     obj['taxId'] = tax_id
                     obj['stateRegistration'] = registration
                     duplicates = con.execute("SELECT id,payload FROM entities WHERE kind='client' AND id<>%s AND payload->>'taxId' IS NOT NULL", (entity_id,)).fetchall()
