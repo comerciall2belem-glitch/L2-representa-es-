@@ -1094,7 +1094,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         raise HTTPException(409, 'Oportunidade já vinculada a um recebível')
             if kind in ('commission_rate','commission_receipt'):
                 brand = str(obj.get('brand','')).strip()
-                normalized = re.sub(r'[^a-z0-9]+','-',unicodedata.normalize('NFKD',brand).encode('ascii','ignore').decode().lower()).strip('-')
+                normalized = re.sub(r'[^a-z0-9]+','-',''.join(c for c in unicodedata.normalize('NFD',brand) if not '\u0300' <= c <= '\u036f').lower()).strip('-')
                 if not normalized or len(brand)>120 or len(normalized)>120:
                     raise HTTPException(400, 'Indústria inválida')
                 from decimal import Decimal as _Decimal
