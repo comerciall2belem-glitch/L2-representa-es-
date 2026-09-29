@@ -103,6 +103,27 @@ def initialize():
         con.execute('ALTER TABLE entities ALTER COLUMN created_at SET DEFAULT now()')
         con.execute('CREATE TABLE IF NOT EXISTS applied_changes (change_id TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE TABLE IF NOT EXISTS audit_log (id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, kind TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
+        # Cadastro inicial idempotente; preserva alterações feitas pela equipe no sistema.
+        bth = {'id':'Brotherhood BTH','name':'Brotherhood BTH','active':True,
+               'contact':'','notes':'Tabela BTH Varejo - Brotherhood 2026. Mesmos preços para PA e AP.',
+               'commercialPolicy':[
+                   {'minimum':'2000.00','paymentTerms':'30/45/60','freight':'CIF'},
+                   {'minimum':'3000.00','paymentTerms':'30/60/90','freight':'CIF'}]}
+        con.execute("INSERT INTO entities(kind,id,payload) VALUES('industry',%s,%s) ON CONFLICT(kind,id) DO NOTHING",
+                    (bth['id'], Jsonb(bth)))
+        bth_catalog=json.loads((BASE/'bth_catalog_2026.json').read_text(encoding='utf-8'))
+        if len(bth_catalog)!=53 or len({row['sku'] for row in bth_catalog})!=53:
+            raise RuntimeError('Catálogo BTH incompleto ou com SKU duplicado')
+        for uf in ('PA','AP'):
+            table={'id':f"{bth['name']}|{uf}",'brand':bth['name'],'state':uf,
+                   'title':f'Tabela BTH Varejo 2026 - {uf}','active':True}
+            con.execute("INSERT INTO entities(kind,id,payload) VALUES('price_table',%s,%s) ON CONFLICT(kind,id) DO NOTHING",
+                        (table['id'],Jsonb(table)))
+            for row in bth_catalog:
+                payload={'brand':bth['name'],'state':uf,**row}
+                price_id=f"{bth['name']}|{uf}|{row['sku']}"
+                con.execute("INSERT INTO entities(kind,id,payload) VALUES('price',%s,%s) ON CONFLICT(kind,id) DO NOTHING",
+                            (price_id,Jsonb(payload)))
         con.execute('CREATE TABLE IF NOT EXISTS archived_entities (kind TEXT NOT NULL, id TEXT NOT NULL, payload JSONB NOT NULL, reason TEXT NOT NULL, archived_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(kind,id))')
         con.execute('CREATE TABLE IF NOT EXISTS order_counter (id SMALLINT PRIMARY KEY CHECK(id=1), value BIGINT NOT NULL CHECK(value>=0))')
         con.execute('INSERT INTO order_counter(id,value) VALUES(1,0) ON CONFLICT(id) DO NOTHING')
@@ -929,6 +950,17 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     if con.execute("SELECT 1 FROM entities WHERE kind='industry' AND lower(id)=lower(%s) AND id<>%s LIMIT 1",(brand,entity_id)).fetchone(): raise HTTPException(409,'Indústria já cadastrada')
                     if entity_id!=brand: raise HTTPException(400,'Identificação da indústria inválida')
                     if not isinstance(obj.get('active'),bool): raise HTTPException(400,'Situação inválida')
+                    policy=obj.get('commercialPolicy',[])
+                    if not isinstance(policy,list) or len(policy)>12: raise HTTPException(400,'Política comercial inválida')
+                    for tier in policy:
+                        try:
+                            minimum=Decimal(str(tier['minimum']))
+                            terms=tier['paymentTerms']
+                            freight=tier['freight']
+                        except (KeyError,TypeError,InvalidOperation):
+                            raise HTTPException(400,'Faixa comercial inválida')
+                        if not minimum.is_finite() or minimum<=0 or minimum.as_tuple().exponent < -2 or not isinstance(terms,str) or not re.fullmatch(r'\d+(?:/\d+)*',terms) or freight not in ('CIF','FOB'):
+                            raise HTTPException(400,'Faixa comercial inválida')
                 else:
                     state=normalize_uf(obj.get('state'))
                     if not state or entity_id!=f'{brand}|{state}': raise HTTPException(400,'Tabela PA/AP inválida')
