@@ -659,11 +659,13 @@ function changeOrder(id,status){
 async function previewClientCleanup(){const panel=$('cleanupPreview');panel.textContent='Conferindo a base…';try{const r=await fetch(s.server+'/api/admin/clients/cleanup',{headers:{Authorization:'Bearer '+s.token}});const data=await r.json();if(!r.ok)throw Error(data.detail||'Consulta recusada');panel.innerHTML='<p>Base: '+data.total+' · Fora de PA/AP: '+data.outside+' · Duplicados inequívocos: '+data.duplicates+' · Após limpeza: '+data.remaining+'.</p><p class="muted">Cadastros retirados ficam arquivados; histórico de pedidos e visitas é preservado. Lojas com endereços diferentes são mantidas.</p>'+(data.outside||data.duplicates?'<button type="button" id="applyCleanup">Aplicar limpeza da base</button>':'<p>Não há registros para retirar.</p>');const button=$('applyCleanup');if(button)button.onclick=()=>applyClientCleanup(data)}catch(err){panel.textContent=err.message}}
 async function applyClientCleanup(preview){if(!confirm('Arquivar '+preview.outside+' cliente(s) fora de PA/AP e unir '+preview.duplicates+' duplicado(s) confirmado(s)?'))return;try{const r=await fetch(s.server+'/api/admin/clients/cleanup',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+s.token},body:JSON.stringify({previewHash:preview.previewHash})});const result=await r.json();if(!r.ok)throw Error(result.detail||'Limpeza recusada');await sync();alert('Base atualizada: '+result.remaining+' clientes PA/AP.');show('config')}catch(err){alert(err.message)}}
 function pendingClientRegistrationIssues(){
- const issues=[...new Map(s.pending.filter(x=>x.type==='client').map(x=>[x.data.id,x])).values()].filter(x=>{
+ // Cada alteração antiga é enviada ao servidor; uma versão mais recente do
+ // mesmo cliente não torna válida uma versão anterior ainda na fila.
+ const issues=s.pending.filter(x=>x.type==='client').filter(x=>{
   const ie=String(x.data.stateRegistration||'').trim().toUpperCase();
   return (x.data.taxId||ie)&&ie!=='ISENTO'&&!/^\d{7,14}$/.test(ie.replace(/[.\-/\s]/g,''));
  });
- return issues;
+ return [...new Map(issues.map(x=>[x.data.id,x])).values()];
 }
 function pendingClientRepairsHTML(){
  const issues=pendingClientRegistrationIssues();
@@ -804,4 +806,3 @@ async function sendWhatsappMedia(event){event.preventDefault();const form=event.
 function sendWhatsappOrder(){let id=$('whatsappOrder').value,order=s.orders.find(x=>x.id===id);if(!order)return alert('Selecione um pedido.');if(!whatsappPhone(client(order.clientId).phone))return alert('Cadastre um telefone brasileiro válido com DDD para o cliente do pedido.');shareOrderPDF(id)}
 
 async function exportPortable(){try{const r=await fetch(s.server+'/api/admin/export/portable',{headers:{Authorization:'Bearer '+s.token}});if(!r.ok){const d=await r.json().catch(()=>({}));throw Error(d.detail||'Exportação recusada')}downloadBlob(await r.blob(),'l2-one-portabilidade-'+today()+'.zip')}catch(e){alert(e.message)}}
-
