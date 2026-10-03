@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 import unittest
 from access_policy import effective_sectors, attribute_order
+from seller_commission import apply_seller_commission
 
 tree=ast.parse(Path(__file__).resolve().parents[1].joinpath('server.py').read_text())
 functions=[node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name in ('sync','next_order_number')]
@@ -21,7 +22,7 @@ class Cursor:
     def __iter__(self): return iter(self.rows)
 
 class FakeCon:
-    def __init__(self): self.orders={};self.number=0
+    def __init__(self): self.orders={};self.number=0;self.client_state='PA'
     def execute(self,sql,params=None):
         if sql.startswith('SELECT role,sectors FROM app_users WHERE username='):
             return Cursor(('Administradora', ['commercial', 'office']))
@@ -30,7 +31,7 @@ class FakeCon:
         if sql.startswith('UPDATE order_counter SET value=value+1'):
             self.number+=1
             return Cursor((self.number,))
-        if "SELECT payload FROM entities WHERE kind='client'" in sql:return Cursor(({'state':'PA'},))
+        if "SELECT payload FROM entities WHERE kind='client'" in sql:return Cursor(({'state':self.client_state},))
         if "SELECT payload FROM entities WHERE kind='price_table'" in sql:return Cursor(({'id':'Bruna Tavares|PA','brand':'Bruna Tavares','state':'PA','active':True},))
         if "SELECT payload FROM entities WHERE kind='price'" in sql:return Cursor(({'price':'35.52'},))
         if "SELECT payload FROM entities WHERE kind='order'" in sql:return Cursor((self.orders[params[0]],) if params[0] in self.orders else None)
@@ -47,9 +48,9 @@ class FakeDB:
     def __enter__(self):return self.con
     def __exit__(self,*args):return False
 
-namespace={'effective_sectors':effective_sectors,'attribute_order':attribute_order,'Sync':object,'Header':lambda *args,**kwargs:None,'HTTPException':HTTPException,
+namespace={'apply_seller_commission':apply_seller_commission,'effective_sectors':effective_sectors,'attribute_order':attribute_order,'Sync':object,'Header':lambda *args,**kwargs:None,'HTTPException':HTTPException,
            'FINANCE_USERS':{'Ana Paula'},'Decimal':Decimal,'InvalidOperation':InvalidOperation,
-           'normalize_uf':lambda value:value,'price_table_matches_client':lambda a,b:a==b,
+           'normalize_uf':lambda value:value,'price_table_matches_client':lambda a,b:a==b or (a=='AP' and b=='PA'),
            'Jsonb':lambda value:value,'re':re,'project_order':lambda con,identifier,obj:None,
            'check_client_scope':lambda con,user,client_id:None,'scoped_rows':lambda con,kind,user:[row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))]}
 exec(compile(ast.Module(body=functions,type_ignores=[]),'<order-numbering>','exec'),namespace)
@@ -70,3 +71,17 @@ class OrderNumberTests(unittest.TestCase):
         namespace['sync'](type('Sync',(),{'changes':[change]})(),'token')
         self.assertEqual(con.orders['first']['orderNumber'],1)
         self.assertEqual(con.number,2)
+
+    def test_amapa_can_use_para_without_changing_delivery_state(self):
+        con=FakeCon();con.client_state='AP'
+        namespace['db']=lambda:FakeDB(con);namespace['auth']=lambda token:'Ana Paula'
+        states=[];original=namespace['validate_bella_order']
+        namespace['validate_bella_order']=lambda con,obj,state,user:states.append(state)
+        try:
+            data={'id':'ap-pa','clientId':'client','brand':'Bruna Tavares','priceTable':'PA','sellerResponsible':'Erika','items':[{'sku':'BBBL01B','quantity':2}]}
+            change=type('Change',(),{'type':'order','data':data,'changeId':'change-ap-pa'})()
+            namespace['sync'](type('Sync',(),{'changes':[change]})(),'token')
+            self.assertEqual(con.orders['ap-pa']['clientState'],'AP')
+            self.assertEqual(con.orders['ap-pa']['priceTable'],'PA')
+            self.assertEqual(states,['AP'])
+        finally:namespace['validate_bella_order']=original

@@ -19,3 +19,5 @@ assert.match(ctx.validateBellaDraft({...order,paymentTerms:'90'}),/prazo/);
 console.log('Independent tables, shared coverage, channel commissions and Bella order rules: OK');
 
 assert.equal(ctx.catalogPrices().length,4);ctx.window.catalogSelectedTable='r';assert.equal(ctx.catalogPrices().length,1);assert.equal(ctx.catalogPrices()[0].price,'4.84');ctx.window.catalogSelectedTable='';ctx.window.catalogUF='AP';assert.equal(ctx.catalogPrices().length,3);
+
+assert.match(ctx.validateBellaDraft({...order,clientState:'AP',priceTable:'PA'}),/mínimo 3000 em AP/);

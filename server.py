@@ -18,6 +18,7 @@ from whatsapp_media import send_media, validate_media, provider_config, MediaErr
 
 from commercial_tables import table_id, price_id, validate_table, seed_bella, validate_bella_order
 from access_policy import effective_sectors, attribute_order, COMMERCIAL_SECTORS
+from seller_commission import validate_rate, apply_seller_commission
 
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
@@ -158,6 +159,7 @@ def initialize():
             phone TEXT NOT NULL, bank TEXT NOT NULL, account_type TEXT NOT NULL,
             branch TEXT NOT NULL, account_number TEXT NOT NULL, pix_key TEXT NOT NULL,
             created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())''')
+        con.execute('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS seller_commission_rate NUMERIC(5,2) CHECK (seller_commission_rate BETWEEN 0 AND 100)')
         con.execute("UPDATE app_users SET department=CASE username WHEN 'Ana Paula' THEN 'Direção comercial' WHEN 'Euler' THEN 'Comercial' WHEN 'Laís' THEN 'Suporte administrativo' WHEN 'Marlene' THEN 'Operações administrativas' ELSE coalesce(role,'Equipe') END WHERE department IS NULL")
         con.execute('CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, username TEXT NOT NULL REFERENCES app_users(username), expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at)')
@@ -607,7 +609,9 @@ def team_access(authorization: str | None = Header(default=None)):
         raise HTTPException(403, 'Acesso restrito à administradora')
     with db() as con:
         rows = con.execute('SELECT username,active,must_change_password,sectors,role,department FROM app_users ORDER BY username').fetchall()
-    return [{'user': name, 'active': active, 'mustChangePassword': first_access,'sectors':sectors or [], 'role':role or '', 'department':department or ''} for name,active,first_access,sectors,role,department in rows]
+    with db() as con:
+        rates={name:rate for name,rate in con.execute('SELECT username,seller_commission_rate FROM app_users')}
+    return [{'commissionRate':str(rates[name]) if rates.get(name) is not None else None,'user': name, 'active': active, 'mustChangePassword': first_access,'sectors':sectors or [], 'role':role or '', 'department':department or ''} for name,active,first_access,sectors,role,department in rows]
 
 @app.post('/api/admin/team-access/reset')
 def reset_team_access(data: TeamAccessReset, authorization: str | None = Header(default=None)):
@@ -687,6 +691,7 @@ def validate_seller_profile(profile):
         raise HTTPException(400,'Preencha cadastro e dados bancários completos do vendedor')
     if profile['accountType'] not in ('Corrente','Poupança','Pagamento') or '@' not in profile['email']:
         raise HTTPException(400,'E-mail ou tipo de conta inválido')
+    validate_rate(profile.get('commissionRate'))
     return tuple(str(profile[k]).strip() for k in required)
 
 @app.post('/api/admin/team-access')
@@ -703,6 +708,7 @@ def create_team_member(data: TeamMember, authorization: str | None = Header(defa
             raise HTTPException(409,'Usuário já cadastrado')
         con.execute('INSERT INTO app_users(username,password_hash,must_change_password,sectors,role,department) VALUES(%s,%s,true,%s,%s,%s)',(name,password_hash(provisional),Jsonb(data.sectors),data.role,data.department.strip()))
         if profile:
+            con.execute('UPDATE app_users SET seller_commission_rate=%s WHERE username=%s',(validate_rate(data.profile.get('commissionRate')),name))
             con.execute('INSERT INTO seller_profiles(username,full_name,document,email,phone,bank,account_type,branch,account_number,pix_key) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',(name,*profile))
         con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'app_user',%s,'create')",(actor,name))
     return {'user':name,'temporaryPassword':provisional,'mustChangePassword':True}
@@ -714,7 +720,9 @@ def seller_profile(member: str, response: Response, authorization: str | None = 
     with db() as con:
         row=con.execute('SELECT full_name,document,email,phone,bank,account_type,branch,account_number,pix_key FROM seller_profiles WHERE username=%s',(member,)).fetchone()
     if not row: raise HTTPException(404,'Cadastro bancário ainda não preenchido')
-    return dict(zip(('fullName','document','email','phone','bank','accountType','branch','accountNumber','pixKey'),row))
+    with db() as con:
+        rate=con.execute('SELECT seller_commission_rate FROM app_users WHERE username=%s',(member,)).fetchone()
+    return {**dict(zip(('fullName','document','email','phone','bank','accountType','branch','accountNumber','pixKey'),row)), 'commissionRate':str(rate[0]) if rate and rate[0] is not None else None}
 
 @app.put('/api/admin/sellers/{member}/profile')
 def update_seller_profile(member: str, profile: dict, authorization: str | None = Header(default=None)):
@@ -723,13 +731,26 @@ def update_seller_profile(member: str, profile: dict, authorization: str | None 
     with db() as con:
         if not con.execute("SELECT 1 FROM app_users WHERE username=%s AND role='Vendedor'",(member,)).fetchone():
             raise HTTPException(404,'Vendedor não encontrado')
+        con.execute('UPDATE app_users SET seller_commission_rate=%s,updated_at=now() WHERE username=%s',(validate_rate(profile.get('commissionRate')),member))
         con.execute('''INSERT INTO seller_profiles(username,full_name,document,email,phone,bank,account_type,branch,account_number,pix_key)
             VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(username) DO UPDATE SET
             full_name=excluded.full_name,document=excluded.document,email=excluded.email,phone=excluded.phone,
             bank=excluded.bank,account_type=excluded.account_type,branch=excluded.branch,
             account_number=excluded.account_number,pix_key=excluded.pix_key,updated_at=now()''',(member,*values))
-        con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES('Ana Paula','seller_profile',%s,'update')",(member,))
+        con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'seller_profile',%s,'update')",(auth(authorization),member))
     return {'ok':True}
+
+@app.put('/api/admin/sellers/{member}/commission')
+def update_seller_commission(member: str, profile: dict, authorization: str | None = Header(default=None)):
+    actor=auth(authorization)
+    if not admin_access(actor): raise HTTPException(403,'Comissão restrita à administração')
+    rate=validate_rate(profile.get('commissionRate'))
+    with db() as con:
+        if member=='Laís' or not con.execute("SELECT 1 FROM app_users WHERE username=%s AND role='Vendedor'",(member,)).fetchone():
+            raise HTTPException(404,'Vendedor não encontrado')
+        con.execute('UPDATE app_users SET seller_commission_rate=%s,updated_at=now() WHERE username=%s',(rate,member))
+        con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'seller_commission',%s,'update')",(actor,member))
+    return {'ok':True,'commissionRate':str(rate)}
 
 @app.put('/api/admin/team-access/{member}')
 def update_team_member(member: str, data: TeamMemberUpdate, authorization: str | None = Header(default=None)):
@@ -821,7 +842,8 @@ def normalize_uf(value):
 
 def price_table_matches_client(customer_state, table_state):
     client_uf = normalize_uf(customer_state)
-    return client_uf is not None and client_uf == normalize_uf(table_state)
+    table_uf = normalize_uf(table_state)
+    return client_uf is not None and table_uf is not None and (client_uf == table_uf or (client_uf == 'AP' and table_uf == 'PA'))
 
 class PriceRow(BaseModel):
     brand: str = Field(min_length=1)
@@ -859,7 +881,7 @@ def import_prices(data: PriceImport, authorization: str | None = Header(default=
     return {'imported':len(prepared)}
 
 @app.get('/api/prices/{client_id}')
-def prices_for_client(client_id: str, authorization: str | None = Header(default=None)):
+def prices_for_client(client_id: str, authorization: str | None = Header(default=None), price_table: str | None = None):
     user=auth(authorization)
     if not ({'catalog','commercial'} & sectors_for(user)): raise HTTPException(403,'Catálogo sem permissão')
     with db() as con:
@@ -870,8 +892,10 @@ def prices_for_client(client_id: str, authorization: str | None = Header(default
         uf = normalize_uf(row[0].get('state'))
         if not uf:
             raise HTTPException(400, 'UF do cliente ausente ou inválida')
-        prices = [r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='price' AND (payload->>'state'=%s OR payload->>'state'='ALL') ORDER BY id",(uf,))]
-    return {'clientId':client_id,'state':uf,'prices':prices}
+        selected=normalize_uf(price_table) if price_table is not None else uf
+        if not price_table_matches_client(uf,selected): raise HTTPException(400,'Tabela não permitida para o cliente')
+        prices = [r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='price' AND (payload->>'state'=%s OR payload->>'state'='ALL') ORDER BY id",(selected,))]
+    return {'clientId':client_id,'state':uf,'priceTable':selected,'allowedTables':['AP','PA'] if uf=='AP' else ['PA'],'prices':prices}
 
 @app.post('/api/sync')
 def sync(data: Sync, authorization: str | None = Header(default=None)):
@@ -1228,7 +1252,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 if not price_table:
                     raise HTTPException(400, 'Escolha a tabela de preços PA ou AP')
                 if not price_table_matches_client(customer[0].get('state'), obj.get('priceTable')):
-                    raise HTTPException(400, 'A tabela de preços deve corresponder à UF do cliente')
+                    raise HTTPException(400, 'Cliente do Pará usa PA; cliente do Amapá pode usar PA ou AP')
                 total = Decimal('0')
                 brands=set()
                 for item in obj['items']:
@@ -1259,9 +1283,11 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 obj['priceTable'] = price_table
                 obj['state'] = price_table
                 obj['amount'] = float(total.quantize(Decimal('0.01')))
-                validate_bella_order(con,obj,price_table,user)
+                validate_bella_order(con,obj,client_uf,user)
                 existing_order = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
                 attribute_order(con,user,obj,existing_order[0] if existing_order else None)
+                rate_row=con.execute('SELECT seller_commission_rate FROM app_users WHERE username=%s',(obj['sellerResponsible'],)).fetchone()
+                apply_seller_commission(obj,rate_row[0] if rate_row else None,existing_order[0] if existing_order else None)
                 if not existing_order and con.execute("SELECT 1 FROM archived_entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone():
                     raise HTTPException(409, 'Pedido arquivado não pode ser recriado; restaure o original')
                 obj['orderNumber'] = existing_order[0].get('orderNumber') if existing_order and existing_order[0].get('orderNumber') else next_order_number(con)
@@ -1302,6 +1328,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
             con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,kind,entity_id,'delete' if kind=='delete_route' else 'upsert'))
         result = {'role':account[0] if account else '', 'sectors':sorted(permissions),'team':[row[0] for row in con.execute('SELECT username FROM app_users WHERE active ORDER BY username')],
                   'sellers':[row[0] for row in con.execute("SELECT username FROM app_users WHERE active AND role='Vendedor' ORDER BY username")]}
+        result['sellerCommissions']=[{'user':name,'rate':str(rate) if rate is not None else None} for name,rate in con.execute("SELECT username,seller_commission_rate FROM app_users WHERE active AND role='Vendedor' ORDER BY username") if not is_seller(con,user) or name==user]
         public_kinds = [('industry','industries'),('price_table','priceTables'),('fulfillment','fulfillments'),('opportunity','opportunities'),('interaction','interactions'),('lead','leads'),('whatsapp_template','whatsappTemplates'),('client','clients'),('visit','visits'),('order','orders'),('task','tasks'),('route','routes'),('goal','goals'),('price','prices'),('office_process','officeProcesses'),('office_action','officeActions'),('office_commercial','officeCommercial'),('office_administrative','officeAdministrative'),('office_ritual','officeRituals'),('office_role','officeRoles')]
         for kind, name in public_kinds:
             if kind in ('office_process','office_action','office_commercial','office_administrative','office_ritual','office_role') and 'office' not in permissions:

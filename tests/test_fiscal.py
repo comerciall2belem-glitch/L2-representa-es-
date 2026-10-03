@@ -26,9 +26,12 @@ class FiscalValidationTests(unittest.TestCase):
         matches = namespace["price_table_matches_client"]
         self.assertTrue(matches("Pará", "PA"))
         self.assertTrue(matches("AP", "Amapá"))
+        self.assertTrue(matches("AP", "Pará"))
+        self.assertFalse(matches("AP", "AM"))
         self.assertFalse(matches("PA", "AP"))
         self.assertFalse(matches("AM", "PA"))
         self.assertFalse(matches("", "PA"))
 
 if __name__ == "__main__":
     unittest.main()
+

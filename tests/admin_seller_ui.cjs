@@ -28,3 +28,14 @@ ctx.financeAllowed=()=>true;ctx.commissionKey=x=>x.toLowerCase();ctx.orderBrands
 vm.runInContext(source.slice(source.indexOf('function commissionPanel('),source.indexOf('function done(')),ctx);
 const panel=ctx.commissionPanel('2026-10');
 assert.match(panel,/>M300</);assert.match(panel,/>M30</);assert.doesNotMatch(panel,/M9999|M10299/);
+
+ctx.s.sellerCommissions=[{user:'MB',rate:'3.00'},{user:'Erika',rate:'2.50'},{user:'Euler',rate:null}];
+ctx.s.sellers=['MB','Erika','Euler'];ctx.priceCents=x=>Math.round(Number(x)*100);
+vm.runInContext(source.match(/^function sellerOrderRate\([^\n]+/m)[0]+'\n'+source.match(/^function sellerCommissionPanel\([^\n]+/m)[0],ctx);
+assert.equal(ctx.sellerOrderRate({user:'MB'}),3);
+assert.equal(ctx.sellerOrderRate({user:'Laís',sellerResponsible:'Erika'}),2.5);
+assert.equal(ctx.sellerOrderRate({user:'Euler'}),null);
+assert.equal(ctx.sellerOrderRate({user:'Erika',status:'Faturado',sellerCommissionRate:'1.50'}),1.5);
+assert.match(ctx.sellerCommissionPanel('2026-10'),/>M5</);
+assert.match(ctx.sellerCommissionPanel('2026-10'),/>M3</);
+assert.match(ctx.sellerCommissionPanel('2026-10'),/Não cadastrado/);
