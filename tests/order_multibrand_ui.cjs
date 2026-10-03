@@ -6,7 +6,7 @@ const snippet = source.slice(source.indexOf('function priceCents('), source.inde
 const helpers = source.slice(source.indexOf('function productMatches('), source.indexOf('function filterOrderProducts('));
 const context = {
   window: {orderBrandFilter: ''},
-  s: {prices: []},
+  s: {prices: [],industries:[{name:'Bruna Tavares',active:true},{name:'Ruby Kisses',active:true},{name:'Outra',active:true}],priceTables:[{id:'Bruna Tavares|PA',brand:'Bruna Tavares',state:'PA',active:true},{id:'Ruby Kisses|PA',brand:'Ruby Kisses',state:'PA',active:true},{id:'Outra|AP',brand:'Outra',state:'AP',active:true}]},
   norm: value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(),
   esc: value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[ch])),
   money: value => Number(value).toLocaleString('pt-BR', {style:'currency', currency:'BRL'}),
