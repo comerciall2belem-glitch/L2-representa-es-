@@ -3,12 +3,39 @@ import hashlib
 import hmac
 import os
 import re
+import json
+import logging
+import time
+import uuid
+
+from starlette.concurrency import run_in_threadpool
+from fastapi.responses import PlainTextResponse
 
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 router = APIRouter()
+logger = logging.getLogger('uvicorn.error.zara')
+
+
+def log_event(level, event, **fields):
+    # Only explicitly selected operational fields; never log bodies, phones or credentials.
+    logger.log(level, json.dumps({'component': 'zara', 'event': event,
+                                'severity': logging.getLevelName(level), **fields}))
+
+
+class WhatsAppSendError(Exception):
+    """Sanitized integration failure, safe to handle at the Zara boundary."""
+
+
+def setting(key):
+    value = os.getenv(key, '')
+    if not value.strip():
+        log_event(logging.ERROR, 'configuration_missing', setting=key)
+        raise HTTPException(503, 'Integração WhatsApp ainda não configurada')
+    return value
+
 
 WELCOME = ('Olá{nome}! Tudo bem? Me chamo *Zara* e sou a assistente virtual da '
            'L2 Representações. Estou à disposição enquanto a Ana Paula não retorna.\n\n'
@@ -46,14 +73,6 @@ def admin(authorization):
     from server import auth
     if auth(authorization) != 'Ana Paula':
         raise HTTPException(403, 'Acesso restrito à administradora')
-
-
-def config():
-    keys = ('WA_VERIFY_TOKEN', 'WA_APP_SECRET', 'WA_ACCESS_TOKEN', 'WA_PHONE_NUMBER_ID')
-    values = [os.getenv(k, '') for k in keys]
-    if not all(values):
-        raise HTTPException(503, 'Integração WhatsApp ainda não configurada')
-    return values
 
 
 def normalize(value):
@@ -97,45 +116,117 @@ async def ai_answer(text):
                      for item in output.get('content', []) if item.get('type') == 'output_text']
             answer = ' '.join(parts).strip()
             return answer[:500] if answer else PENDING
-    except (httpx.HTTPError, KeyError, ValueError):
+    except Exception as exc:
+        log_event(logging.WARNING, 'ai_fallback', error_type=type(exc).__name__)
         return PENDING
 
 
 async def send(phone, body):
-    _, _, token, phone_id = config()
-    version = os.getenv('WA_GRAPH_VERSION', 'v23.0')
-    async with httpx.AsyncClient(timeout=12) as client:
-        result = await client.post(f'https://graph.facebook.com/{version}/{phone_id}/messages',
-            headers={'Authorization': f'Bearer {token}'},
-            json={'messaging_product': 'whatsapp', 'to': phone, 'type': 'text',
-                  'text': {'body': body[:4096]}})
-        result.raise_for_status()
-        return result.json()['messages'][0]['id']
+    started = time.monotonic()
+    request_id = uuid.uuid4().hex
+    try:
+        token, phone_id = setting('WA_ACCESS_TOKEN'), setting('WA_PHONE_NUMBER_ID')
+        version = os.getenv('WA_GRAPH_VERSION', 'v23.0')
+        if not re.fullmatch(r'v\d+\.\d+', version) or not phone_id.isascii() or not phone_id.isdigit():
+            raise ValueError('Invalid Graph configuration')
+        async with httpx.AsyncClient(timeout=httpx.Timeout(12, connect=4),
+                                     limits=httpx.Limits(max_connections=10)) as client:
+            result = await client.post(f'https://graph.facebook.com/{version}/{phone_id}/messages',
+                headers={'Authorization': f'Bearer {token}'},
+                json={'messaging_product': 'whatsapp', 'to': phone, 'type': 'text',
+                      'text': {'body': body[:4096]}})
+            if not result.is_success:
+                try:
+                    error = result.json().get('error', {})
+                    codes = {k: error[k] for k in ('code', 'error_subcode')
+                             if isinstance(error.get(k), int)}
+                except (ValueError, AttributeError, TypeError):
+                    codes = {}
+                log_event(logging.ERROR, 'graph_http_error', request_id=request_id,
+                          http_status=result.status_code,
+                          duration_ms=round((time.monotonic()-started)*1000), **codes)
+                raise WhatsAppSendError('Graph API recusou o envio')
+            mid = result.json()['messages'][0]['id']
+            if not isinstance(mid, str) or not mid or len(mid) > 256:
+                raise ValueError('Invalid message ID')
+            log_event(logging.INFO, 'graph_accepted', request_id=request_id,
+                      duration_ms=round((time.monotonic()-started)*1000))
+            return mid
+    except WhatsAppSendError:
+        raise
+    except Exception as exc:
+        # Do not log exception text: HTTP exceptions may contain tokens or response bodies.
+        log_event(logging.ERROR, 'graph_send_failed', request_id=request_id,
+                  error_type=type(exc).__name__,
+                  duration_ms=round((time.monotonic()-started)*1000))
+        raise WhatsAppSendError('Não foi possível enviar pelo WhatsApp') from None
 
 
+@router.get('/webhook', include_in_schema=False)
 @router.get('/api/zara/webhook')
 def verify_webhook(mode: str | None = Query(None, alias='hub.mode'),
                    token: str | None = Query(None, alias='hub.verify_token'),
                    challenge: str | None = Query(None, alias='hub.challenge')):
-    verify, _, _, _ = config()
-    if mode != 'subscribe' or not token or not hmac.compare_digest(token, verify):
+    verify = setting('WA_VERIFY_TOKEN')
+    if mode != 'subscribe' or not token or not hmac.compare_digest(token.encode('utf-8'), verify.encode('utf-8')):
+        log_event(logging.WARNING, 'verification_rejected')
         raise HTTPException(403)
-    return __import__('fastapi').responses.PlainTextResponse(challenge or '')
+    if not challenge or len(challenge) > 1024:
+        raise HTTPException(400, 'Challenge ausente ou inválido')
+    log_event(logging.INFO, 'verification_accepted')
+    return PlainTextResponse(challenge)
 
 
+def validate_payload(payload):
+    def mapping(value):
+        if not isinstance(value, dict):
+            raise ValueError('Expected object')
+        return value
+
+    def sequence(value):
+        if not isinstance(value, list):
+            raise ValueError('Expected list')
+        return value
+
+    mapping(payload)
+    if payload.get('object', 'whatsapp_business_account') != 'whatsapp_business_account':
+        raise ValueError('Unexpected object')
+    for entry in sequence(payload.get('entry', [])):
+        for change in sequence(mapping(entry).get('changes', [])):
+            value = mapping(mapping(change).get('value', {}))
+            mapping(value.get('metadata', {}))
+            for contact in sequence(value.get('contacts', [])):
+                mapping(mapping(contact).get('profile', {}))
+                if not isinstance(contact.get('wa_id', ''), str):
+                    raise ValueError('Invalid contact ID')
+            for message in sequence(value.get('messages', [])):
+                text = mapping(mapping(message).get('text', {}))
+                if not isinstance(text.get('body', ''), str):
+                    raise ValueError('Invalid text')
+
+
+@router.post('/webhook', include_in_schema=False)
 @router.post('/api/zara/webhook')
 async def receive_webhook(request: Request, x_hub_signature_256: str | None = Header(None)):
-    _, secret, _, expected_id = config()
-    raw = await request.body()
-    signature = 'sha256=' + hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
-    if not x_hub_signature_256 or not hmac.compare_digest(signature, x_hub_signature_256):
+    secret, expected_id = setting('WA_APP_SECRET'), setting('WA_PHONE_NUMBER_ID')
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw.extend(chunk)
+        if len(raw) > 256_000:
+            raise HTTPException(413)
+    if not x_hub_signature_256 or not re.fullmatch(r'sha256=[0-9a-f]{64}', x_hub_signature_256):
+        log_event(logging.WARNING, 'signature_rejected')
         raise HTTPException(403)
-    if len(raw) > 256_000:
-        raise HTTPException(413)
+    signature = 'sha256=' + hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, x_hub_signature_256):
+        log_event(logging.WARNING, 'signature_rejected')
+        raise HTTPException(403)
     try:
-        payload = await request.json()
-    except ValueError:
-        raise HTTPException(400)
+        payload = json.loads(raw)
+        validate_payload(payload)
+    except (ValueError, TypeError, RecursionError):
+        log_event(logging.WARNING, 'payload_rejected')
+        raise HTTPException(400, 'Payload inválido')
     for entry in payload.get('entry', []):
         for change in entry.get('changes', []):
             value = change.get('value', {})
@@ -150,31 +241,54 @@ async def receive_webhook(request: Request, x_hub_signature_256: str | None = He
                 if not body:
                     body = '[Mensagem não textual recebida]'
                 name = str(contacts.get(phone, ''))[:120]
-                with db() as con:
-                    con.execute('''INSERT INTO zara_conversations(phone,name) VALUES(%s,%s)
-                        ON CONFLICT(phone) DO UPDATE SET name=COALESCE(NULLIF(EXCLUDED.name,''),zara_conversations.name),updated_at=now()''', (phone, name))
-                    inserted = con.execute('''INSERT INTO zara_messages(message_id,phone,direction,body)
-                        VALUES(%s,%s,'in',%s) ON CONFLICT DO NOTHING RETURNING message_id''', (mid, phone, body)).fetchone()
-                    if not inserted:
-                        continue
-                    mode = con.execute('SELECT mode FROM zara_conversations WHERE phone=%s FOR UPDATE', (phone,)).fetchone()[0]
-                    first = con.execute("SELECT count(*) FROM zara_messages WHERE phone=%s AND direction='in'", (phone,)).fetchone()[0] == 1
-                    rule, handoff = response_rule(body, name, first)
-                    if not body or body == '[Mensagem não textual recebida]':
-                        rule, handoff = HANDOFF, True
-                    if handoff:
-                        con.execute("UPDATE zara_conversations SET mode='human' WHERE phone=%s", (phone,))
+                def persist_inbound():
+                    with db() as con:
+                        con.execute('''INSERT INTO zara_conversations(phone,name) VALUES(%s,%s)
+                            ON CONFLICT(phone) DO UPDATE SET name=COALESCE(NULLIF(EXCLUDED.name,''),zara_conversations.name),updated_at=now()''', (phone, name))
+                        inserted = con.execute('''INSERT INTO zara_messages(message_id,phone,direction,body)
+                            VALUES(%s,%s,'in',%s) ON CONFLICT DO NOTHING RETURNING message_id''', (mid, phone, body)).fetchone()
+                        if not inserted:
+                            return None
+                        mode = con.execute('SELECT mode FROM zara_conversations WHERE phone=%s FOR UPDATE', (phone,)).fetchone()[0]
+                        first = con.execute("SELECT count(*) FROM zara_messages WHERE phone=%s AND direction='in'", (phone,)).fetchone()[0] == 1
+                        rule, handoff = response_rule(body, name, first)
+                        if not body or body == '[Mensagem não textual recebida]':
+                            rule, handoff = HANDOFF, True
+                        if handoff:
+                            con.execute("UPDATE zara_conversations SET mode='human' WHERE phone=%s", (phone,))
+                        return mode, rule
+                try:
+                    saved = await run_in_threadpool(persist_inbound)
+                except Exception as exc:
+                    log_event(logging.ERROR, 'inbound_storage_failed', error_type=type(exc).__name__)
+                    raise HTTPException(503, 'Falha temporária no armazenamento') from None
+                if saved is None:
+                    log_event(logging.INFO, 'duplicate_ignored')
+                    continue
+                mode, rule = saved
                 if mode == 'human':
                     continue
-                answer = rule or await ai_answer(body)
                 try:
+                    answer = rule or await ai_answer(body)
                     out_id = await send(phone, answer)
-                except (httpx.HTTPError, KeyError):
-                    # Keep the inbound record for the team to inspect and replay safely.
+                except Exception as exc:
+                    log_event(logging.ERROR, 'response_failed', error_type=type(exc).__name__)
+                    def mark_human():
+                        with db() as con:
+                            con.execute("UPDATE zara_conversations SET mode='human',updated_at=now() WHERE phone=%s", (phone,))
+                    try:
+                        await run_in_threadpool(mark_human)
+                    except Exception as storage_exc:
+                        log_event(logging.ERROR, 'handoff_storage_failed', error_type=type(storage_exc).__name__)
                     continue
-                with db() as con:
-                    con.execute('''INSERT INTO zara_messages(message_id,phone,direction,body,delivered)
-                        VALUES(%s,%s,'out',%s,true) ON CONFLICT DO NOTHING''', (out_id, phone, answer))
+                def persist_outbound():
+                    with db() as con:
+                        con.execute('''INSERT INTO zara_messages(message_id,phone,direction,body,delivered)
+                            VALUES(%s,%s,'out',%s,true) ON CONFLICT DO NOTHING''', (out_id, phone, answer))
+                try:
+                    await run_in_threadpool(persist_outbound)
+                except Exception as exc:
+                    log_event(logging.ERROR, 'outbound_storage_failed', error_type=type(exc).__name__)
     return {'ok': True}
 
 
@@ -231,7 +345,7 @@ async def reply(phone: str, data: HumanReply, authorization: str | None = Header
         raise HTTPException(409, 'Assuma o atendimento antes de responder')
     try:
         mid = await send(phone, data.text)
-    except (httpx.HTTPError, KeyError):
+    except WhatsAppSendError:
         raise HTTPException(502, 'Não foi possível enviar pelo WhatsApp')
     with db() as con:
         con.execute('''INSERT INTO zara_messages(message_id,phone,direction,body,delivered)
