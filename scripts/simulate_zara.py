@@ -43,7 +43,7 @@ class MemoryDB:
     def execute(self, sql, args=()):
         self.row = None
         if 'INSERT INTO zara_messages' in sql:
-            mid, phone, body = args
+            mid, phone, body = args[:3]
             if mid not in self.messages:
                 self.messages[mid] = {'body': body, 'direction': 'out' if "'out'" in sql else 'in'}
                 self.row = (mid,)
