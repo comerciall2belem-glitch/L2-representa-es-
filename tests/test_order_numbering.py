@@ -6,6 +6,7 @@ import re
 import unittest
 from access_policy import effective_sectors, attribute_order
 from seller_commission import apply_seller_commission
+from financial_visibility import hide_industry_commissions
 
 tree=ast.parse(Path(__file__).resolve().parents[1].joinpath('server.py').read_text())
 functions=[node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name in ('sync','next_order_number')]
@@ -48,7 +49,7 @@ class FakeDB:
     def __enter__(self):return self.con
     def __exit__(self,*args):return False
 
-namespace={'apply_seller_commission':apply_seller_commission,'effective_sectors':effective_sectors,'attribute_order':attribute_order,'Sync':object,'Header':lambda *args,**kwargs:None,'HTTPException':HTTPException,
+namespace={'hide_industry_commissions':hide_industry_commissions,'apply_seller_commission':apply_seller_commission,'effective_sectors':effective_sectors,'attribute_order':attribute_order,'Sync':object,'Header':lambda *args,**kwargs:None,'HTTPException':HTTPException,
            'FINANCE_USERS':{'Ana Paula'},'Decimal':Decimal,'InvalidOperation':InvalidOperation,
            'normalize_uf':lambda value:value,'price_table_matches_client':lambda a,b:a==b or (a=='AP' and b=='PA'),
            'Jsonb':lambda value:value,'re':re,'project_order':lambda con,identifier,obj:None,

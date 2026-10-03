@@ -3,6 +3,7 @@ import ast
 from datetime import datetime, timezone
 from pathlib import Path
 import unittest
+from financial_visibility import hide_industry_commissions
 
 source=ast.parse(Path(__file__).resolve().parents[1].joinpath('server.py').read_text())
 function=next(n for n in source.body if isinstance(n,ast.FunctionDef) and n.name=='restore_archived_order')
@@ -35,7 +36,7 @@ class FakeDB:
     def __enter__(self):return self.con
     def __exit__(self,*args):return False
 
-namespace={'HTTPException':HTTPException,'Header':Header,'Jsonb':lambda x:x,'Sync':object,'FINANCE_USERS':{'Ana Paula','Euler','Laís'},'admin_access':lambda user:user in ('Ana Paula','Marlene')}
+namespace={'hide_industry_commissions':hide_industry_commissions,'HTTPException':HTTPException,'Header':Header,'Jsonb':lambda x:x,'Sync':object,'FINANCE_USERS':{'Ana Paula','Euler','Laís'},'admin_access':lambda user:user in ('Ana Paula','Marlene')}
 exec(compile(ast.Module(body=[function,sync_function],type_ignores=[]),'<archive>','exec'),namespace)
 
 class ArchiveCon(FakeCon):
@@ -81,3 +82,4 @@ class ArchiveTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as caught:
             namespace['restore_archived_order']('p1','token')
         self.assertEqual(caught.exception.status_code,403)
+

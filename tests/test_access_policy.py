@@ -59,3 +59,8 @@ class AccessPolicyTests(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
+class NamedFinanceRestrictions(unittest.TestCase):
+    def test_marlene_and_erika_cannot_gain_finance(self):
+        for name in ('Marlene','Erika'):
+            self.assertNotIn('finance',effective_sectors(name,'Administrativo',['office','finance','management','admin']))

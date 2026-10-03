@@ -7,6 +7,8 @@ def effective_sectors(username, role, sectors):
     allowed = set(sectors or [])
     if role == 'Vendedor' and username != 'Euler':
         allowed &= COMMERCIAL_SECTORS
+    if username in ('Marlene','Erika'):
+        allowed.discard('finance')
     return allowed
 
 

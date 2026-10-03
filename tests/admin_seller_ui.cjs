@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync('app.js','utf8');
-const ctx = {s:{token:'test',user:'Erika',role:'Vendedor',sellers:['Erika','MB','Euler'],sectors:['commercial','office','finance','management','admin','routes']},esc:x=>String(x||''),sellerOptions:x=>'<option>'+x+'</option>'};
+const ctx = {save:()=>{},s:{token:'test',user:'Erika',role:'Vendedor',sellers:['Erika','MB','Euler'],sectors:['commercial','office','finance','management','admin','routes']},esc:x=>String(x||''),sellerOptions:x=>'<option>'+x+'</option>'};
 vm.createContext(ctx);
 vm.runInContext(source.slice(source.indexOf('function hasSector('),source.indexOf('function show(')),ctx);
 for (const sector of ['office','finance','management','admin','catalog']) assert.equal(ctx.hasSector(sector),false);
@@ -39,3 +39,9 @@ assert.equal(ctx.sellerOrderRate({user:'Erika',status:'Faturado',sellerCommissio
 assert.match(ctx.sellerCommissionPanel('2026-10'),/>M5</);
 assert.match(ctx.sellerCommissionPanel('2026-10'),/>M3</);
 assert.match(ctx.sellerCommissionPanel('2026-10'),/Não cadastrado/);
+
+ctx.financeAllowed=()=>ctx.hasSector('finance');ctx.s.user='Marlene';ctx.s.role='Administrativo';ctx.s.sectors=['finance','office','management','admin'];assert.equal(ctx.financeAllowed(),false);assert.equal(ctx.sectionAllowed('finance'),false);assert.equal(ctx.commissionPanel('2026-10'),'');
+
+ctx.eligibleTables=()=>[{brand:'Bella Brazil',id:'r',title:'Revenda',channel:'REVENDA',commissionRate:8}];
+vm.runInContext(source.match(/^function orderCommercialTablesHTML\([^\n]+/m)[0],ctx);
+assert.doesNotMatch(ctx.orderCommercialTablesHTML({}),/comissão Varejo|Atacado 5%/);

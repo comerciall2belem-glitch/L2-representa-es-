@@ -19,6 +19,7 @@ from whatsapp_media import send_media, validate_media, provider_config, MediaErr
 from commercial_tables import table_id, price_id, validate_table, seed_bella, validate_bella_order
 from access_policy import effective_sectors, attribute_order, COMMERCIAL_SECTORS
 from seller_commission import validate_rate, apply_seller_commission
+from financial_visibility import hide_industry_commissions, preserve_industry_commissions
 
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
@@ -683,6 +684,8 @@ def validate_member(user, role, sectors):
         raise HTTPException(400,'Laís deve atuar como Administrativo com acesso Adm')
     if role=='Vendedor' and name!='Euler' and set(sectors)-COMMERCIAL_SECTORS:
         raise HTTPException(400,'Equipe comercial pode acessar somente Comercial, Carteira e Rotas')
+    if name in ('Marlene','Erika') and 'finance' in sectors:
+        raise HTTPException(400,'Marlene e Erika não têm acesso financeiro')
     return name
 
 def validate_seller_profile(profile):
@@ -895,7 +898,7 @@ def prices_for_client(client_id: str, authorization: str | None = Header(default
         selected=normalize_uf(price_table) if price_table is not None else uf
         if not price_table_matches_client(uf,selected): raise HTTPException(400,'Tabela não permitida para o cliente')
         prices = [r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='price' AND (payload->>'state'=%s OR payload->>'state'='ALL') ORDER BY id",(selected,))]
-    return {'clientId':client_id,'state':uf,'priceTable':selected,'allowedTables':['AP','PA'] if uf=='AP' else ['PA'],'prices':prices}
+    return {'clientId':client_id,'state':uf,'priceTable':selected,'allowedTables':['AP','PA'] if uf=='AP' else ['PA'],'prices':prices if 'finance' in sectors_for(user) else hide_industry_commissions(prices)}
 
 @app.post('/api/sync')
 def sync(data: Sync, authorization: str | None = Header(default=None)):
@@ -1313,6 +1316,9 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
             if kind == 'delete_route':
                 con.execute('DELETE FROM entities WHERE kind=%s AND id=%s',('route',entity_id))
             else:
+                if kind in ('industry','price_table') and 'finance' not in permissions:
+                    private_previous=con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s',(kind,entity_id)).fetchone()
+                    obj=preserve_industry_commissions(private_previous[0] if private_previous else {},obj)
                 obj['updatedBy'] = user
                 obj['updatedAs'] = 'Adm' if user=='Laís' or (account and account[0] in ('Administrativo','Administradora')) else 'Sócio' if user=='Euler' else 'Comercial'
                 con.execute('INSERT INTO entities(kind,id,payload) VALUES(%s,%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,updated_at=now()', (kind,entity_id,Jsonb(obj)))
@@ -1347,7 +1353,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 result[name] = scoped_rows(con,kind,user)
         for kind, name in [('settlement','settlements'),('office_finance','officeFinance'),('office_budget','officeBudget'),('office_monthly_close','officeMonthlyClose'),('cash_day','cashDays'),('cash_entry','cashEntries'),('commission_rate','commissionRates'),('commission_receipt','commissionReceipts')]:
             result[name] = scoped_rows(con,kind,user) if 'finance' in permissions else []
-        return result
+        return result if 'finance' in permissions else hide_industry_commissions(result)
 
 def order_exists(con, order_id: str):
     if not con.execute("SELECT 1 FROM entities WHERE kind='order' AND id=%s",(order_id,)).fetchone():
@@ -1360,11 +1366,13 @@ def check_order_scope(con,user,order_id):
 
 @app.get('/api/admin/orders/archived')
 def archived_orders(authorization: str | None = Header(default=None)):
-    if not admin_access(auth(authorization)):
+    user=auth(authorization)
+    if not admin_access(user):
         raise HTTPException(403, 'Consulta restrita à administradora')
     with db() as con:
         rows=con.execute("SELECT id,payload,reason,archived_at FROM archived_entities WHERE kind='order' ORDER BY archived_at DESC LIMIT 200").fetchall()
-    return [{'id':id,'order':payload,'reason':reason,'archivedAt':when.isoformat()} for id,payload,reason,when in rows]
+    result=[{'id':id,'order':payload,'reason':reason,'archivedAt':when.isoformat()} for id,payload,reason,when in rows]
+    return result if 'finance' in sectors_for(user) else hide_industry_commissions(result)
 
 @app.post('/api/admin/orders/{order_id}/restore')
 def restore_archived_order(order_id: str, authorization: str | None = Header(default=None)):
