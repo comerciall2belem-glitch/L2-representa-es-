@@ -28,6 +28,7 @@ class FakeCon:
             self.number+=1
             return Cursor((self.number,))
         if "SELECT payload FROM entities WHERE kind='client'" in sql:return Cursor(({'state':'PA'},))
+        if "SELECT payload FROM entities WHERE kind='price_table'" in sql:return Cursor(({'id':'Bruna Tavares|PA','brand':'Bruna Tavares','state':'PA','active':True},))
         if "SELECT payload FROM entities WHERE kind='price'" in sql:return Cursor(({'price':'35.52'},))
         if "SELECT payload FROM entities WHERE kind='order'" in sql:return Cursor((self.orders[params[0]],) if params[0] in self.orders else None)
         if "SELECT 1 FROM archived_entities WHERE kind='order'" in sql:return Cursor()
@@ -49,6 +50,8 @@ namespace={'Sync':object,'Header':lambda *args,**kwargs:None,'HTTPException':HTT
            'Jsonb':lambda value:value,'re':re,'project_order':lambda con,identifier,obj:None,
            'check_client_scope':lambda con,user,client_id:None,'scoped_rows':lambda con,kind,user:[row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))]}
 exec(compile(ast.Module(body=functions,type_ignores=[]),'<order-numbering>','exec'),namespace)
+commercial=ast.parse(Path(__file__).resolve().parents[1].joinpath('commercial_tables.py').read_text())
+exec(compile(ast.Module(body=[node for node in commercial.body if isinstance(node,(ast.FunctionDef,ast.Assign))],type_ignores=[]),'<commercial-tables>','exec'),namespace)
 
 class OrderNumberTests(unittest.TestCase):
     def test_new_orders_start_at_one_and_edit_keeps_number(self):

@@ -16,6 +16,8 @@ from order_reconciliation import reconcile_invoice, InvoiceError
 from lead_capture import LeadIntake, normalize_intake, ingest_lead, lead_sla
 from whatsapp_media import send_media, validate_media, provider_config, MediaError
 
+from commercial_tables import table_id, price_id, validate_table, seed_bella, validate_bella_order
+
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
 SECTORS = {'commercial','clients_edit','routes','office','management','finance','catalog','admin'}
@@ -103,6 +105,7 @@ def initialize():
         con.execute('ALTER TABLE entities ALTER COLUMN created_at SET DEFAULT now()')
         con.execute('CREATE TABLE IF NOT EXISTS applied_changes (change_id TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE TABLE IF NOT EXISTS audit_log (id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, kind TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
+        seed_bella(con, BASE)
         # Cadastro inicial idempotente; preserva alterações feitas pela equipe no sistema.
         bth = {'id':'Brotherhood BTH','name':'Brotherhood BTH','active':True,
                'contact':'','notes':'Tabela BTH Varejo - Brotherhood 2026. Mesmos preços para PA e AP.',
@@ -251,7 +254,7 @@ def initialize():
         # Catálogos legados recebem indústria e tabela PA/AP sem alterar preços.
         for (brand,) in con.execute("SELECT DISTINCT payload->>'brand' FROM entities WHERE kind='price' AND payload->>'brand' IS NOT NULL"):
             con.execute("INSERT INTO entities(kind,id,payload) VALUES('industry',%s,%s) ON CONFLICT(kind,id) DO NOTHING",(brand,Jsonb({'id':brand,'name':brand,'active':True})))
-        for brand,state in con.execute("SELECT DISTINCT payload->>'brand',payload->>'state' FROM entities WHERE kind='price' AND payload->>'state' IN ('PA','AP')"):
+        for brand,state in con.execute("SELECT DISTINCT payload->>'brand',payload->>'state' FROM entities WHERE kind='price' AND payload->>'state' IN ('PA','AP') AND nullif(payload->>'tableId','') IS NULL"):
             key=f'{brand}|{state}'
             con.execute("INSERT INTO entities(kind,id,payload) VALUES('price_table',%s,%s) ON CONFLICT(kind,id) DO NOTHING",(key,Jsonb({'id':key,'brand':brand,'state':state,'title':f'{brand} {state}','active':True})))
         office_seed = os.getenv('L2_OFFICE_SEED_B64', '')
@@ -813,6 +816,7 @@ class PriceRow(BaseModel):
     state: str
     price: Decimal = Field(ge=0)
     description: str = ''
+    tableId: str = ''
 
 class PriceImport(BaseModel):
     prices: list[PriceRow] = Field(min_length=1, max_length=5000)
@@ -824,20 +828,20 @@ def import_prices(data: PriceImport, authorization: str | None = Header(default=
         raise HTTPException(403, 'Importação restrita às editoras do catálogo')
     prepared = {}
     for row in data.prices:
-        uf = normalize_uf(row.state)
+        uf = 'ALL' if row.tableId and row.state == 'ALL' else normalize_uf(row.state)
         if not uf:
             raise HTTPException(400, 'Tabela deve identificar PA ou AP em cada produto')
         if not row.price.is_finite() or row.price <= 0 or row.price.as_tuple().exponent < -2 or not 1 <= len(row.description.strip()) <= 250:
             raise HTTPException(400, 'Preço ou descrição inválida')
-        key = f"{row.brand.strip()}|{uf}|{row.sku.strip()}"
+        key = price_id({"brand":row.brand.strip(),"state":uf,"sku":row.sku.strip(),"tableId":row.tableId})
         if key in prepared:
             raise HTTPException(400, f'SKU duplicado para marca e UF: {key}')
         prepared[key] = {'brand':row.brand.strip(),'sku':row.sku.strip(),'state':uf,
-                         'price':str(row.price),'description':row.description}
+                         'price':str(row.price),'description':row.description,'tableId':row.tableId or f'{row.brand.strip()}|{uf}','id':key}
     with db() as con:
         for key, payload in prepared.items():
-            table=con.execute("SELECT payload FROM entities WHERE kind='price_table' AND id=%s",(f"{payload['brand']}|{payload['state']}",)).fetchone()
-            if not table or not table[0].get('active'): raise HTTPException(400, f"Cadastre a tabela {payload['brand']} / {payload['state']} antes de importar")
+            table=validate_table(con,payload,payload['brand'],payload['state'])
+            payload['state']=table['state']
             con.execute("INSERT INTO entities(kind,id,payload) VALUES('price',%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,updated_at=now()", (key,Jsonb(payload)))
     return {'imported':len(prepared)}
 
@@ -853,7 +857,7 @@ def prices_for_client(client_id: str, authorization: str | None = Header(default
         uf = normalize_uf(row[0].get('state'))
         if not uf:
             raise HTTPException(400, 'UF do cliente ausente ou inválida')
-        prices = [r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='price' AND payload->>'state'=%s ORDER BY id",(uf,))]
+        prices = [r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='price' AND (payload->>'state'=%s OR payload->>'state'='ALL') ORDER BY id",(uf,))]
     return {'clientId':client_id,'state':uf,'prices':prices}
 
 @app.post('/api/sync')
@@ -890,7 +894,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 target = deletable[kind]
                 if target in ('industry','price_table') and not admin_access(user): raise HTTPException(403,'Catálogo restrito à administradora')
                 if target == 'industry' and con.execute("SELECT 1 FROM entities WHERE kind='price_table' AND payload->>'brand'=%s LIMIT 1",(entity_id,)).fetchone(): raise HTTPException(409,'Indústria possui tabelas cadastradas')
-                if target == 'price_table' and con.execute("SELECT 1 FROM entities WHERE kind='price' AND concat(payload->>'brand','|',payload->>'state')=%s LIMIT 1",(entity_id,)).fetchone(): raise HTTPException(409,'Tabela possui produtos cadastrados')
+                if target == 'price_table' and con.execute("SELECT 1 FROM entities WHERE kind='price' AND coalesce(nullif(payload->>'tableId',''),concat(payload->>'brand','|',payload->>'state'))=%s LIMIT 1",(entity_id,)).fetchone(): raise HTTPException(409,'Tabela possui produtos cadastrados')
                 if target in ('office_finance','office_budget','office_monthly_close','cash_entry','commission_rate','commission_receipt','settlement') and 'finance' not in permissions:
                     raise HTTPException(403, 'Acesso financeiro restrito')
                 if target == 'cash_entry':
@@ -963,8 +967,11 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         if not minimum.is_finite() or minimum<=0 or minimum.as_tuple().exponent < -2 or not isinstance(terms,str) or not re.fullmatch(r'\d+(?:/\d+)*',terms) or freight not in ('CIF','FOB'):
                             raise HTTPException(400,'Faixa comercial inválida')
                 else:
-                    state=normalize_uf(obj.get('state'))
-                    if not state or entity_id!=f'{brand}|{state}': raise HTTPException(400,'Tabela PA/AP inválida')
+                    state='ALL' if obj.get('state')=='ALL' else normalize_uf(obj.get('state'))
+                    if not state: raise HTTPException(400,'Abrangência da tabela inválida')
+                    previous_table=con.execute("SELECT payload FROM entities WHERE kind='price_table' AND id=%s",(entity_id,)).fetchone()
+                    if previous_table and (previous_table[0].get('brand')!=brand or previous_table[0].get('state')!=state): raise HTTPException(400,'Tabela vinculada não pode mudar de indústria ou abrangência')
+                    if not str(obj.get('title','')).strip(): raise HTTPException(400,'Nome da tabela obrigatório')
                     if not admin_access(user):
                         previous_table=con.execute("SELECT payload FROM entities WHERE kind='price_table' AND id=%s",(entity_id,)).fetchone()
                         if not previous_table or obj.get('active') != previous_table[0].get('active'):
@@ -1050,14 +1057,16 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                             except (ValueError,TypeError): raise HTTPException(400,'Data da oportunidade inválida')
                     if len(str(obj.get('notes','')))>2000: raise HTTPException(400,'Contexto muito extenso')
             if kind == 'price':
-                table=con.execute("SELECT payload FROM entities WHERE kind='price_table' AND id=%s",(f"{obj.get('brand','').strip()}|{normalize_uf(obj.get('state')) or ''}",)).fetchone()
-                if not table or not table[0].get('active'): raise HTTPException(400,'Cadastre a tabela da indústria para PA/AP antes dos produtos')
+                brand=str(obj.get('brand','')).strip()
+                table=validate_table(con,obj,brand)
+                obj['state']=table['state']
+                obj['tableId']=table_id(obj)
                 if user not in CATALOG_EDITORS or 'catalog' not in permissions:
                     raise HTTPException(403, 'Preço restrito à administração')
-                brand,sku,state = str(obj.get('brand','')).strip(),str(obj.get('sku','')).strip(),normalize_uf(obj.get('state'))
+                brand,sku,state = str(obj.get('brand','')).strip(),str(obj.get('sku','')).strip(),('ALL' if obj.get('state')=='ALL' else normalize_uf(obj.get('state')))
                 try: price=Decimal(str(obj.get('price','')))
                 except (ValueError,InvalidOperation): raise HTTPException(400,'Preço inválido')
-                if not brand or not sku or not state or entity_id != f'{brand}|{state}|{sku}' or not price.is_finite() or price <= 0 or price.as_tuple().exponent < -2:
+                if not brand or not sku or not state or entity_id != price_id(obj) or not price.is_finite() or price <= 0 or price.as_tuple().exponent < -2:
                     raise HTTPException(400,'Preço ou identificação inválida')
                 description=str(obj.get('description','')).strip()
                 if not 1 <= len(description) <= 250: raise HTTPException(400,'Descrição inválida')
@@ -1214,7 +1223,9 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     item_brand=str(item.get('brand') or obj.get('brand') or '').strip()
                     if not item_brand or item_brand=='Multimarcas': raise HTTPException(400,'Indústria do item obrigatória')
                     brands.add(item_brand)
-                    price_key = f"{item_brand}|{price_table}|{item['sku'].strip()}"
+                    table=validate_table(con,{**item,'brand':item_brand,'state':price_table},item_brand,price_table)
+                    item['tableId']=table['id']
+                    price_key = price_id({**item,'brand':item_brand,'sku':item['sku'].strip()})
                     price_row = con.execute("SELECT payload FROM entities WHERE kind='price' AND id=%s", (price_key,)).fetchone()
                     if not price_row:
                         raise HTTPException(400, f"Preço não cadastrado na tabela {price_table}: {item['sku']}")
@@ -1234,6 +1245,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 obj['priceTable'] = price_table
                 obj['state'] = price_table
                 obj['amount'] = float(total.quantize(Decimal('0.01')))
+                validate_bella_order(con,obj,price_table,user)
                 existing_order = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
                 if not existing_order and con.execute("SELECT 1 FROM archived_entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone():
                     raise HTTPException(409, 'Pedido arquivado não pode ser recriado; restaure o original')
