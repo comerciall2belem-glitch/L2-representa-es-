@@ -19,7 +19,7 @@ jobs:
       - name: Instalar dependências de teste
         run: python -m pip install -r requirements-dev.txt
       - name: Verificar sintaxe Python
-        run: python -m py_compile server.py speedio_integration.py commercial_tables.py
+        run: python -m py_compile server.py speedio_integration.py commercial_tables.py access_policy.py
       - name: Verificar sintaxe JavaScript
         run: |
           node --check app.js
@@ -31,3 +31,4 @@ jobs:
           node tests/test_commercial_workflow.cjs
           node tests/order_multibrand_ui.cjs
           node tests/commercial_tables_ui.cjs
+          node tests/admin_seller_ui.cjs

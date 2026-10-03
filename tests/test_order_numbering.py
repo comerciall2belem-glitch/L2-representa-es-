@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 import re
 import unittest
+from access_policy import effective_sectors, attribute_order
 
 tree=ast.parse(Path(__file__).resolve().parents[1].joinpath('server.py').read_text())
 functions=[node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name in ('sync','next_order_number')]
@@ -22,8 +23,10 @@ class Cursor:
 class FakeCon:
     def __init__(self): self.orders={};self.number=0
     def execute(self,sql,params=None):
-        if sql.startswith('SELECT sectors FROM app_users WHERE username='):
-            return Cursor((['commercial', 'office'],))
+        if sql.startswith('SELECT role,sectors FROM app_users WHERE username='):
+            return Cursor(('Administradora', ['commercial', 'office']))
+        if sql.startswith('SELECT role FROM app_users'):
+            return Cursor(('Administradora' if params[0]=='Ana Paula' else 'Vendedor',))
         if sql.startswith('UPDATE order_counter SET value=value+1'):
             self.number+=1
             return Cursor((self.number,))
@@ -44,7 +47,7 @@ class FakeDB:
     def __enter__(self):return self.con
     def __exit__(self,*args):return False
 
-namespace={'Sync':object,'Header':lambda *args,**kwargs:None,'HTTPException':HTTPException,
+namespace={'effective_sectors':effective_sectors,'attribute_order':attribute_order,'Sync':object,'Header':lambda *args,**kwargs:None,'HTTPException':HTTPException,
            'FINANCE_USERS':{'Ana Paula'},'Decimal':Decimal,'InvalidOperation':InvalidOperation,
            'normalize_uf':lambda value:value,'price_table_matches_client':lambda a,b:a==b,
            'Jsonb':lambda value:value,'re':re,'project_order':lambda con,identifier,obj:None,
@@ -58,7 +61,7 @@ class OrderNumberTests(unittest.TestCase):
         con=FakeCon();namespace['db']=lambda:FakeDB(con);namespace['auth']=lambda token:'Ana Paula'
         for identifier in ('first','second'):
             data={'id':identifier,'clientId':'client','brand':'Bruna Tavares','priceTable':'PA',
-                  'items':[{'sku':'BBBL01B','quantity':2}],'orderNumber':999}
+                  'sellerResponsible':'Erika','items':[{'sku':'BBBL01B','quantity':2}],'orderNumber':999}
             change=type('Change',(),{'type':'order','data':data,'changeId':'change-'+identifier})()
             namespace['sync'](type('Sync',(),{'changes':[change]})(),'token')
         self.assertEqual([con.orders[key]['orderNumber'] for key in ('first','second')],[1,2])

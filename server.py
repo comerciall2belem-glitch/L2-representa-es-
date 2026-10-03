@@ -17,6 +17,7 @@ from lead_capture import LeadIntake, normalize_intake, ingest_lead, lead_sla
 from whatsapp_media import send_media, validate_media, provider_config, MediaError
 
 from commercial_tables import table_id, price_id, validate_table, seed_bella, validate_bella_order
+from access_policy import effective_sectors, attribute_order, COMMERCIAL_SECTORS
 
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
@@ -24,7 +25,7 @@ SECTORS = {'commercial','clients_edit','routes','office','management','finance',
 DEFAULT_SECTORS = {
  'Ana Paula':sorted(SECTORS),
  'Euler':['commercial','routes','management','finance','catalog'],
- 'Laís':['commercial','clients_edit','office','management','finance','catalog'],
+ 'Laís':['commercial','clients_edit','office','management','finance','catalog','admin'],
  'Marlene':['commercial','clients_edit','routes','office','management','catalog','admin'],
 }
 CATALOG_EDITORS = {'Ana Paula', 'Laís', 'Marlene'}
@@ -203,6 +204,14 @@ def initialize():
         # Marlene: carteira, campo, operações, escritório e gestão; financeiro permanece separado.
         con.execute('UPDATE app_users SET sectors=%s,updated_at=now() WHERE username=%s AND sectors IS DISTINCT FROM %s',
                     (Jsonb(DEFAULT_SECTORS['Marlene']),'Marlene',Jsonb(DEFAULT_SECTORS['Marlene'])))
+        # Política de acesso para contas existentes, inclusive sessões antigas.
+        for name, role, sectors in con.execute('SELECT username,role,sectors FROM app_users').fetchall():
+            updated_role = 'Administrativo' if name == 'Laís' else role
+            allowed = sorted(effective_sectors(name, updated_role, set(sectors or []) | ({'admin'} if name=='Laís' else set())))
+            if updated_role != role or set(allowed) != set(sectors or []):
+                con.execute('UPDATE app_users SET role=%s,sectors=%s,updated_at=now() WHERE username=%s', (updated_role, Jsonb(allowed), name))
+                con.execute('DELETE FROM sessions WHERE username=%s', (name,))
+                con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES('Ana Paula','app_user',%s,'commercial_access_policy')", (name,))
         # Importação inicial opcional por segredo do Render. O valor é gzip+base64,
         # nunca fica no repositório, e só é aplicado enquanto a carteira estiver vazia.
         initial_clients = os.getenv('L2_INITIAL_CLIENTS_B64', '')
@@ -346,8 +355,8 @@ app = FastAPI(title='L2 ONE API', lifespan=lifespan, docs_url=None, redoc_url=No
 
 def sectors_for(user):
     with db() as con:
-        row=con.execute('SELECT sectors FROM app_users WHERE username=%s AND active',(user,)).fetchone()
-    return set(row[0] or []) if row else set()
+        row=con.execute('SELECT role,sectors FROM app_users WHERE username=%s AND active',(user,)).fetchone()
+    return effective_sectors(user,row[0],row[1]) if row else set()
 
 def admin_access(user):
     return user=='Ana Paula' or 'admin' in sectors_for(user)
@@ -362,7 +371,7 @@ def require_sector(user, *allowed):
 
 def is_seller(con, user):
     row=con.execute('SELECT role FROM app_users WHERE username=%s AND active',(user,)).fetchone()
-    return bool(row and row[0]=='Vendedor' and not admin_access(user))
+    return bool(row and row[0]=='Vendedor' and user!='Euler')
 
 def check_client_scope(con, user, client_id):
     """A carteira de um vendedor é definida no servidor, inclusive para anexos."""
@@ -530,7 +539,7 @@ def auth(header, allow_password_change=False):
 @app.post('/api/login')
 def login(data: Login):
     with db() as con:
-        row = con.execute('SELECT password_hash, must_change_password, sectors FROM app_users WHERE username=%s AND active',(data.user,)).fetchone()
+        row = con.execute('SELECT password_hash, must_change_password, sectors, role FROM app_users WHERE username=%s AND active',(data.user,)).fetchone()
     if not row or not password_ok(data.password, row[0]):
         time.sleep(0.25)
         raise HTTPException(401, 'Credenciais inválidas')
@@ -539,7 +548,7 @@ def login(data: Login):
         con.execute("DELETE FROM sessions WHERE expires_at<=now()")
         con.execute("INSERT INTO sessions(token_hash,username,expires_at) VALUES(%s,%s,now()+(%s || ' hours')::interval)",(hashlib.sha256(token.encode()).hexdigest(),data.user,SESSION_HOURS))
         con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'session',%s,'login')",(data.user,data.user))
-    return {'token': token, 'user': data.user, 'expiresInHours': SESSION_HOURS, 'mustChangePassword': row[1], 'sectors':row[2] or []}
+    return {'token': token, 'user': data.user, 'expiresInHours': SESSION_HOURS, 'mustChangePassword': row[1], 'role':row[3], 'sectors':sorted(effective_sectors(data.user,row[3],row[2]))}
 
 @app.post('/api/logout')
 def logout(authorization: str | None = Header(default=None)):
@@ -666,6 +675,10 @@ def validate_member(user, role, sectors):
         raise HTTPException(400,'Nome, função ou setores inválidos')
     if role=='Vendedor' and 'commercial' not in sectors:
         raise HTTPException(400,'Vendedor precisa de acesso Comercial')
+    if name=='Laís' and (role!='Administrativo' or 'admin' not in sectors):
+        raise HTTPException(400,'Laís deve atuar como Administrativo com acesso Adm')
+    if role=='Vendedor' and name!='Euler' and set(sectors)-COMMERCIAL_SECTORS:
+        raise HTTPException(400,'Equipe comercial pode acessar somente Comercial, Carteira e Rotas')
     return name
 
 def validate_seller_profile(profile):
@@ -864,7 +877,8 @@ def prices_for_client(client_id: str, authorization: str | None = Header(default
 def sync(data: Sync, authorization: str | None = Header(default=None)):
     user = auth(authorization)
     with db() as con:
-        permissions=set((con.execute('SELECT sectors FROM app_users WHERE username=%s',(user,)).fetchone() or [[]])[0] or [])
+        account=con.execute('SELECT role,sectors FROM app_users WHERE username=%s AND active',(user,)).fetchone()
+        permissions=effective_sectors(user,account[0],account[1]) if account else set()
         for change in data.changes:
             kind, obj = change.type, dict(change.data)
             entity_id = obj.get('id')
@@ -1247,6 +1261,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 obj['amount'] = float(total.quantize(Decimal('0.01')))
                 validate_bella_order(con,obj,price_table,user)
                 existing_order = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
+                attribute_order(con,user,obj,existing_order[0] if existing_order else None)
                 if not existing_order and con.execute("SELECT 1 FROM archived_entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone():
                     raise HTTPException(409, 'Pedido arquivado não pode ser recriado; restaure o original')
                 obj['orderNumber'] = existing_order[0].get('orderNumber') if existing_order and existing_order[0].get('orderNumber') else next_order_number(con)
@@ -1273,6 +1288,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 con.execute('DELETE FROM entities WHERE kind=%s AND id=%s',('route',entity_id))
             else:
                 obj['updatedBy'] = user
+                obj['updatedAs'] = 'Adm' if user=='Laís' or (account and account[0] in ('Administrativo','Administradora')) else 'Sócio' if user=='Euler' else 'Comercial'
                 con.execute('INSERT INTO entities(kind,id,payload) VALUES(%s,%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,updated_at=now()', (kind,entity_id,Jsonb(obj)))
                 if kind=='client':
                     con.execute("""INSERT INTO clientes(id,razao_social,nome_fantasia,documento,curva_abc)
@@ -1284,11 +1300,13 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 elif kind=='order': project_order(con,entity_id,obj)
             con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
             con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,kind,entity_id,'delete' if kind=='delete_route' else 'upsert'))
-        result = {'sectors':sorted(permissions),'team':[row[0] for row in con.execute('SELECT username FROM app_users WHERE active ORDER BY username')],
+        result = {'role':account[0] if account else '', 'sectors':sorted(permissions),'team':[row[0] for row in con.execute('SELECT username FROM app_users WHERE active ORDER BY username')],
                   'sellers':[row[0] for row in con.execute("SELECT username FROM app_users WHERE active AND role='Vendedor' ORDER BY username")]}
         public_kinds = [('industry','industries'),('price_table','priceTables'),('fulfillment','fulfillments'),('opportunity','opportunities'),('interaction','interactions'),('lead','leads'),('whatsapp_template','whatsappTemplates'),('client','clients'),('visit','visits'),('order','orders'),('task','tasks'),('route','routes'),('goal','goals'),('price','prices'),('office_process','officeProcesses'),('office_action','officeActions'),('office_commercial','officeCommercial'),('office_administrative','officeAdministrative'),('office_ritual','officeRituals'),('office_role','officeRoles')]
         for kind, name in public_kinds:
-            if kind in ('office_process','office_action','office_commercial','office_administrative','office_ritual','office_role','fulfillment') and not ({'office','commercial'} & permissions):
+            if kind in ('office_process','office_action','office_commercial','office_administrative','office_ritual','office_role') and 'office' not in permissions:
+                result[name]=[];continue
+            if kind=='fulfillment' and not ({'office','commercial'} & permissions):
                 result[name]=[];continue
             if kind in ('client','visit','order','task','goal','opportunity','interaction','lead','whatsapp_template') and not ({'commercial','office','finance','management'} & permissions):
                 result[name]=[];continue
