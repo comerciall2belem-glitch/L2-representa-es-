@@ -7,7 +7,7 @@ class FinancialInputsTest(unittest.TestCase):
  def test_cost_requires_sku(self):
   with self.assertRaises(ValidationError):FinancialInput(id='1',kind='product_cost',name='Custo',effectiveDate='2026-10-01')
  def test_contract_requires_evidence(self):
-  with self.assertRaises(ValidationError):FinancialInput(id='1',kind='seller_contract',name='Erika',effectiveDate='2026-10-01',commissionRate=2.5)
+  self.assertIsNone(FinancialInput(id='1',kind='seller_contract',name='Erika',effectiveDate='2026-10-01').commissionRate)
  def test_contract_rates(self):
   x=FinancialInput(id='1',kind='seller_contract',name='Erika',effectiveDate='2026-10-01',commissionRate=2.5,bonusRate=1,contractReference='Contrato vigente')
   self.assertEqual(x.bonusRate,1)

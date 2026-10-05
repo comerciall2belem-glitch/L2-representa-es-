@@ -14,7 +14,7 @@ def analyze_finance(inputs,orders,ledger,rates,month,goals=()):
         seller=o.get('sellerResponsible') or o.get('commissionSeller') or o.get('user')
         contract=latest('seller_contract',lambda x:x['name']==seller,str(o.get('date') or end))
         volume=sum((D(x.get('amount')) for x in billed if (x.get('sellerResponsible') or x.get('commissionSeller') or x.get('user'))==seller),Decimal(0))
-        rate=D(contract['commissionRate']) if contract else D(o.get('sellerCommissionRate')) if o.get('sellerCommissionRate') is not None else None
+        rate=D(contract['commissionRate']) if contract and contract.get('commissionRate') is not None else D(o.get('sellerCommissionRate')) if o.get('sellerCommissionRate') is not None else None
         if contract:
             for tier in sorted(contract.get('tiers',[]),key=lambda t:D(t['minimum'])):
                 if volume>=D(tier['minimum']):rate=D(tier['rate'])
@@ -23,7 +23,7 @@ def analyze_finance(inputs,orders,ledger,rates,month,goals=()):
             brand=item.get('brand') or o.get('brand');sku=item.get('sku');cost=latest('product_cost',lambda x:x.get('brand')==brand and x.get('sku')==sku,str(o.get('date') or end))
             industry=next((r for r in rates if key(r.get('id',''))==key(brand) or r.get('brand')==brand),None)
             amount=D(item.get('unitPrice'))*D(item.get('quantity'))
-            if not cost or not industry or rate is None:missing.append(str(brand)+' / '+str(sku));continue
+            if not cost or cost.get('amount') is None or not industry or rate is None:missing.append(str(brand)+' / '+str(sku));continue
             contribution=amount*(D(industry['rate'])-rate)/100-D(cost['amount'])*D(item['quantity']);margin+=contribution
             product_key=(brand,sku);r=products.setdefault(product_key,{'brand':brand,'sku':sku,'sales':Decimal(0),'contribution':Decimal(0)})
             r['sales']+=amount;r['contribution']+=contribution
@@ -31,7 +31,7 @@ def analyze_finance(inputs,orders,ledger,rates,month,goals=()):
     target=sum((D(g.get('amount')) for g in goals if g.get('month')==month and not g.get('brand')),Decimal(0))
     bonuses=[]
     for rule in bonusRules:
-        amount= sales*D(rule['bonusRate'])/100 if target>0 and sales>=target*D(rule.get('targetPercent',100))/100 else Decimal(0)
+        amount= sales*D(rule['bonusRate'])/100 if target>0 and sales>=target*D(rule.get('targetPercent') or 100)/100 else Decimal(0)
         pending=target<=0 or rule.get('basis')=='Recebido'
         bonuses.append({'seller':rule['name'],'amount':None if pending else rounded(amount)})
         if pending:missing.append('Meta ou recebimentos pendentes para bônus: '+rule['name'])
@@ -42,7 +42,7 @@ def analyze_finance(inputs,orders,ledger,rates,month,goals=()):
     ratio=margin/sales if complete and sales else None
     ticket=fixed/len(billed)/ratio if ratio and ratio>0 and fixedNames else None
     accounts={x['name'] for x in inputs if x['kind']=='opening_balance'}
-    balances=[latest('opening_balance',lambda x:x['name']==name) for name in accounts];balances=[x for x in balances if x]
+    balances=[latest('opening_balance',lambda x:x['name']==name) for name in accounts];balances=[x for x in balances if x and x.get('amount') is not None]
     cash=sum((D(x['amount']) for x in balances),Decimal(0));flows={}
     # Saldo inicial + liquidações posteriores; previstos são segregados.
     start=min((x['effectiveDate'] for x in balances),default=month+'-01')

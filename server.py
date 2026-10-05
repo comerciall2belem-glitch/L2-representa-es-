@@ -352,6 +352,7 @@ def initialize():
 async def lifespan(app):
     initialize()
     initialize_personal(db)
+    correct_order_18_date()
     yield
 
 app = FastAPI(title='L2 ONE API', lifespan=lifespan, docs_url=None, redoc_url=None)
@@ -1856,3 +1857,9 @@ def financial_analysis_read(month: str, authorization: str | None = Header(defau
     with db() as con:
         inputs=[r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='financial_input'")]
         return analyze_finance(inputs,scoped_rows(con,'order',user),scoped_rows(con,'office_finance',user),scoped_rows(con,'commission_rate',user),month,scoped_rows(con,'goal',user))
+
+
+def correct_order_18_date():
+    # Correção pontual autorizada: data registrada na autorização do pedido 18.
+    with db() as con:
+        con.execute("""UPDATE entities SET payload=jsonb_set(payload,'{date}','"2026-09-29"'::jsonb)||jsonb_build_object('dateCorrection',jsonb_build_object('original','2026-11-30','corrected','2026-09-29','reason','Correção autorizada de competência; autorização do pedido em 29/09/2026')),updated_at=now() WHERE kind='order' AND id='858c6713-4712-4873-b716-8f5e76425468' AND payload->>'date'='2026-11-30'""")
