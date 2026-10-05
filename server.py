@@ -1846,3 +1846,13 @@ def financial_inputs_save(data: FinancialInput, authorization: str | None = Head
     with db() as con:
         con.execute("INSERT INTO entities(kind,id,payload) VALUES ('financial_input',%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=EXCLUDED.payload,updated_at=now()",(data.id,Jsonb(payload)))
     return payload
+
+@app.get('/api/finance/analysis')
+def financial_analysis_read(month: str, authorization: str | None = Header(default=None)):
+    from financial_analysis import analyze_finance
+    if not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])',month):raise HTTPException(422,'Mês inválido')
+    user=auth(authorization)
+    require_sector(user,'finance')
+    with db() as con:
+        inputs=[r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='financial_input'")]
+        return analyze_finance(inputs,scoped_rows(con,'order',user),scoped_rows(con,'office_finance',user),scoped_rows(con,'commission_rate',user),month,scoped_rows(con,'goal',user))
