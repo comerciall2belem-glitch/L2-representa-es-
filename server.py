@@ -16,6 +16,7 @@ from order_reconciliation import reconcile_invoice, InvoiceError
 from lead_capture import LeadIntake, normalize_intake, ingest_lead, lead_sla
 from whatsapp_media import send_media, validate_media, provider_config, MediaError
 
+from catalog_pdf import build_catalog_pdf
 from commercial_tables import table_id, price_id, validate_table, seed_bella, validate_bella_order
 from access_policy import effective_sectors, attribute_order, COMMERCIAL_SECTORS
 from seller_commission import validate_rate, apply_seller_commission
@@ -882,6 +883,27 @@ def import_prices(data: PriceImport, authorization: str | None = Header(default=
             payload['state']=table['state']
             con.execute("INSERT INTO entities(kind,id,payload) VALUES('price',%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,updated_at=now()", (key,Jsonb(payload)))
     return {'imported':len(prepared)}
+
+@app.get('/api/catalog/table.pdf')
+def catalog_table_pdf(table_id: str, authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    if not ({'catalog', 'commercial'} & sectors_for(user)):
+        raise HTTPException(403, 'Catálogo sem permissão')
+    with db() as con:
+        row = con.execute("SELECT payload FROM entities WHERE kind='price_table' AND id=%s", (table_id,)).fetchone()
+        if not row or not row[0].get('active'):
+            raise HTTPException(404, 'Tabela ativa não encontrada')
+        table = row[0]
+        row = con.execute("SELECT payload FROM entities WHERE kind='industry' AND payload->>'name'=%s", (table['brand'],)).fetchone()
+        if not row or not row[0].get('active'):
+            raise HTTPException(404, 'Indústria ativa não encontrada')
+        industry = row[0]
+        prices = [r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='price' AND payload->>'brand'=%s", (table['brand'],))]
+        prices = [p for p in prices if (p.get('tableId') or f"{p.get('brand')}|{p.get('state')}") == table_id]
+    if not prices:
+        raise HTTPException(400, 'Tabela sem produtos')
+    content = build_catalog_pdf(table, industry, prices, BASE, datetime.now(TZ).date())
+    return Response(content, media_type='application/pdf', headers={'Cache-Control':'no-store', 'Content-Disposition':'attachment; filename="L2_tabela_comercial.pdf"'})
 
 @app.get('/api/prices/{client_id}')
 def prices_for_client(client_id: str, authorization: str | None = Header(default=None), price_table: str | None = None):
