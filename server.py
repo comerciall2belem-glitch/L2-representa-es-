@@ -24,6 +24,8 @@ from access_policy import effective_sectors, attribute_order, COMMERCIAL_SECTORS
 from seller_commission import validate_rate, apply_seller_commission
 from financial_visibility import hide_industry_commissions, preserve_industry_commissions
 
+import zara
+
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
 SECTORS = {'commercial','clients_edit','routes','office','management','finance','catalog','admin'}
@@ -106,6 +108,7 @@ def project_order(con,entity_id,payload,created_at=None,updated_at=None):
 
 def initialize():
     with db() as con:
+        zara.setup(con)
         con.execute('CREATE TABLE IF NOT EXISTS entities (kind TEXT NOT NULL, id TEXT NOT NULL, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(kind,id))')
         con.execute('ALTER TABLE entities ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ')
         con.execute('ALTER TABLE entities ALTER COLUMN created_at SET DEFAULT now()')
@@ -355,6 +358,7 @@ def initialize():
 async def lifespan(app):
     initialize()
     initialize_personal(db)
+    zara.log_configuration()
     correct_order_18_date()
     with db() as con:
         provisional = con.execute('SELECT count(*) FROM app_users WHERE active AND must_change_password').fetchone()[0]
@@ -362,6 +366,7 @@ async def lifespan(app):
     yield
 
 app = FastAPI(title='L2 ONE API', lifespan=lifespan, docs_url=None, redoc_url=None)
+app.include_router(zara.router)
 
 def sectors_for(user):
     with db() as con:
@@ -1883,6 +1888,10 @@ async def security_headers(request, call_next):
 @app.get('/')
 @app.get('/index.html')
 def home(): return FileResponse(BASE/'index.html',headers={'Cache-Control':'no-store'})
+
+@app.get('/zara.html')
+def zara_page():
+    return FileResponse(BASE/'zara.html', headers={'Cache-Control':'no-store'})
 
 @app.get('/{filename}')
 def asset(filename: str):
