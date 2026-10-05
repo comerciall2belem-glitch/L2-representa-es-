@@ -38,9 +38,10 @@ def analyze_finance(inputs,orders,ledger,rates,month,goals=()):
         else:margin-=amount
     complete=bool(billed) and not missing
     fixedNames={x['name'] for x in inputs if x['kind']=='operating_cost'}
+    fixedIncomplete=any((r:=latest('operating_cost',lambda x:x['name']==name)) is None or r.get('amount') is None for name in fixedNames)
     fixed=sum((D(r['amount']) for name in fixedNames if (r:=latest('operating_cost',lambda x:x['name']==name))),Decimal(0))
     ratio=margin/sales if complete and sales else None
-    ticket=fixed/len(billed)/ratio if ratio and ratio>0 and fixedNames else None
+    ticket=fixed/len(billed)/ratio if ratio and ratio>0 and fixedNames and not fixedIncomplete else None
     accounts={x['name'] for x in inputs if x['kind']=='opening_balance'}
     balances=[latest('opening_balance',lambda x:x['name']==name) for name in accounts];balances=[x for x in balances if x and x.get('amount') is not None]
     cash=sum((D(x['amount']) for x in balances),Decimal(0));flows={}
@@ -56,4 +57,4 @@ def analyze_finance(inputs,orders,ledger,rates,month,goals=()):
     low=cash;points=[]
     for day,delta in sorted(flows.items()):
         cash+=delta;low=min(low,cash);points.append({'date':day,'balance':rounded(cash)})
-    return {'bonuses':bonuses,'sales':rounded(sales),'contribution':rounded(margin) if complete else None,'missing':sorted(set(missing)),'ticketBreakEven':rounded(ticket) if ticket is not None else None,'workingCapitalGap':rounded(max(-low,Decimal(0))) if balances and not unknown and len({x['effectiveDate'] for x in balances})==1 else None,'projection':points if balances else [],'fixedCost':rounded(fixed) if fixedNames else None,'products':[dict(brand=r['brand'],sku=r['sku'],sales=rounded(r['sales']),contribution=rounded(r['contribution'])) for r in sorted(products.values(),key=lambda r:r['contribution'],reverse=True)],'undatedFlows':unknown,'note':'Projeção limitada aos títulos cadastrados; estoque inicial não é receita nem saída de caixa.'}
+    return {'bonuses':bonuses,'sales':rounded(sales),'contribution':rounded(margin) if complete else None,'missing':sorted(set(missing)),'ticketBreakEven':rounded(ticket) if ticket is not None else None,'workingCapitalGap':rounded(max(-low,Decimal(0))) if balances and not unknown and len({x['effectiveDate'] for x in balances})==1 else None,'projection':points if balances else [],'fixedCost':rounded(fixed) if fixedNames and not fixedIncomplete else None,'products':[dict(brand=r['brand'],sku=r['sku'],sales=rounded(r['sales']),contribution=rounded(r['contribution'])) for r in sorted(products.values(),key=lambda r:r['contribution'],reverse=True)],'undatedFlows':unknown,'note':'Projeção limitada aos títulos cadastrados; estoque inicial não é receita nem saída de caixa.'}
