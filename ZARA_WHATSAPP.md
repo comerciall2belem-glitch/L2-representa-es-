@@ -17,3 +17,79 @@ O agente não consulta pedidos nem libera preços, descontos ou prazos. Essas so
 ## Limite operacional
 
 Esta versão atende **mensagens recebidas**. Campanhas iniciadas pela empresa exigem modelos de mensagem aprovados pela Meta e uma implementação própria. O painel precisa estar aberto ou ser acompanhado pela equipe para observar encaminhamentos em tempo real. Se a Meta falhar no envio de uma resposta, a entrada continua registrada para análise.
+
+## Revisão de segurança e diagnóstico
+
+A rota canônica é `GET/POST /api/zara/webhook`; `/webhook` é um alias com as mesmas proteções.
+O GET exige apenas `WA_VERIFY_TOKEN`: modo `subscribe`, token não vazio comparado em
+ tempo constante (bytes UTF-8) e challenge não vazio, de até 1024 caracteres. Retorna
+ o challenge como texto puro. Token inválido retorna 403, challenge inválido 400 e
+ configuração ausente 503. Tokens e query strings não devem aparecer em logs do proxy.
+
+O POST exige `WA_APP_SECRET` e `WA_PHONE_NUMBER_ID`, lê o corpo em streaming até
+256.000 bytes e verifica HMAC-SHA256 nos **bytes originais**, antes de interpretar o
+JSON. O header deve ser `X-Hub-Signature-256: sha256=<64 caracteres hexadecimais>`.
+Assinatura ausente, adulterada ou malformada retorna 403; JSON/estrutura inválida
+retorna 400; corpo excessivo retorna 413. Eventos de outro número e eventos de status
+sem mensagens não geram respostas. O ID recebido deduplica entradas no PostgreSQL.
+
+Envios usam `WA_ACCESS_TOKEN`, `WA_PHONE_NUMBER_ID` numérico e `WA_GRAPH_VERSION`
+no formato `vN.N`. Há timeout de conexão de 4s e timeout HTTP de 12s por operação.
+Falhas HTTP (incluindo 401, 429 e 5xx), rede, JSON ou configuração viram erros
+sanitizados. Logs JSON têm componente, evento, severidade, ID de requisição, duração
+e, quando presentes, códigos numéricos da Meta. Não incluem token, telefone, corpo de
+mensagem ou texto bruto do erro da Meta. O logger é `uvicorn.error.zara`.
+
+Uma falha de envio mantém a entrada já gravada e tenta marcar a conversa para
+atendimento humano; o webhook responde 200 para não repetir envios ambíguos.
+Falha ao gravar uma entrada responde 503, permitindo nova entrega pela Meta.
+Transações do webhook executam em threadpool, fora do event loop da API.
+Não há retry automático de envio: após timeout, a Meta pode ter aceitado a mensagem.
+O ID retornado pela Graph significa **aceitação**, não comprovação de entrega ao
+cliente; o campo legado `delivered` não deve ser usado como confirmação de leitura.
+
+Limites: ainda não há fila durável/outbox ou circuit breaker compartilhado; lotes
+com várias mensagens são processados sequencialmente e o ACK aguarda esse trabalho.
+Uma interrupção do processo após gravar a entrada pode impedir a resposta automática;
+reentregas são deduplicadas. Falhas depois de a Graph aceitar, mas antes de registrar
+a saída são logadas, sem reenviar. Antes de operação em escala, implementar inbox/
+outbox durável e worker, com política explícita de reconciliação de envios ambíguos.
+O teste mock não substitui validação de PostgreSQL real, credenciais e entrega no Render.
+
+## Simulação local sem envio real
+
+Na raiz do repositório:
+
+```bash
+python -m pip install -r requirements-dev.txt
+python scripts/simulate_zara.py
+python -m unittest discover -s tests -p 'test_zara*.py' -v
+```
+
+O primeiro comando de simulação usa credenciais fictícias, banco em memória e
+`httpx.MockTransport`: valida GET, assina um payload de entrada, percorre o webhook,
+registra entrada/saída, gera resposta da Zara e confere deduplicação. Nenhuma
+requisição externa à Meta ou à OpenAI é feita. O banco em memória é apenas um stub
+para fluxo; não verifica SQL, transações nem concorrência do PostgreSQL.
+
+Para testar o servidor **local** com PostgreSQL de teste e Graph previamente
+substituída por mock, forneça `WA_APP_SECRET` e `WA_PHONE_NUMBER_ID` locais:
+
+```bash
+python scripts/simulate_zara.py --url http://127.0.0.1:8000/api/zara/webhook
+```
+
+Esse modo assina os bytes enviados e só aceita HTTP de loopback, sem seguir
+redirecionamentos. Um servidor local com credenciais reais pode enviar uma resposta
+real; use credenciais e destinatários de teste. O modo padrão sem `--url` é totalmente
+isolado e recomendado para validação inicial.
+
+## Antes de publicar no Render
+
+Confira se as alterações do PR 5 foram incorporadas à versão implantada e resolva
+os conflitos com `main`. Configure os quatro segredos `WA_*` no serviço correto;
+eles são diferentes das variáveis `WHATSAPP_*` usadas pelo outro recurso de envio.
+Fixe `WA_GRAPH_VERSION` na versão homologada da conta (o código mantém o default
+existente). Valide GET, assinatura inválida, mensagem recebida real e atendimento
+humano. Confirme também que uma falha da Meta não interrompe as rotas do CRM.
+Não considerar testes locais como evidência de deploy ou entrega real.
