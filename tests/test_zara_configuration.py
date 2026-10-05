@@ -1,10 +1,23 @@
 import os
+import logging
 import unittest
 from unittest.mock import patch
 import zara
 
 
 class ConfigurationTests(unittest.TestCase):
+    def test_access_logs_remove_verify_token_and_phone(self):
+        for path in ('/api/zara/webhook?hub.verify_token=private-secret',
+                     '/webhook?hub.verify_token=private-secret',
+                     '/api/zara/conversations/5591980142628/messages/private-id/confirm-e2e'):
+            record = logging.LogRecord('uvicorn.access', logging.INFO, '', 1,
+                '%s - "%s %s HTTP/%s" %d', ('localhost','GET',path,'1.1',200), None)
+            self.assertTrue(zara.ZaraAccessLogFilter().filter(record))
+            message = record.getMessage()
+            self.assertNotIn('private-secret', message)
+            self.assertNotIn('5591980142628', message)
+            self.assertNotIn('private-id', message)
+
     def test_render_aliases_and_canonical_precedence(self):
         with patch.dict(os.environ, {}, clear=True):
             for canonical, alias in zara.SETTING_ALIASES.items():

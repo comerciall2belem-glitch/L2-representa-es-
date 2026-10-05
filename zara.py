@@ -19,6 +19,21 @@ router = APIRouter()
 logger = logging.getLogger('uvicorn.error.zara')
 
 
+class ZaraAccessLogFilter(logging.Filter):
+    def filter(self, record):
+        args = record.args
+        if isinstance(args, tuple) and len(args) == 5 and isinstance(args[2], str):
+            path = args[2].split('?', 1)[0]
+            if path in ('/webhook', '/api/zara/webhook'):
+                record.args = (*args[:2], path, *args[3:])
+            elif path.startswith('/api/zara/conversations/'):
+                record.args = (*args[:2], '/api/zara/conversations/[redacted]', *args[3:])
+        return True
+
+
+logging.getLogger('uvicorn.access').addFilter(ZaraAccessLogFilter())
+
+
 def log_event(level, event, **fields):
     # Only explicitly selected operational fields; never log bodies, phones or credentials.
     logger.log(level, json.dumps({'component': 'zara', 'event': event,
