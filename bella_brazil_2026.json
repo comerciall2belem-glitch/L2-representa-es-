@@ -1,0 +1,3368 @@
+{
+  "VAREJO": [
+    {
+      "sku": "800",
+      "ean": "7898606630898",
+      "description": "EFEITO GEL CARIMBÓ",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "217",
+      "ean": "7898606635152",
+      "description": "METALIZADO APAIXONADA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "801",
+      "ean": "7898606630904",
+      "description": "EFEITO GEL FREVO",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "218",
+      "ean": "7898606635169",
+      "description": "METALIZADO ENCANTADORA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "802",
+      "ean": "7898606630911",
+      "description": "EFEITO GEL MARACATU",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "219",
+      "ean": "7898606635176",
+      "description": "METALIZADO BRILHANTE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "803",
+      "ean": "7898606630928",
+      "description": "EFEITO GEL XOTE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "220",
+      "ean": "7898606635183",
+      "description": "METALIZADO DOMINADORA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "804",
+      "ean": "7898606630935",
+      "description": "EFEITO GEL SAMBA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "311",
+      "ean": "7898606634490",
+      "description": "BASE MEGA FORT 9ML",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "805",
+      "ean": "7898606630942",
+      "description": "EFEITO GEL SERTANEJO",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "316",
+      "ean": "7898606634544",
+      "description": "TOP COAT EFEITO GEL 9ML",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "806",
+      "ean": "7898606631758",
+      "description": "EFEITO GEL FUNK",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "348",
+      "ean": "7898771210147",
+      "description": "TOP COAT FOSCO 9ML",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "807",
+      "ean": "7898606631765",
+      "description": "EFEITO GEL MPB",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "319",
+      "ean": "7898606635770",
+      "description": "ULTRA SECANTE 9ML",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "808",
+      "ean": "7898606631772",
+      "description": "EFEITO GEL FORRÓ",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "320",
+      "ean": "7898606636357",
+      "description": "TOP COAT INCOLOR 9ML",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "809",
+      "ean": "7898606631789",
+      "description": "EFEITO GEL AXÉ",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "323",
+      "ean": "7898606637613",
+      "description": "TOP COAT GLITTER 9ML",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "810",
+      "ean": "7898606631796",
+      "description": "EFEITO GEL ROCK",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "324",
+      "ean": "7898606638214",
+      "description": "BASE SUPER FORÇA 9ML",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "811",
+      "ean": "7898606631802",
+      "description": "EFEITO GEL PAGODE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "325",
+      "ean": "7898606638221",
+      "description": "BASE MULTI VITAM 9ML",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "812",
+      "ean": "7898606633592",
+      "description": "EFEITO GEL BOLERO",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "326",
+      "ean": "7898606638238",
+      "description": "BASE ATIVA CRESCIM. 9ML",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "813",
+      "ean": "7898606633608",
+      "description": "EFEITO GEL SALSA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "334",
+      "ean": "7898606639457",
+      "description": "TOP COAT NUANCES 9ML",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "814",
+      "ean": "7898606633615",
+      "description": "EFEITO GEL RUMBA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "1300",
+      "ean": "7898606633400",
+      "description": "LIQUID SAND CHAMPAGNE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "815",
+      "ean": "7898606633622",
+      "description": "EFEITO GEL POP",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "1301",
+      "ean": "7898606633417",
+      "description": "LIQUID SAND LIGHT PINK",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "816",
+      "ean": "7898606633639",
+      "description": "EFEITO GEL BOSSA NOVA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "1302",
+      "ean": "7898606633424",
+      "description": "LIQUID SAND  SILVER",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "817",
+      "ean": "7898606633646",
+      "description": "EFEITO GEL GAFIEIRA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "1303",
+      "ean": "7898606633431",
+      "description": "LIQUID SAND  RED",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "820",
+      "ean": "7898606633356",
+      "description": "EFEITO GEL AMO NUDE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "1304",
+      "ean": "7898606633448",
+      "description": "LIQUID SAND PURPLE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "822",
+      "ean": "7898606633370",
+      "description": "EFEITO GEL SEM AR",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "1308",
+      "ean": "7898606634117",
+      "description": "LIQUID SAND PINK",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "824",
+      "ean": "7898606634261",
+      "description": "EFEITO GEL ARDENTE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "1310",
+      "ean": "7898606634131",
+      "description": "LIQUID SAND SCARLET VIOLET",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "825",
+      "ean": "7898606634278",
+      "description": "EFEITO GEL VIBRANTE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "1311",
+      "ean": "7898606634148",
+      "description": "LIQUID SAND BLUE GRAY",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "826",
+      "ean": "7898606634285",
+      "description": "EFEITO GEL PULSANDO",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "1312",
+      "ean": "7898606635046",
+      "description": "LIQUID SAND WHITE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "827",
+      "ean": "7898606634292",
+      "description": "EFEITO GEL INTENSO",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "1313",
+      "ean": "7898606635053",
+      "description": "LIQUID SAND PINK ROSE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "828",
+      "ean": "7898606634308",
+      "description": "EFEITO GEL BRANCO TOTAL",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "1314",
+      "ean": "7898606635060",
+      "description": "LIQUID SAND GOLD",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "829",
+      "ean": "7898606634315",
+      "description": "EFEITO GEL BRANCO NÉVOA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "1315",
+      "ean": "7898606635077",
+      "description": "LIQUID SAND WINE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "830",
+      "ean": "7898606634575",
+      "description": "EFEITO GEL FRESCURA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "1404",
+      "ean": "7898606639044",
+      "description": "GLITTER BRILHA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "831",
+      "ean": "7898606634582",
+      "description": "EFEITO GEL LEVEZA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "1405",
+      "ean": "7898606639051",
+      "description": "GLITTER FESTEJA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "832",
+      "ean": "7898606634599",
+      "description": "EFEITO GEL CHARMOSA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "1406",
+      "ean": "7898606639068",
+      "description": "GLITTER ARRASA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "834",
+      "ean": "7898606634612",
+      "description": "EFEITO GEL TUDO AZUL",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "1407",
+      "ean": "7898606639464",
+      "description": "GLITTER ME CHAME DE PRATA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "835",
+      "ean": "7898606634629",
+      "description": "EFEITO GEL DESEJADO",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "1408",
+      "ean": "7898606639471",
+      "description": "GLITTER ESSE DOURADO",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "837",
+      "ean": "7898606635015",
+      "description": "EFEITO GEL DESEJO",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "630",
+      "ean": "7898606636180",
+      "description": "NEON PIREI",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "838",
+      "ean": "7898606635022",
+      "description": "EFEITO GEL PREFERIDO",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "631",
+      "ean": "7898606636197",
+      "description": "NEON EXAGEROU",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "839",
+      "ean": "7898606635039",
+      "description": "EFEITO GEL MISTÉRIO",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "632",
+      "ean": "7898606636203",
+      "description": "NEON REBULIÇO",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "840",
+      "ean": "7898606635718",
+      "description": "EFEITO GEL SERENA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "633",
+      "ean": "7898606636210",
+      "description": "NEON CHEGUEI",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "842",
+      "ean": "7898606635732",
+      "description": "EFEITO GEL DE BOA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "634",
+      "ean": "7898606636227",
+      "description": "NEON LACROU",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "843",
+      "ean": "7898606635749",
+      "description": "EFEITO GEL MODO ON",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "635",
+      "ean": "7898606639358",
+      "description": "NEON ARRASOU",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "844",
+      "ean": "7898606635756",
+      "description": "EFEITO GEL ENERGIA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "636",
+      "ean": "7898606639365",
+      "description": "NEON CHOQUEI",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "845",
+      "ean": "7898606635763",
+      "description": "EFEITO GEL ATITUDE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "637",
+      "ean": "7898606639372",
+      "description": "NEON CONTAGIOU",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "846",
+      "ean": "7898606636388",
+      "description": "EFEITO GEL PISCINA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "339",
+      "ean": "7898606639853",
+      "description": "TOP COAT EFEITO GEL 100 ML",
+      "price": "22.99",
+      "sourceBoxPrice": "22.99"
+    },
+    {
+      "sku": "847",
+      "ean": "7898606636395",
+      "description": "EFEITO GEL BIQUÍNI",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "340",
+      "ean": "7898606639860",
+      "description": "TOP COAT INCOLOR 100 ML",
+      "price": "22.99",
+      "sourceBoxPrice": "22.99"
+    },
+    {
+      "sku": "848",
+      "ean": "7898606636401",
+      "description": "EFEITO GEL DRINK",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "341",
+      "ean": "7898606639877",
+      "description": "BASE MULTIV 100 ML",
+      "price": "22.99",
+      "sourceBoxPrice": "22.99"
+    },
+    {
+      "sku": "849",
+      "ean": "7898606636418",
+      "description": "EFEITO GEL PÔR DO SOL",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "342",
+      "ean": "7898606639884",
+      "description": "ULTRA SEC SPRAY 60ML",
+      "price": "22.99",
+      "sourceBoxPrice": "22.99"
+    },
+    {
+      "sku": "850",
+      "ean": "7898606637156",
+      "description": "EFEITO GEL DELICIA VERÃO",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "335",
+      "ean": "7898606639327",
+      "description": "NUTRI OIL COMPLEX",
+      "price": "11.44",
+      "sourceBoxPrice": "11.44"
+    },
+    {
+      "sku": "851",
+      "ean": "7898606637163",
+      "description": "EFEITO GEL DIA FELIZ",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "336",
+      "ean": "7898606639334",
+      "description": "CLAREADOR ÓPTICO",
+      "price": "11.44",
+      "sourceBoxPrice": "11.44"
+    },
+    {
+      "sku": "854",
+      "ean": "7898606637576",
+      "description": "EFEITO GEL NUDE COMPORT.",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "337",
+      "ean": "7898606639341",
+      "description": "ENDURECEDOR DE UNHAS",
+      "price": "17.22",
+      "sourceBoxPrice": "17.22"
+    },
+    {
+      "sku": "855",
+      "ean": "7898606637583",
+      "description": "EFEITO GEL AREIA VERMELHA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "329",
+      "ean": "7898606639211",
+      "description": "KIT BLINDAGEM 2X1",
+      "price": "19.53",
+      "sourceBoxPrice": "19.53"
+    },
+    {
+      "sku": "856",
+      "ean": "7898606637590",
+      "description": "EFEITO GEL CALOR CARIOCA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "338",
+      "ean": "7898606639679",
+      "description": "KIT FRANCESINHA",
+      "price": "21.48",
+      "sourceBoxPrice": "21.48"
+    },
+    {
+      "sku": "858",
+      "ean": "7898606638252",
+      "description": "EFEITO GE BEM NUDE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "349",
+      "ean": "7898771210215",
+      "description": "KIT TODA ROSA",
+      "price": "21.48",
+      "sourceBoxPrice": "21.48"
+    },
+    {
+      "sku": "859",
+      "ean": "7898606638269",
+      "description": "EFEITO GEL ME ESCOLHE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "350",
+      "ean": "7898771210222",
+      "description": "KIT MEU VERMELHO",
+      "price": "21.48",
+      "sourceBoxPrice": "21.48"
+    },
+    {
+      "sku": "860",
+      "ean": "7898606638276",
+      "description": "EFEITO GEL CLÁSSICO",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "343",
+      "ean": "7898771210086",
+      "description": "BASE SOS PÓS ALONG",
+      "price": "11.44",
+      "sourceBoxPrice": "11.44"
+    },
+    {
+      "sku": "861",
+      "ean": "7898606638283",
+      "description": "EFEITO GEL BALÉ",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "344",
+      "ean": "7898771210093",
+      "description": "SERUM REDUTOR CUT",
+      "price": "17.22",
+      "sourceBoxPrice": "17.22"
+    },
+    {
+      "sku": "862",
+      "ean": "7898606638290",
+      "description": "EFEITO GEL POEMA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "345",
+      "ean": "7898771210109",
+      "description": "KIT 2X1 COMBATE",
+      "price": "21.86",
+      "sourceBoxPrice": "21.86"
+    },
+    {
+      "sku": "863",
+      "ean": "7898606638306",
+      "description": "EFEITO GEL MEU ROSA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "356",
+      "ean": "7898771210369",
+      "description": "BASE INIBIDORA AMARGA",
+      "price": "11.44",
+      "sourceBoxPrice": "11.44"
+    },
+    {
+      "sku": "869",
+      "ean": "7898606638740",
+      "description": "EFEITO GEL TÔ LINDA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "351",
+      "ean": "7898771210239",
+      "description": "REMOVE CUTÍCULAS 35 ML",
+      "price": "10.23",
+      "sourceBoxPrice": "10.23"
+    },
+    {
+      "sku": "870",
+      "ean": "7898606639389",
+      "description": "EFEITO GEL SINTA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "2000",
+      "ean": "7898606638313",
+      "description": "AMOLECEDOR CUTICULA 100G",
+      "price": "9.30",
+      "sourceBoxPrice": "9.30"
+    },
+    {
+      "sku": "871",
+      "ean": "7898606639396",
+      "description": "EFEITO GEL DESPERTE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "2001",
+      "ean": "7898606638320",
+      "description": "CREME MÃOS 50G",
+      "price": "12.68",
+      "sourceBoxPrice": "12.68"
+    },
+    {
+      "sku": "872",
+      "ean": "7898606639402",
+      "description": "EFEITO GEL CELEBRE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "2002",
+      "ean": "7898606638337",
+      "description": "CREME PÉS 100G",
+      "price": "15.66",
+      "sourceBoxPrice": "15.66"
+    },
+    {
+      "sku": "873",
+      "ean": "7898606639419",
+      "description": "EFEITO GEL MENTALIZE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "2003",
+      "ean": "7898606638344",
+      "description": "CREME ESFOLIANTE 100G",
+      "price": "15.95",
+      "sourceBoxPrice": "15.95"
+    },
+    {
+      "sku": "874",
+      "ean": "7898606639891",
+      "description": "EFEITO GEL IMAGINE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "2004",
+      "ean": "7898606638351",
+      "description": "MOUSSE DE PARAFINA 130G",
+      "price": "25.15",
+      "sourceBoxPrice": "25.15"
+    },
+    {
+      "sku": "875",
+      "ean": "7898606639907",
+      "description": "EFEITO GEL SONHE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "352",
+      "ean": "7898771210246",
+      "description": "AMACIANTE DE CALOS",
+      "price": "10.89",
+      "sourceBoxPrice": "10.89"
+    },
+    {
+      "sku": "876",
+      "ean": "7898606639914",
+      "description": "EFEITO GEL INSPIRE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "353",
+      "ean": "7898771210253",
+      "description": "REMOVEDOR DE ESMALTES",
+      "price": "10.23",
+      "sourceBoxPrice": "10.23"
+    },
+    {
+      "sku": "877",
+      "ean": "7898606639921",
+      "description": "EFEITO GEL BRILHE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "404",
+      "ean": "7898606633271",
+      "description": "ESPATULA DUPLA",
+      "price": "6.59",
+      "sourceBoxPrice": "39.54"
+    },
+    {
+      "sku": "878",
+      "ean": "7898606639938",
+      "description": "EFEITO GEL REALIZE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "405",
+      "ean": "7898606633288",
+      "description": "DESENCRAVADOR DE UNHA",
+      "price": "6.59",
+      "sourceBoxPrice": "39.54"
+    },
+    {
+      "sku": "879",
+      "ean": "7898606639945",
+      "description": "EFEITO GEL COMEMORE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "406",
+      "ean": "7898606633295",
+      "description": "RASPADOR DE UNHA",
+      "price": "6.59",
+      "sourceBoxPrice": "39.54"
+    },
+    {
+      "sku": "880",
+      "ean": "7898771210307",
+      "description": "EFEITO GEL POSTEI",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "407",
+      "ean": "7898606633301",
+      "description": "PALITO DE PONTA DUPLA",
+      "price": "6.59",
+      "sourceBoxPrice": "39.54"
+    },
+    {
+      "sku": "881",
+      "ean": "7898771210314",
+      "description": "EFEITO GEL VIRALIZEI",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "408",
+      "ean": "7898606633318",
+      "description": "EXTRATOR CRAVOS E ESPINHAS",
+      "price": "6.59",
+      "sourceBoxPrice": "39.54"
+    },
+    {
+      "sku": "882",
+      "ean": "7898771210321",
+      "description": "EFEITO GEL TENDÊNCIA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "420",
+      "ean": "7898606637620",
+      "description": "ESPATULA E PALITO",
+      "price": "6.59",
+      "sourceBoxPrice": "39.54"
+    },
+    {
+      "sku": "883",
+      "ean": "7898771210338",
+      "description": "EFEITO GEL REPOSTEI",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "421",
+      "ean": "7898606637637",
+      "description": "AGULHA P/ MECHAS E LUZES",
+      "price": "6.59",
+      "sourceBoxPrice": "39.54"
+    },
+    {
+      "sku": "884",
+      "ean": "7898771210345",
+      "description": "EFEITO GEL CURTI",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "423",
+      "ean": "7898606638764",
+      "description": "BISTURI P/ CALOS - PLANTAR",
+      "price": "8.67",
+      "sourceBoxPrice": "52.02"
+    },
+    {
+      "sku": "885",
+      "ean": "7898771210352",
+      "description": "EFEITO GEL COMPARTILHEI",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "424",
+      "ean": "7898606638979",
+      "description": "BISTURI P/ CALOS - DORSAL",
+      "price": "8.67",
+      "sourceBoxPrice": "52.02"
+    },
+    {
+      "sku": "170",
+      "ean": "7898606636043",
+      "description": "GLOW AURORA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "425",
+      "ean": "7898606638955",
+      "description": "ALICATE CABO LISO",
+      "price": "25.19",
+      "sourceBoxPrice": "151.14"
+    },
+    {
+      "sku": "171",
+      "ean": "7898606636067",
+      "description": "GLOW CELESTE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "409",
+      "ean": "7898606633325",
+      "description": "KIT MANICURE INOX",
+      "price": "19.06",
+      "sourceBoxPrice": "114.36"
+    },
+    {
+      "sku": "172",
+      "ean": "7898606636074",
+      "description": "GLOW GALÁXIA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "427",
+      "ean": "7898606639150",
+      "description": "DESENCRAVADOR – SILICONE",
+      "price": "8.60",
+      "sourceBoxPrice": "51.60"
+    },
+    {
+      "sku": "211",
+      "ean": "7898606635084",
+      "description": "METALIZADO ELEGANTE",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "428",
+      "ean": "7898606639167",
+      "description": "AFASTADOR E PALITO SILIC.",
+      "price": "8.60",
+      "sourceBoxPrice": "51.60"
+    },
+    {
+      "sku": "212",
+      "ean": "7898606635091",
+      "description": "METALIZADO REFINADA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "429",
+      "ean": "7898606639174",
+      "description": "AFASTADOR E ESPÁTULA SILIC.",
+      "price": "8.60",
+      "sourceBoxPrice": "51.60"
+    },
+    {
+      "sku": "213",
+      "ean": "7898606635107",
+      "description": "METALIZADO FANTASTICA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "430",
+      "ean": "7898606639181",
+      "description": "BASTÃO PONTA DUPLA SILIC.",
+      "price": "8.60",
+      "sourceBoxPrice": "51.60"
+    },
+    {
+      "sku": "214",
+      "ean": "7898606635114",
+      "description": "METALIZADO EMPODERADA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "432",
+      "ean": "7898606639969",
+      "description": "BISTURI PLANTAR SILIC.",
+      "price": "8.60",
+      "sourceBoxPrice": "51.60"
+    },
+    {
+      "sku": "215",
+      "ean": "7898606635121",
+      "description": "METALIZADO INFLUENCIADORA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "433",
+      "ean": "7898771210116",
+      "description": "BOLEADOR DE UNHAS SILIC.",
+      "price": "8.60",
+      "sourceBoxPrice": "51.60"
+    },
+    {
+      "sku": "216",
+      "ean": "7898606635138",
+      "description": "METALIZADO SOFISTICADA",
+      "price": "5.37",
+      "sourceBoxPrice": "32.22"
+    },
+    {
+      "sku": "431",
+      "ean": "7898606639143",
+      "description": "KIT INOX SILICONE - 04 ITENS",
+      "price": "33.26",
+      "sourceBoxPrice": "199.56"
+    }
+  ],
+  "ATACADO": [
+    {
+      "sku": "800",
+      "ean": "7898606630898",
+      "description": "EFEITO GEL CARIMBÓ",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "217",
+      "ean": "7898606635152",
+      "description": "METALIZADO APAIXONADA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "801",
+      "ean": "7898606630904",
+      "description": "EFEITO GEL FREVO",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "218",
+      "ean": "7898606635169",
+      "description": "METALIZADO ENCANTADORA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "802",
+      "ean": "7898606630911",
+      "description": "EFEITO GEL MARACATU",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "219",
+      "ean": "7898606635176",
+      "description": "METALIZADO BRILHANTE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "803",
+      "ean": "7898606630928",
+      "description": "EFEITO GEL XOTE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "220",
+      "ean": "7898606635183",
+      "description": "METALIZADO DOMINADORA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "804",
+      "ean": "7898606630935",
+      "description": "EFEITO GEL SAMBA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "311",
+      "ean": "7898606634490",
+      "description": "BASE MEGA FORT 9ML",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "805",
+      "ean": "7898606630942",
+      "description": "EFEITO GEL SERTANEJO",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "316",
+      "ean": "7898606634544",
+      "description": "TOP COAT EFEITO GEL 9ML",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "806",
+      "ean": "7898606631758",
+      "description": "EFEITO GEL FUNK",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "348",
+      "ean": "7898771210147",
+      "description": "TOP COAT FOSCO 9ML",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "807",
+      "ean": "7898606631765",
+      "description": "EFEITO GEL MPB",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "319",
+      "ean": "7898606635770",
+      "description": "ULTRA SECANTE 9ML",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "808",
+      "ean": "7898606631772",
+      "description": "EFEITO GEL FORRÓ",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "320",
+      "ean": "7898606636357",
+      "description": "TOP COAT INCOLOR 9ML",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "809",
+      "ean": "7898606631789",
+      "description": "EFEITO GEL AXÉ",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "323",
+      "ean": "7898606637613",
+      "description": "TOP COAT GLITTER 9ML",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "810",
+      "ean": "7898606631796",
+      "description": "EFEITO GEL ROCK",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "324",
+      "ean": "7898606638214",
+      "description": "BASE SUPER FORÇA 9ML",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "811",
+      "ean": "7898606631802",
+      "description": "EFEITO GEL PAGODE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "325",
+      "ean": "7898606638221",
+      "description": "BASE MULTI VITAM 9ML",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "812",
+      "ean": "7898606633592",
+      "description": "EFEITO GEL BOLERO",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "326",
+      "ean": "7898606638238",
+      "description": "BASE ATIVA CRESCIM. 9ML",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "813",
+      "ean": "7898606633608",
+      "description": "EFEITO GEL SALSA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "334",
+      "ean": "7898606639457",
+      "description": "TOP COAT NUANCES 9ML",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "814",
+      "ean": "7898606633615",
+      "description": "EFEITO GEL RUMBA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "1300",
+      "ean": "7898606633400",
+      "description": "LIQUID SAND CHAMPAGNE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "815",
+      "ean": "7898606633622",
+      "description": "EFEITO GEL POP",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "1301",
+      "ean": "7898606633417",
+      "description": "LIQUID SAND LIGHT PINK",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "816",
+      "ean": "7898606633639",
+      "description": "EFEITO GEL BOSSA NOVA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "1302",
+      "ean": "7898606633424",
+      "description": "LIQUID SAND  SILVER",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "817",
+      "ean": "7898606633646",
+      "description": "EFEITO GEL GAFIEIRA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "1303",
+      "ean": "7898606633431",
+      "description": "LIQUID SAND  RED",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "820",
+      "ean": "7898606633356",
+      "description": "EFEITO GEL AMO NUDE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "1304",
+      "ean": "7898606633448",
+      "description": "LIQUID SAND PURPLE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "822",
+      "ean": "7898606633370",
+      "description": "EFEITO GEL SEM AR",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "1308",
+      "ean": "7898606634117",
+      "description": "LIQUID SAND PINK",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "824",
+      "ean": "7898606634261",
+      "description": "EFEITO GEL ARDENTE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "1310",
+      "ean": "7898606634131",
+      "description": "LIQUID SAND SCARLET VIOLET",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "825",
+      "ean": "7898606634278",
+      "description": "EFEITO GEL VIBRANTE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "1311",
+      "ean": "7898606634148",
+      "description": "LIQUID SAND BLUE GRAY",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "826",
+      "ean": "7898606634285",
+      "description": "EFEITO GEL PULSANDO",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "1312",
+      "ean": "7898606635046",
+      "description": "LIQUID SAND WHITE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "827",
+      "ean": "7898606634292",
+      "description": "EFEITO GEL INTENSO",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "1313",
+      "ean": "7898606635053",
+      "description": "LIQUID SAND PINK ROSE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "828",
+      "ean": "7898606634308",
+      "description": "EFEITO GEL BRANCO TOTAL",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "1314",
+      "ean": "7898606635060",
+      "description": "LIQUID SAND GOLD",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "829",
+      "ean": "7898606634315",
+      "description": "EFEITO GEL BRANCO NÉVOA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "1315",
+      "ean": "7898606635077",
+      "description": "LIQUID SAND WINE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "830",
+      "ean": "7898606634575",
+      "description": "EFEITO GEL FRESCURA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "1404",
+      "ean": "7898606639044",
+      "description": "GLITTER BRILHA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "831",
+      "ean": "7898606634582",
+      "description": "EFEITO GEL LEVEZA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "1405",
+      "ean": "7898606639051",
+      "description": "GLITTER FESTEJA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "832",
+      "ean": "7898606634599",
+      "description": "EFEITO GEL CHARMOSA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "1406",
+      "ean": "7898606639068",
+      "description": "GLITTER ARRASA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "834",
+      "ean": "7898606634612",
+      "description": "EFEITO GEL TUDO AZUL",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "1407",
+      "ean": "7898606639464",
+      "description": "GLITTER ME CHAME DE PRATA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "835",
+      "ean": "7898606634629",
+      "description": "EFEITO GEL DESEJADO",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "1408",
+      "ean": "7898606639471",
+      "description": "GLITTER ESSE DOURADO",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "837",
+      "ean": "7898606635015",
+      "description": "EFEITO GEL DESEJO",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "630",
+      "ean": "7898606636180",
+      "description": "NEON PIREI",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "838",
+      "ean": "7898606635022",
+      "description": "EFEITO GEL PREFERIDO",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "631",
+      "ean": "7898606636197",
+      "description": "NEON EXAGEROU",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "839",
+      "ean": "7898606635039",
+      "description": "EFEITO GEL MISTÉRIO",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "632",
+      "ean": "7898606636203",
+      "description": "NEON REBULIÇO",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "840",
+      "ean": "7898606635718",
+      "description": "EFEITO GEL SERENA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "633",
+      "ean": "7898606636210",
+      "description": "NEON CHEGUEI",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "842",
+      "ean": "7898606635732",
+      "description": "EFEITO GEL DE BOA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "634",
+      "ean": "7898606636227",
+      "description": "NEON LACROU",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "843",
+      "ean": "7898606635749",
+      "description": "EFEITO GEL MODO ON",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "635",
+      "ean": "7898606639358",
+      "description": "NEON ARRASOU",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "844",
+      "ean": "7898606635756",
+      "description": "EFEITO GEL ENERGIA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "636",
+      "ean": "7898606639365",
+      "description": "NEON CHOQUEI",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "845",
+      "ean": "7898606635763",
+      "description": "EFEITO GEL ATITUDE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "637",
+      "ean": "7898606639372",
+      "description": "NEON CONTAGIOU",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "846",
+      "ean": "7898606636388",
+      "description": "EFEITO GEL PISCINA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "339",
+      "ean": "7898606639853",
+      "description": "TOP COAT EFEITO GEL 100 ML",
+      "price": "18.85",
+      "sourceBoxPrice": "18.85"
+    },
+    {
+      "sku": "847",
+      "ean": "7898606636395",
+      "description": "EFEITO GEL BIQUÍNI",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "340",
+      "ean": "7898606639860",
+      "description": "TOP COAT INCOLOR 100 ML",
+      "price": "18.85",
+      "sourceBoxPrice": "18.85"
+    },
+    {
+      "sku": "848",
+      "ean": "7898606636401",
+      "description": "EFEITO GEL DRINK",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "341",
+      "ean": "7898606639877",
+      "description": "BASE MULTIV 100 ML",
+      "price": "18.85",
+      "sourceBoxPrice": "18.85"
+    },
+    {
+      "sku": "849",
+      "ean": "7898606636418",
+      "description": "EFEITO GEL PÔR DO SOL",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "342",
+      "ean": "7898606639884",
+      "description": "ULTRA SEC SPRAY 60ML",
+      "price": "18.85",
+      "sourceBoxPrice": "18.85"
+    },
+    {
+      "sku": "850",
+      "ean": "7898606637156",
+      "description": "EFEITO GEL DELICIA VERÃO",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "335",
+      "ean": "7898606639327",
+      "description": "NUTRI OIL COMPLEX",
+      "price": "9.39",
+      "sourceBoxPrice": "9.39"
+    },
+    {
+      "sku": "851",
+      "ean": "7898606637163",
+      "description": "EFEITO GEL DIA FELIZ",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "336",
+      "ean": "7898606639334",
+      "description": "CLAREADOR ÓPTICO",
+      "price": "9.39",
+      "sourceBoxPrice": "9.39"
+    },
+    {
+      "sku": "854",
+      "ean": "7898606637576",
+      "description": "EFEITO GEL NUDE COMPORT.",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "337",
+      "ean": "7898606639341",
+      "description": "ENDURECEDOR DE UNHAS",
+      "price": "14.14",
+      "sourceBoxPrice": "14.14"
+    },
+    {
+      "sku": "855",
+      "ean": "7898606637583",
+      "description": "EFEITO GEL AREIA VERMELHA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "329",
+      "ean": "7898606639211",
+      "description": "KIT BLINDAGEM 2X1",
+      "price": "16.04",
+      "sourceBoxPrice": "16.04"
+    },
+    {
+      "sku": "856",
+      "ean": "7898606637590",
+      "description": "EFEITO GEL CALOR CARIOCA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "338",
+      "ean": "7898606639679",
+      "description": "KIT FRANCESINHA",
+      "price": "17.64",
+      "sourceBoxPrice": "17.64"
+    },
+    {
+      "sku": "858",
+      "ean": "7898606638252",
+      "description": "EFEITO GE BEM NUDE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "349",
+      "ean": "7898771210215",
+      "description": "KIT TODA ROSA",
+      "price": "17.64",
+      "sourceBoxPrice": "17.64"
+    },
+    {
+      "sku": "859",
+      "ean": "7898606638269",
+      "description": "EFEITO GEL ME ESCOLHE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "350",
+      "ean": "7898771210222",
+      "description": "KIT MEU VERMELHO",
+      "price": "17.64",
+      "sourceBoxPrice": "17.64"
+    },
+    {
+      "sku": "860",
+      "ean": "7898606638276",
+      "description": "EFEITO GEL CLÁSSICO",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "343",
+      "ean": "7898771210086",
+      "description": "BASE SOS PÓS ALONG",
+      "price": "9.39",
+      "sourceBoxPrice": "9.39"
+    },
+    {
+      "sku": "861",
+      "ean": "7898606638283",
+      "description": "EFEITO GEL BALÉ",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "344",
+      "ean": "7898771210093",
+      "description": "SERUM REDUTOR CUT",
+      "price": "14.14",
+      "sourceBoxPrice": "14.14"
+    },
+    {
+      "sku": "862",
+      "ean": "7898606638290",
+      "description": "EFEITO GEL POEMA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "345",
+      "ean": "7898771210109",
+      "description": "KIT 2X1 COMBATE",
+      "price": "18.17",
+      "sourceBoxPrice": "18.17"
+    },
+    {
+      "sku": "863",
+      "ean": "7898606638306",
+      "description": "EFEITO GEL MEU ROSA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "356",
+      "ean": "7898771210369",
+      "description": "BASE INIBIDORA AMARGA",
+      "price": "9.39",
+      "sourceBoxPrice": "9.39"
+    },
+    {
+      "sku": "869",
+      "ean": "7898606638740",
+      "description": "EFEITO GEL TÔ LINDA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "351",
+      "ean": "7898771210239",
+      "description": "REMOVE CUTÍCULAS 35 ML",
+      "price": "8.47",
+      "sourceBoxPrice": "8.47"
+    },
+    {
+      "sku": "870",
+      "ean": "7898606639389",
+      "description": "EFEITO GEL SINTA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "2000",
+      "ean": "7898606638313",
+      "description": "AMOLECEDOR CUTICULA 100G",
+      "price": "7.63",
+      "sourceBoxPrice": "7.63"
+    },
+    {
+      "sku": "871",
+      "ean": "7898606639396",
+      "description": "EFEITO GEL DESPERTE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "2001",
+      "ean": "7898606638320",
+      "description": "CREME MÃOS 50G",
+      "price": "10.42",
+      "sourceBoxPrice": "10.42"
+    },
+    {
+      "sku": "872",
+      "ean": "7898606639402",
+      "description": "EFEITO GEL CELEBRE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "2002",
+      "ean": "7898606638337",
+      "description": "CREME PÉS 100G",
+      "price": "12.87",
+      "sourceBoxPrice": "12.87"
+    },
+    {
+      "sku": "873",
+      "ean": "7898606639419",
+      "description": "EFEITO GEL MENTALIZE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "2003",
+      "ean": "7898606638344",
+      "description": "CREME ESFOLIANTE 100G",
+      "price": "13.10",
+      "sourceBoxPrice": "13.10"
+    },
+    {
+      "sku": "874",
+      "ean": "7898606639891",
+      "description": "EFEITO GEL IMAGINE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "2004",
+      "ean": "7898606638351",
+      "description": "MOUSSE DE PARAFINA 130G",
+      "price": "20.65",
+      "sourceBoxPrice": "20.65"
+    },
+    {
+      "sku": "875",
+      "ean": "7898606639907",
+      "description": "EFEITO GEL SONHE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "352",
+      "ean": "7898771210246",
+      "description": "AMACIANTE DE CALOS",
+      "price": "9.02",
+      "sourceBoxPrice": "9.02"
+    },
+    {
+      "sku": "876",
+      "ean": "7898606639914",
+      "description": "EFEITO GEL INSPIRE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "353",
+      "ean": "7898771210253",
+      "description": "REMOVEDOR DE ESMALTES",
+      "price": "8.47",
+      "sourceBoxPrice": "8.47"
+    },
+    {
+      "sku": "877",
+      "ean": "7898606639921",
+      "description": "EFEITO GEL BRILHE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "404",
+      "ean": "7898606633271",
+      "description": "ESPATULA DUPLA",
+      "price": "5.40",
+      "sourceBoxPrice": "32.40"
+    },
+    {
+      "sku": "878",
+      "ean": "7898606639938",
+      "description": "EFEITO GEL REALIZE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "405",
+      "ean": "7898606633288",
+      "description": "DESENCRAVADOR DE UNHA",
+      "price": "5.40",
+      "sourceBoxPrice": "32.40"
+    },
+    {
+      "sku": "879",
+      "ean": "7898606639945",
+      "description": "EFEITO GEL COMEMORE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "406",
+      "ean": "7898606633295",
+      "description": "RASPADOR DE UNHA",
+      "price": "5.40",
+      "sourceBoxPrice": "32.40"
+    },
+    {
+      "sku": "880",
+      "ean": "7898771210307",
+      "description": "EFEITO GEL POSTEI",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "407",
+      "ean": "7898606633301",
+      "description": "PALITO DE PONTA DUPLA",
+      "price": "5.40",
+      "sourceBoxPrice": "32.40"
+    },
+    {
+      "sku": "881",
+      "ean": "7898771210314",
+      "description": "EFEITO GEL VIRALIZEI",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "408",
+      "ean": "7898606633318",
+      "description": "EXTRATOR CRAVOS E ESPINHAS",
+      "price": "5.40",
+      "sourceBoxPrice": "32.40"
+    },
+    {
+      "sku": "882",
+      "ean": "7898771210321",
+      "description": "EFEITO GEL TENDÊNCIA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "420",
+      "ean": "7898606637620",
+      "description": "ESPATULA E PALITO",
+      "price": "5.40",
+      "sourceBoxPrice": "32.40"
+    },
+    {
+      "sku": "883",
+      "ean": "7898771210338",
+      "description": "EFEITO GEL REPOSTEI",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "421",
+      "ean": "7898606637637",
+      "description": "AGULHA P/ MECHAS E LUZES",
+      "price": "5.40",
+      "sourceBoxPrice": "32.40"
+    },
+    {
+      "sku": "884",
+      "ean": "7898771210345",
+      "description": "EFEITO GEL CURTI",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "423",
+      "ean": "7898606638764",
+      "description": "BISTURI P/ CALOS - PLANTAR",
+      "price": "7.12",
+      "sourceBoxPrice": "42.72"
+    },
+    {
+      "sku": "885",
+      "ean": "7898771210352",
+      "description": "EFEITO GEL COMPARTILHEI",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "424",
+      "ean": "7898606638979",
+      "description": "BISTURI P/ CALOS - DORSAL",
+      "price": "7.12",
+      "sourceBoxPrice": "42.72"
+    },
+    {
+      "sku": "170",
+      "ean": "7898606636043",
+      "description": "GLOW AURORA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "425",
+      "ean": "7898606638955",
+      "description": "ALICATE CABO LISO",
+      "price": "20.79",
+      "sourceBoxPrice": "124.74"
+    },
+    {
+      "sku": "171",
+      "ean": "7898606636067",
+      "description": "GLOW CELESTE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "409",
+      "ean": "7898606633325",
+      "description": "KIT MANICURE INOX",
+      "price": "15.65",
+      "sourceBoxPrice": "93.90"
+    },
+    {
+      "sku": "172",
+      "ean": "7898606636074",
+      "description": "GLOW GALÁXIA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "427",
+      "ean": "7898606639150",
+      "description": "DESENCRAVADOR – SILICONE",
+      "price": "7.06",
+      "sourceBoxPrice": "42.36"
+    },
+    {
+      "sku": "211",
+      "ean": "7898606635084",
+      "description": "METALIZADO ELEGANTE",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "428",
+      "ean": "7898606639167",
+      "description": "AFASTADOR E PALITO SILIC.",
+      "price": "7.06",
+      "sourceBoxPrice": "42.36"
+    },
+    {
+      "sku": "212",
+      "ean": "7898606635091",
+      "description": "METALIZADO REFINADA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "429",
+      "ean": "7898606639174",
+      "description": "AFASTADOR E ESPÁTULA SILIC.",
+      "price": "7.06",
+      "sourceBoxPrice": "42.36"
+    },
+    {
+      "sku": "213",
+      "ean": "7898606635107",
+      "description": "METALIZADO FANTASTICA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "430",
+      "ean": "7898606639181",
+      "description": "BASTÃO PONTA DUPLA SILIC.",
+      "price": "7.06",
+      "sourceBoxPrice": "42.36"
+    },
+    {
+      "sku": "214",
+      "ean": "7898606635114",
+      "description": "METALIZADO EMPODERADA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "432",
+      "ean": "7898606639969",
+      "description": "BISTURI PLANTAR SILIC.",
+      "price": "7.06",
+      "sourceBoxPrice": "42.36"
+    },
+    {
+      "sku": "215",
+      "ean": "7898606635121",
+      "description": "METALIZADO INFLUENCIADORA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "433",
+      "ean": "7898771210116",
+      "description": "BOLEADOR DE UNHAS SILIC.",
+      "price": "7.06",
+      "sourceBoxPrice": "42.36"
+    },
+    {
+      "sku": "216",
+      "ean": "7898606635138",
+      "description": "METALIZADO SOFISTICADA",
+      "price": "4.41",
+      "sourceBoxPrice": "26.46"
+    },
+    {
+      "sku": "431",
+      "ean": "7898606639143",
+      "description": "KIT INOX SILICONE - 04 ITENS",
+      "price": "27.31",
+      "sourceBoxPrice": "163.86"
+    }
+  ],
+  "REVENDA": [
+    {
+      "sku": "800",
+      "ean": "7898606630898",
+      "description": "EFEITO GEL CARIMBÓ",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "217",
+      "ean": "7898606635152",
+      "description": "METALIZADO APAIXONADA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "801",
+      "ean": "7898606630904",
+      "description": "EFEITO GEL FREVO",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "218",
+      "ean": "7898606635169",
+      "description": "METALIZADO ENCANTADORA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "802",
+      "ean": "7898606630911",
+      "description": "EFEITO GEL MARACATU",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "219",
+      "ean": "7898606635176",
+      "description": "METALIZADO BRILHANTE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "803",
+      "ean": "7898606630928",
+      "description": "EFEITO GEL XOTE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "220",
+      "ean": "7898606635183",
+      "description": "METALIZADO DOMINADORA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "804",
+      "ean": "7898606630935",
+      "description": "EFEITO GEL SAMBA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "311",
+      "ean": "7898606634490",
+      "description": "BASE MEGA FORT 9ML",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "805",
+      "ean": "7898606630942",
+      "description": "EFEITO GEL SERTANEJO",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "316",
+      "ean": "7898606634544",
+      "description": "TOP COAT EFEITO GEL 9ML",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "806",
+      "ean": "7898606631758",
+      "description": "EFEITO GEL FUNK",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "348",
+      "ean": "7898771210147",
+      "description": "TOP COAT FOSCO 9ML",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "807",
+      "ean": "7898606631765",
+      "description": "EFEITO GEL MPB",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "319",
+      "ean": "7898606635770",
+      "description": "ULTRA SECANTE 9ML",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "808",
+      "ean": "7898606631772",
+      "description": "EFEITO GEL FORRÓ",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "320",
+      "ean": "7898606636357",
+      "description": "TOP COAT INCOLOR 9ML",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "809",
+      "ean": "7898606631789",
+      "description": "EFEITO GEL AXÉ",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "323",
+      "ean": "7898606637613",
+      "description": "TOP COAT GLITTER 9ML",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "810",
+      "ean": "7898606631796",
+      "description": "EFEITO GEL ROCK",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "324",
+      "ean": "7898606638214",
+      "description": "BASE SUPER FORÇA 9ML",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "811",
+      "ean": "7898606631802",
+      "description": "EFEITO GEL PAGODE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "325",
+      "ean": "7898606638221",
+      "description": "BASE MULTI VITAM 9ML",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "812",
+      "ean": "7898606633592",
+      "description": "EFEITO GEL BOLERO",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "326",
+      "ean": "7898606638238",
+      "description": "BASE ATIVA CRESCIM. 9ML",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "813",
+      "ean": "7898606633608",
+      "description": "EFEITO GEL SALSA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "334",
+      "ean": "7898606639457",
+      "description": "TOP COAT NUANCES 9ML",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "814",
+      "ean": "7898606633615",
+      "description": "EFEITO GEL RUMBA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "1300",
+      "ean": "7898606633400",
+      "description": "LIQUID SAND CHAMPAGNE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "815",
+      "ean": "7898606633622",
+      "description": "EFEITO GEL POP",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "1301",
+      "ean": "7898606633417",
+      "description": "LIQUID SAND LIGHT PINK",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "816",
+      "ean": "7898606633639",
+      "description": "EFEITO GEL BOSSA NOVA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "1302",
+      "ean": "7898606633424",
+      "description": "LIQUID SAND  SILVER",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "817",
+      "ean": "7898606633646",
+      "description": "EFEITO GEL GAFIEIRA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "1303",
+      "ean": "7898606633431",
+      "description": "LIQUID SAND  RED",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "820",
+      "ean": "7898606633356",
+      "description": "EFEITO GEL AMO NUDE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "1304",
+      "ean": "7898606633448",
+      "description": "LIQUID SAND PURPLE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "822",
+      "ean": "7898606633370",
+      "description": "EFEITO GEL SEM AR",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "1308",
+      "ean": "7898606634117",
+      "description": "LIQUID SAND PINK",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "824",
+      "ean": "7898606634261",
+      "description": "EFEITO GEL ARDENTE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "1310",
+      "ean": "7898606634131",
+      "description": "LIQUID SAND SCARLET VIOLET",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "825",
+      "ean": "7898606634278",
+      "description": "EFEITO GEL VIBRANTE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "1311",
+      "ean": "7898606634148",
+      "description": "LIQUID SAND BLUE GRAY",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "826",
+      "ean": "7898606634285",
+      "description": "EFEITO GEL PULSANDO",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "1312",
+      "ean": "7898606635046",
+      "description": "LIQUID SAND WHITE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "827",
+      "ean": "7898606634292",
+      "description": "EFEITO GEL INTENSO",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "1313",
+      "ean": "7898606635053",
+      "description": "LIQUID SAND PINK ROSE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "828",
+      "ean": "7898606634308",
+      "description": "EFEITO GEL BRANCO TOTAL",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "1314",
+      "ean": "7898606635060",
+      "description": "LIQUID SAND GOLD",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "829",
+      "ean": "7898606634315",
+      "description": "EFEITO GEL BRANCO NÉVOA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "1315",
+      "ean": "7898606635077",
+      "description": "LIQUID SAND WINE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "830",
+      "ean": "7898606634575",
+      "description": "EFEITO GEL FRESCURA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "1404",
+      "ean": "7898606639044",
+      "description": "GLITTER BRILHA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "831",
+      "ean": "7898606634582",
+      "description": "EFEITO GEL LEVEZA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "1405",
+      "ean": "7898606639051",
+      "description": "GLITTER FESTEJA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "832",
+      "ean": "7898606634599",
+      "description": "EFEITO GEL CHARMOSA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "1406",
+      "ean": "7898606639068",
+      "description": "GLITTER ARRASA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "834",
+      "ean": "7898606634612",
+      "description": "EFEITO GEL TUDO AZUL",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "1407",
+      "ean": "7898606639464",
+      "description": "GLITTER ME CHAME DE PRATA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "835",
+      "ean": "7898606634629",
+      "description": "EFEITO GEL DESEJADO",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "1408",
+      "ean": "7898606639471",
+      "description": "GLITTER ESSE DOURADO",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "837",
+      "ean": "7898606635015",
+      "description": "EFEITO GEL DESEJO",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "630",
+      "ean": "7898606636180",
+      "description": "NEON PIREI",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "838",
+      "ean": "7898606635022",
+      "description": "EFEITO GEL PREFERIDO",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "631",
+      "ean": "7898606636197",
+      "description": "NEON EXAGEROU",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "839",
+      "ean": "7898606635039",
+      "description": "EFEITO GEL MISTÉRIO",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "632",
+      "ean": "7898606636203",
+      "description": "NEON REBULIÇO",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "840",
+      "ean": "7898606635718",
+      "description": "EFEITO GEL SERENA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "633",
+      "ean": "7898606636210",
+      "description": "NEON CHEGUEI",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "842",
+      "ean": "7898606635732",
+      "description": "EFEITO GEL DE BOA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "634",
+      "ean": "7898606636227",
+      "description": "NEON LACROU",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "843",
+      "ean": "7898606635749",
+      "description": "EFEITO GEL MODO ON",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "635",
+      "ean": "7898606639358",
+      "description": "NEON ARRASOU",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "844",
+      "ean": "7898606635756",
+      "description": "EFEITO GEL ENERGIA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "636",
+      "ean": "7898606639365",
+      "description": "NEON CHOQUEI",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "845",
+      "ean": "7898606635763",
+      "description": "EFEITO GEL ATITUDE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "637",
+      "ean": "7898606639372",
+      "description": "NEON CONTAGIOU",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "846",
+      "ean": "7898606636388",
+      "description": "EFEITO GEL PISCINA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "339",
+      "ean": "7898606639853",
+      "description": "TOP COAT EFEITO GEL 100 ML",
+      "price": "20.56",
+      "sourceBoxPrice": "20.56"
+    },
+    {
+      "sku": "847",
+      "ean": "7898606636395",
+      "description": "EFEITO GEL BIQUÍNI",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "340",
+      "ean": "7898606639860",
+      "description": "TOP COAT INCOLOR 100 ML",
+      "price": "20.56",
+      "sourceBoxPrice": "20.56"
+    },
+    {
+      "sku": "848",
+      "ean": "7898606636401",
+      "description": "EFEITO GEL DRINK",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "341",
+      "ean": "7898606639877",
+      "description": "BASE MULTIV 100 ML",
+      "price": "20.56",
+      "sourceBoxPrice": "20.56"
+    },
+    {
+      "sku": "849",
+      "ean": "7898606636418",
+      "description": "EFEITO GEL PÔR DO SOL",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "342",
+      "ean": "7898606639884",
+      "description": "ULTRA SEC SPRAY 60ML",
+      "price": "20.56",
+      "sourceBoxPrice": "20.56"
+    },
+    {
+      "sku": "850",
+      "ean": "7898606637156",
+      "description": "EFEITO GEL DELICIA VERÃO",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "335",
+      "ean": "7898606639327",
+      "description": "NUTRI OIL COMPLEX",
+      "price": "10.30",
+      "sourceBoxPrice": "10.30"
+    },
+    {
+      "sku": "851",
+      "ean": "7898606637163",
+      "description": "EFEITO GEL DIA FELIZ",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "336",
+      "ean": "7898606639334",
+      "description": "CLAREADOR ÓPTICO",
+      "price": "10.30",
+      "sourceBoxPrice": "10.30"
+    },
+    {
+      "sku": "854",
+      "ean": "7898606637576",
+      "description": "EFEITO GEL NUDE COMPORT.",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "337",
+      "ean": "7898606639341",
+      "description": "ENDURECEDOR DE UNHAS",
+      "price": "15.49",
+      "sourceBoxPrice": "15.49"
+    },
+    {
+      "sku": "855",
+      "ean": "7898606637583",
+      "description": "EFEITO GEL AREIA VERMELHA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "329",
+      "ean": "7898606639211",
+      "description": "KIT BLINDAGEM 2X1",
+      "price": "17.57",
+      "sourceBoxPrice": "17.57"
+    },
+    {
+      "sku": "856",
+      "ean": "7898606637590",
+      "description": "EFEITO GEL CALOR CARIOCA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "338",
+      "ean": "7898606639679",
+      "description": "KIT FRANCESINHA",
+      "price": "19.36",
+      "sourceBoxPrice": "19.36"
+    },
+    {
+      "sku": "858",
+      "ean": "7898606638252",
+      "description": "EFEITO GE BEM NUDE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "349",
+      "ean": "7898771210215",
+      "description": "KIT TODA ROSA",
+      "price": "19.36",
+      "sourceBoxPrice": "19.36"
+    },
+    {
+      "sku": "859",
+      "ean": "7898606638269",
+      "description": "EFEITO GEL ME ESCOLHE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "350",
+      "ean": "7898771210222",
+      "description": "KIT MEU VERMELHO",
+      "price": "19.36",
+      "sourceBoxPrice": "19.36"
+    },
+    {
+      "sku": "860",
+      "ean": "7898606638276",
+      "description": "EFEITO GEL CLÁSSICO",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "343",
+      "ean": "7898771210086",
+      "description": "BASE SOS PÓS ALONG",
+      "price": "10.30",
+      "sourceBoxPrice": "10.30"
+    },
+    {
+      "sku": "861",
+      "ean": "7898606638283",
+      "description": "EFEITO GEL BALÉ",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "344",
+      "ean": "7898771210093",
+      "description": "SERUM REDUTOR CUT",
+      "price": "15.49",
+      "sourceBoxPrice": "15.49"
+    },
+    {
+      "sku": "862",
+      "ean": "7898606638290",
+      "description": "EFEITO GEL POEMA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "345",
+      "ean": "7898771210109",
+      "description": "KIT 2X1 COMBATE",
+      "price": "19.70",
+      "sourceBoxPrice": "19.70"
+    },
+    {
+      "sku": "863",
+      "ean": "7898606638306",
+      "description": "EFEITO GEL MEU ROSA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "356",
+      "ean": "7898771210369",
+      "description": "BASE INIBIDORA AMARGA",
+      "price": "10.30",
+      "sourceBoxPrice": "10.30"
+    },
+    {
+      "sku": "869",
+      "ean": "7898606638740",
+      "description": "EFEITO GEL TÔ LINDA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "351",
+      "ean": "7898771210239",
+      "description": "REMOVE CUTÍCULAS 35 ML",
+      "price": "9.19",
+      "sourceBoxPrice": "9.19"
+    },
+    {
+      "sku": "870",
+      "ean": "7898606639389",
+      "description": "EFEITO GEL SINTA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "2000",
+      "ean": "7898606638313",
+      "description": "AMOLECEDOR CUTICULA 100G",
+      "price": "8.36",
+      "sourceBoxPrice": "8.36"
+    },
+    {
+      "sku": "871",
+      "ean": "7898606639396",
+      "description": "EFEITO GEL DESPERTE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "2001",
+      "ean": "7898606638320",
+      "description": "CREME MÃOS 50G",
+      "price": "11.41",
+      "sourceBoxPrice": "11.41"
+    },
+    {
+      "sku": "872",
+      "ean": "7898606639402",
+      "description": "EFEITO GEL CELEBRE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "2002",
+      "ean": "7898606638337",
+      "description": "CREME PÉS 100G",
+      "price": "14.10",
+      "sourceBoxPrice": "14.10"
+    },
+    {
+      "sku": "873",
+      "ean": "7898606639419",
+      "description": "EFEITO GEL MENTALIZE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "2003",
+      "ean": "7898606638344",
+      "description": "CREME ESFOLIANTE 100G",
+      "price": "14.36",
+      "sourceBoxPrice": "14.36"
+    },
+    {
+      "sku": "874",
+      "ean": "7898606639891",
+      "description": "EFEITO GEL IMAGINE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "2004",
+      "ean": "7898606638351",
+      "description": "MOUSSE DE PARAFINA 130G",
+      "price": "22.63",
+      "sourceBoxPrice": "22.63"
+    },
+    {
+      "sku": "875",
+      "ean": "7898606639907",
+      "description": "EFEITO GEL SONHE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "352",
+      "ean": "7898771210246",
+      "description": "AMACIANTE DE CALOS",
+      "price": "9.79",
+      "sourceBoxPrice": "9.79"
+    },
+    {
+      "sku": "876",
+      "ean": "7898606639914",
+      "description": "EFEITO GEL INSPIRE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "353",
+      "ean": "7898771210253",
+      "description": "REMOVEDOR DE ESMALTES",
+      "price": "9.19",
+      "sourceBoxPrice": "9.19"
+    },
+    {
+      "sku": "877",
+      "ean": "7898606639921",
+      "description": "EFEITO GEL BRILHE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "404",
+      "ean": "7898606633271",
+      "description": "ESPATULA DUPLA",
+      "price": "5.93",
+      "sourceBoxPrice": "35.58"
+    },
+    {
+      "sku": "878",
+      "ean": "7898606639938",
+      "description": "EFEITO GEL REALIZE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "405",
+      "ean": "7898606633288",
+      "description": "DESENCRAVADOR DE UNHA",
+      "price": "5.93",
+      "sourceBoxPrice": "35.58"
+    },
+    {
+      "sku": "879",
+      "ean": "7898606639945",
+      "description": "EFEITO GEL COMEMORE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "406",
+      "ean": "7898606633295",
+      "description": "RASPADOR DE UNHA",
+      "price": "5.93",
+      "sourceBoxPrice": "35.58"
+    },
+    {
+      "sku": "880",
+      "ean": "7898771210307",
+      "description": "EFEITO GEL POSTEI",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "407",
+      "ean": "7898606633301",
+      "description": "PALITO DE PONTA DUPLA",
+      "price": "5.93",
+      "sourceBoxPrice": "35.58"
+    },
+    {
+      "sku": "881",
+      "ean": "7898771210314",
+      "description": "EFEITO GEL VIRALIZEI",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "408",
+      "ean": "7898606633318",
+      "description": "EXTRATOR CRAVOS E ESPINHAS",
+      "price": "5.93",
+      "sourceBoxPrice": "35.58"
+    },
+    {
+      "sku": "882",
+      "ean": "7898771210321",
+      "description": "EFEITO GEL TENDÊNCIA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "420",
+      "ean": "7898606637620",
+      "description": "ESPATULA E PALITO",
+      "price": "5.93",
+      "sourceBoxPrice": "35.58"
+    },
+    {
+      "sku": "883",
+      "ean": "7898771210338",
+      "description": "EFEITO GEL REPOSTEI",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "421",
+      "ean": "7898606637637",
+      "description": "AGULHA P/ MECHAS E LUZES",
+      "price": "5.93",
+      "sourceBoxPrice": "35.58"
+    },
+    {
+      "sku": "884",
+      "ean": "7898771210345",
+      "description": "EFEITO GEL CURTI",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "423",
+      "ean": "7898606638764",
+      "description": "BISTURI P/ CALOS - PLANTAR",
+      "price": "7.80",
+      "sourceBoxPrice": "46.80"
+    },
+    {
+      "sku": "885",
+      "ean": "7898771210352",
+      "description": "EFEITO GEL COMPARTILHEI",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "424",
+      "ean": "7898606638979",
+      "description": "BISTURI P/ CALOS - DORSAL",
+      "price": "7.80",
+      "sourceBoxPrice": "46.80"
+    },
+    {
+      "sku": "170",
+      "ean": "7898606636043",
+      "description": "GLOW AURORA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "425",
+      "ean": "7898606638955",
+      "description": "ALICATE CABO LISO",
+      "price": "22.88",
+      "sourceBoxPrice": "137.28"
+    },
+    {
+      "sku": "171",
+      "ean": "7898606636067",
+      "description": "GLOW CELESTE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "409",
+      "ean": "7898606633325",
+      "description": "KIT MANICURE INOX",
+      "price": "17.15",
+      "sourceBoxPrice": "102.90"
+    },
+    {
+      "sku": "172",
+      "ean": "7898606636074",
+      "description": "GLOW GALÁXIA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "427",
+      "ean": "7898606639150",
+      "description": "DESENCRAVADOR – SILICONE",
+      "price": "7.76",
+      "sourceBoxPrice": "46.56"
+    },
+    {
+      "sku": "211",
+      "ean": "7898606635084",
+      "description": "METALIZADO ELEGANTE",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "428",
+      "ean": "7898606639167",
+      "description": "AFASTADOR E PALITO SILIC.",
+      "price": "7.76",
+      "sourceBoxPrice": "46.56"
+    },
+    {
+      "sku": "212",
+      "ean": "7898606635091",
+      "description": "METALIZADO REFINADA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "429",
+      "ean": "7898606639174",
+      "description": "AFASTADOR E ESPÁTULA SILIC.",
+      "price": "7.76",
+      "sourceBoxPrice": "46.56"
+    },
+    {
+      "sku": "213",
+      "ean": "7898606635107",
+      "description": "METALIZADO FANTASTICA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "430",
+      "ean": "7898606639181",
+      "description": "BASTÃO PONTA DUPLA SILIC.",
+      "price": "7.76",
+      "sourceBoxPrice": "46.56"
+    },
+    {
+      "sku": "214",
+      "ean": "7898606635114",
+      "description": "METALIZADO EMPODERADA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "432",
+      "ean": "7898606639969",
+      "description": "BISTURI PLANTAR SILIC.",
+      "price": "7.76",
+      "sourceBoxPrice": "46.56"
+    },
+    {
+      "sku": "215",
+      "ean": "7898606635121",
+      "description": "METALIZADO INFLUENCIADORA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "433",
+      "ean": "7898771210116",
+      "description": "BOLEADOR DE UNHAS SILIC.",
+      "price": "7.76",
+      "sourceBoxPrice": "46.56"
+    },
+    {
+      "sku": "216",
+      "ean": "7898606635138",
+      "description": "METALIZADO SOFISTICADA",
+      "price": "4.84",
+      "sourceBoxPrice": "29.04"
+    },
+    {
+      "sku": "431",
+      "ean": "7898606639143",
+      "description": "KIT INOX SILICONE - 04 ITENS",
+      "price": "29.94",
+      "sourceBoxPrice": "179.64"
+    }
+  ]
+}

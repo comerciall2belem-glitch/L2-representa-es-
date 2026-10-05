@@ -1,0 +1,267 @@
+[
+  {
+    "sku": "BTH-038",
+    "description": "ÓLEO PARA BARBA BTH DISTRICT",
+    "price": "19.71"
+  },
+  {
+    "sku": "BTH-039",
+    "description": "BALM PARA BARBA BTH DISTRICT",
+    "price": "22.92"
+  },
+  {
+    "sku": "BTH-040",
+    "description": "GEL PARA BARBEAR BTH DISTRICT",
+    "price": "16.50"
+  },
+  {
+    "sku": "BTH-041",
+    "description": "CREME PARA BARBEAR BTH DISTRICT",
+    "price": "18.45"
+  },
+  {
+    "sku": "BTH-042",
+    "description": "LOÇÃO PÓS-BARBA BTH DISTRICT",
+    "price": "18.42"
+  },
+  {
+    "sku": "BTH-043",
+    "description": "SHAMPOO PARA BARBA BTH DISTRICT",
+    "price": "19.54"
+  },
+  {
+    "sku": "BTH-044",
+    "description": "SABONETE ÍNTIMO MASCULINO BTH DISTRICT",
+    "price": "19.82"
+  },
+  {
+    "sku": "BTH-045",
+    "description": "ESPUMA PARA LIMPEZA FACIAL BTH DISTRICT",
+    "price": "26.08"
+  },
+  {
+    "sku": "BTH-046",
+    "description": "PASTA EXTRA FORTE EFEITO MATTE BTH DISTRICT",
+    "price": "24.67"
+  },
+  {
+    "sku": "BTH-047",
+    "description": "PASTA EXTRA FORTE EFEITO BRILHO BTH DISTRICT",
+    "price": "24.32"
+  },
+  {
+    "sku": "BTH-048",
+    "description": "PÓ MODELADOR BTH DISTRICT",
+    "price": "19.52"
+  },
+  {
+    "sku": "BTH-049",
+    "description": "GROOMING MODELADOR CAPILAR BTH DISTRICT",
+    "price": "22.82"
+  },
+  {
+    "sku": "BTH-050",
+    "description": "SHAMPOO DETOX PARA CABELOS OLEOSOS BTH DISTRICT",
+    "price": "19.84"
+  },
+  {
+    "sku": "BTH-051",
+    "description": "SHAMPOO MATIZADOR PARA CABELOS GRISALHOS E DESCOLORIDOS BTH DISTRICT",
+    "price": "22.43"
+  },
+  {
+    "sku": "BTH-064",
+    "description": "CONDICIONADOR MATIZADOR PARA CABELOS GRISALHOS E DESCOLORIDOS BTH DISTRICT",
+    "price": "22.94"
+  },
+  {
+    "sku": "BTH-065",
+    "description": "MÁSCARA MATIZADORA PARA CABELOS GRISALHOS E DESCOLORIDOS BTH DISTRICT",
+    "price": "24.48"
+  },
+  {
+    "sku": "BTH-052",
+    "description": "SHAMPOO PARA CABELOS RESSECADOS E DANIFICADOS BTH DISTRICT",
+    "price": "19.66"
+  },
+  {
+    "sku": "BTH-053",
+    "description": "CONDICIONADOR PARA CABELOS RESSECADOS E DANIFICADOS BTH DISTRICT",
+    "price": "19.98"
+  },
+  {
+    "sku": "BTH-054",
+    "description": "MÁSCARA PARA CABELOS RESSECADOS E DANIFICADOS BTH DISTRICT",
+    "price": "24.36"
+  },
+  {
+    "sku": "BTH-055",
+    "description": "LEAVE-IN PROTETOR TÉRMICO E UV BTH DISTRICT",
+    "price": "22.45"
+  },
+  {
+    "sku": "BTH-056",
+    "description": "ATIVADOR PARA CRESCIMENTO DE CABELO BTH DISTRICT",
+    "price": "26.95"
+  },
+  {
+    "sku": "BTH-057",
+    "description": "ATIVADOR PARA CRESCIMENTO DE BARBA BTH DISTRICT",
+    "price": "28.78"
+  },
+  {
+    "sku": "BTH-058",
+    "description": "SHAMPOO ANTIQUEDA E FORTALECEDOR BTH DISTRICT",
+    "price": "21.55"
+  },
+  {
+    "sku": "BTH-059",
+    "description": "SHAMPOO ANTICASPA E LIMPEZA PROFUNDA BTH DISTRICT",
+    "price": "21.81"
+  },
+  {
+    "sku": "BTH-060",
+    "description": "TÔNICO PARA FOLICULITE E PÊLOS ENCRAVADOS BTH DISTRICT",
+    "price": "23.94"
+  },
+  {
+    "sku": "BTH-061",
+    "description": "BODY SPLASH LAS VEGAS BTH DISTRICT",
+    "price": "26.95"
+  },
+  {
+    "sku": "BTH-062",
+    "description": "BODY SPLASH SEATLE BTH DISTRICT",
+    "price": "26.95"
+  },
+  {
+    "sku": "BTH-063",
+    "description": "BODY SPLASH NEW YORK BTH DISTRICT",
+    "price": "26.95"
+  },
+  {
+    "sku": "BTH-069",
+    "description": "BODY SPLASH CAPRI BTH DISTRICT",
+    "price": "15.92"
+  },
+  {
+    "sku": "BTH-070",
+    "description": "BODY SPLASH MÔNACO BTH DISTRICT",
+    "price": "15.92"
+  },
+  {
+    "sku": "BTH-071",
+    "description": "BODY SPLASH ASPEN BTH DISTRICT",
+    "price": "15.92"
+  },
+  {
+    "sku": "BTH-072",
+    "description": "KIT BTH DISTRICT GRISALHOS E DESCOLORIDOS - SHAMPOO/CONDICIONADOR",
+    "price": "40.83"
+  },
+  {
+    "sku": "BTH-073",
+    "description": "KIT BTH DISTRICT REPARAÇÃO CAPILAR - SHAMPOO/CONDICIONADOR",
+    "price": "35.68"
+  },
+  {
+    "sku": "BTH-074",
+    "description": "KIT BTH DISTRICT CUIDADO MASCULINO - SHAMPOO-ANTIQUEDA/SABONETE-ÍNTIMO",
+    "price": "37.23"
+  },
+  {
+    "sku": "BTH-075",
+    "description": "KIT BTH DISTRICT DETOX E PROTEÇÃO - SHAMPOO-DETOX/LEAVE-IN",
+    "price": "38.06"
+  },
+  {
+    "sku": "BTH-081",
+    "description": "KIT BATH DISTRICT HIGIÊNE E CONTROLE - SHAMPOO ANTICASPA/SABONETE-ÍNTIMO",
+    "price": "37.47"
+  },
+  {
+    "sku": "BTH-076",
+    "description": "KIT BTH DISTRICT CITY VIBES - ASPEN/CAPRI/MÔNACO",
+    "price": "42.98"
+  },
+  {
+    "sku": "BTH-077",
+    "description": "KIT BTH DISTRICT BARBEAR COMFORT - CREME-BARBEAR/LOÇÃO-PÓS-BARBA",
+    "price": "33.18"
+  },
+  {
+    "sku": "BTH-078",
+    "description": "KIT BTH DISTRICT BARBEAR CLASSIC - GEL-BARBEAR/LOÇÃO-PÓS-BARBA",
+    "price": "31.43"
+  },
+  {
+    "sku": "BTH-080",
+    "description": "KIT BTH DISTRICT BARBA ESSENCIAL - SHAMPOO/BALM",
+    "price": "38.21"
+  },
+  {
+    "sku": "BTH-079",
+    "description": "KIT BTH DISTRICT BARBA CONTROL - SHAMPOO/BALM/ÓLEO",
+    "price": "55.95"
+  },
+  {
+    "sku": "E141",
+    "description": "BALM REVITALIZADOR DE TATUAGEM CHOICE BRO",
+    "price": "22.92"
+  },
+  {
+    "sku": "E142",
+    "description": "POMADA PÓS TATUAGEM CHOICE BRO",
+    "price": "22.85"
+  },
+  {
+    "sku": "E143",
+    "description": "SABONETE PARA PELES TATUADAS CHOICE BRO",
+    "price": "12.48"
+  },
+  {
+    "sku": "BTH-025",
+    "description": "PASTA MODELADORA EFEITO SECO",
+    "price": "14.84"
+  },
+  {
+    "sku": "BTH-026",
+    "description": "PASTA MODELADORA EFEITO BRILHO",
+    "price": "14.59"
+  },
+  {
+    "sku": "BTH-034",
+    "description": "GEL FIXADOR CAPILAR",
+    "price": "9.78"
+  },
+  {
+    "sku": "BTH-032",
+    "description": "SHAMPOO 2 EM 1 CABELO E BARBA",
+    "price": "14.98"
+  },
+  {
+    "sku": "BTH-031",
+    "description": "BALM HIDRATANTE PARA BARBA",
+    "price": "15.80"
+  },
+  {
+    "sku": "BTH-028",
+    "description": "ÓLEO HIDRATANTE PARA BARBA",
+    "price": "15.40"
+  },
+  {
+    "sku": "BTH-033",
+    "description": "SABONETE ÍNTIMO MASCULINO",
+    "price": "14.94"
+  },
+  {
+    "sku": "BTH-035",
+    "description": "KIT HOODCARE SH. 2EM1 + SAB. ÍNTIMO + PASTA SECO",
+    "price": "39.92"
+  },
+  {
+    "sku": "BTH-036",
+    "description": "KIT HOODCARE SH. 2EM1 + SAB. ÍNTIMO + PASTA BRILHO",
+    "price": "39.92"
+  }
+]

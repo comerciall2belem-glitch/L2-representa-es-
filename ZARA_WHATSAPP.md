@@ -16,7 +16,7 @@ O agente não consulta pedidos nem libera preços, descontos ou prazos. Essas so
 
 ## Limite operacional
 
-Esta versão atende **mensagens recebidas**. Campanhas iniciadas pela empresa exigem modelos de mensagem aprovados pela Meta e uma implementação própria. O painel precisa estar aberto ou ser acompanhado pela equipe para observar encaminhamentos em tempo real. Se a Meta falhar no envio de uma resposta, a entrada continua registrada para análise.
+Esta versão atende **mensagens recebidas**. Campanhas iniciadas pela empresa exigem modelos de mensagem aprovados pela Meta e uma implementação própria. O painel aberto consulta atualizações a cada 5 segundos; a equipe deve acompanhá-lo para atender encaminhamentos. Se a Meta falhar no envio de uma resposta, a entrada continua registrada para análise.
 
 ## Revisão de segurança e diagnóstico
 
@@ -46,7 +46,8 @@ Falha ao gravar uma entrada responde 503, permitindo nova entrega pela Meta.
 Transações do webhook executam em threadpool, fora do event loop da API.
 Não há retry automático de envio: após timeout, a Meta pode ter aceitado a mensagem.
 O ID retornado pela Graph significa **aceitação**, não comprovação de entrega ao
-cliente; o campo legado `delivered` não deve ser usado como confirmação de leitura.
+cliente. O estado de entrega exibido é calculado dos eventos assinados, independentemente
+do campo legado `delivered` (que não serve como comprovação de leitura).
 
 Limites: ainda não há fila durável/outbox ou circuit breaker compartilhado; lotes
 com várias mensagens são processados sequencialmente e o ACK aguarda esse trabalho.
@@ -93,3 +94,56 @@ Fixe `WA_GRAPH_VERSION` na versão homologada da conta (o código mantém o defa
 existente). Valide GET, assinatura inválida, mensagem recebida real e atendimento
 humano. Confirme também que uma falha da Meta não interrompe as rotas do CRM.
 Não considerar testes locais como evidência de deploy ou entrega real.
+
+
+## Entrega e homologação E2E por mensagem
+
+`graph_accepted` permanece pendente de entrega e de homologação. O POST autenticado
+agora grava `statuses[]` (`sent`, `delivered`, `read`, `failed`) em
+`zara_delivery_events`, vinculados por ID da mensagem e destinatário. Callbacks que
+chegam antes da gravação da saída são conservados. Repetições são idempotentes;
+`read`/`delivered` não regridem com `sent` ou `failed` atrasados. Eventos de outro
+`WA_PHONE_NUMBER_ID` são ignorados. Falha de persistência retorna 503 para reentrega.
+
+`setup()` acrescenta `reply_to` e `panel_confirmed_at` às mensagens existentes e cria
+a tabela de eventos. Não presume entrega de mensagens antigas marcadas pelo fluxo
+legado: sem evento autenticado, permanecem `graph_accepted`. Valide essa migração em
+PostgreSQL de homologação antes de produção.
+
+Fluxo real de teste:
+1. Use um número de teste autorizado e inicie uma conversa com a Zara (abre a janela
+   para resposta de texto). Aguarde a mensagem da Zara chegar ao aparelho.
+2. No WhatsApp do aparelho, use **Responder** especificamente sobre a mensagem da
+   Zara. Isso fornece `messages[].context.id`; mensagens independentes não comprovam
+   o retorno dessa saída e deixam a homologação pendente.
+3. No painel, confira a mensagem enviada, o status Entregue/Lida e o retorno recebido.
+   Clique **Confirmar recebimento e retorno no painel** na mensagem original. Só Ana
+   Paula pode confirmar; o backend exige entrega/leitura e retorno vinculado do mesmo
+   telefone. Consultar o histórico não confirma E2E automaticamente.
+
+A API do histórico retorna `deliveryStatus`, `replyReceived`, `e2eReady`, `e2eStatus`
+e `panelConfirmedAt`. `e2eStatus=confirmed` registra a conferência humana por mensagem;
+não é um indicador global de disponibilidade da integração. A lista indica quando
+há uma confirmação no histórico recente (últimas 100 mensagens). O painel faz polling
+visível a cada 5 segundos, mantém o rascunho e atualiza o modo de atendimento.
+
+Logs: `graph_accepted` (aceitação), `delivery_status_received` (status autenticado) e
+`e2e_panel_confirmed` (conferência explícita). Somente o último, acompanhado do teste
+no aparelho e do histórico, fecha a homologação. Não registrar telefones ou mensagens
+nos logs operacionais.
+
+Testes locais:
+
+```bash
+python -m unittest discover -s tests -p 'test_zara*.py' -v
+node tests/test_zara_panel.cjs
+python scripts/zara_e2e_mock.py
+```
+
+O mock E2E percorre Graph simulada → webhook assinado de entrega → resposta vinculada
+→ API de listagem/histórico → confirmação. Ele usa SQLite com adaptador de SQL para
+exercitar as consultas e não prova migração/concorrência em PostgreSQL, renderização
+em navegador real nem recebimento em aparelho físico. O teste do painel usa DOM e
+fetch simulados. A homologação real continua pendente até executar o roteiro acima
+no Render e no WhatsApp de teste.
+

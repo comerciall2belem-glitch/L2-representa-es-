@@ -29,12 +29,33 @@ class WhatsAppSendError(Exception):
     """Sanitized integration failure, safe to handle at the Zara boundary."""
 
 
+SETTING_ALIASES = {
+    'WA_ACCESS_TOKEN': 'WHATSAPP_ACCESS_TOKEN',
+    'WA_PHONE_NUMBER_ID': 'WHATSAPP_PHONE_NUMBER_ID',
+    'WA_GRAPH_VERSION': 'WHATSAPP_GRAPH_VERSION',
+    'WA_VERIFY_TOKEN': 'WHATSAPP_WEBHOOK_VERIFY_TOKEN',
+    'WA_APP_SECRET': 'WHATSAPP_APP_SECRET',
+}
+
+
+def configured_value(key):
+    value = os.getenv(key, '').strip()
+    return value or os.getenv(SETTING_ALIASES.get(key, key), '').strip()
+
+
 def setting(key):
-    value = os.getenv(key, '')
+    value = configured_value(key)
     if not value.strip():
         log_event(logging.ERROR, 'configuration_missing', setting=key)
         raise HTTPException(503, 'Integração WhatsApp ainda não configurada')
     return value
+
+
+def log_configuration():
+    keys = ('WA_ACCESS_TOKEN', 'WA_PHONE_NUMBER_ID', 'WA_VERIFY_TOKEN', 'WA_APP_SECRET')
+    log_event(logging.INFO, 'configuration_checked',
+              **{key.lower() + '_configured': bool(configured_value(key)) for key in keys},
+              graph_version_configured=bool(configured_value('WA_GRAPH_VERSION')))
 
 
 WELCOME = ('Olá{nome}! Tudo bem? Me chamo *Zara* e sou a assistente virtual da '
@@ -62,6 +83,14 @@ def setup(con):
         direction TEXT NOT NULL, body TEXT NOT NULL, delivered BOOLEAN NOT NULL DEFAULT false,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now(), CHECK (direction IN ('in','out')))''')
     con.execute('CREATE INDEX IF NOT EXISTS zara_messages_phone_idx ON zara_messages(phone,created_at DESC)')
+    con.execute('ALTER TABLE zara_messages ADD COLUMN IF NOT EXISTS reply_to TEXT')
+    con.execute('ALTER TABLE zara_messages ADD COLUMN IF NOT EXISTS panel_confirmed_at TIMESTAMPTZ')
+    con.execute('''CREATE TABLE IF NOT EXISTS zara_delivery_events (
+        message_id TEXT NOT NULL, phone TEXT NOT NULL, status TEXT NOT NULL,
+        event_at BIGINT NOT NULL, received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY(message_id,phone,status),
+        CHECK(status IN ('sent','delivered','read','failed')))''')
+    con.execute('CREATE INDEX IF NOT EXISTS zara_reply_idx ON zara_messages(reply_to,phone)')
 
 
 def db():
@@ -126,7 +155,7 @@ async def send(phone, body):
     request_id = uuid.uuid4().hex
     try:
         token, phone_id = setting('WA_ACCESS_TOKEN'), setting('WA_PHONE_NUMBER_ID')
-        version = os.getenv('WA_GRAPH_VERSION', 'v23.0')
+        version = configured_value('WA_GRAPH_VERSION') or 'v23.0'
         if not re.fullmatch(r'v\d+\.\d+', version) or not phone_id.isascii() or not phone_id.isdigit():
             raise ValueError('Invalid Graph configuration')
         async with httpx.AsyncClient(timeout=httpx.Timeout(12, connect=4),
@@ -199,7 +228,15 @@ def validate_payload(payload):
                 mapping(mapping(contact).get('profile', {}))
                 if not isinstance(contact.get('wa_id', ''), str):
                     raise ValueError('Invalid contact ID')
+            for status in sequence(value.get('statuses', [])):
+                mapping(status)
+                for key in ('id', 'recipient_id', 'status', 'timestamp'):
+                    if not isinstance(status.get(key, ''), str):
+                        raise ValueError('Invalid status field')
             for message in sequence(value.get('messages', [])):
+                context = mapping(mapping(message).get('context', {}))
+                if not isinstance(context.get('id', ''), str):
+                    raise ValueError('Invalid reply context')
                 text = mapping(mapping(message).get('text', {}))
                 if not isinstance(text.get('body', ''), str):
                     raise ValueError('Invalid text')
@@ -232,6 +269,12 @@ async def receive_webhook(request: Request, x_hub_signature_256: str | None = He
             value = change.get('value', {})
             if str(value.get('metadata', {}).get('phone_number_id')) != expected_id:
                 continue
+            if value.get('statuses'):
+                try:
+                    await run_in_threadpool(record_statuses, value['statuses'])
+                except Exception as exc:
+                    log_event(logging.ERROR, 'delivery_storage_failed', error_type=type(exc).__name__)
+                    raise HTTPException(503, 'Falha temporária no armazenamento de status') from None
             contacts = {c.get('wa_id'): c.get('profile', {}).get('name', '') for c in value.get('contacts', [])}
             for msg in value.get('messages', []):
                 phone, mid = str(msg.get('from', '')), str(msg.get('id', ''))
@@ -241,12 +284,13 @@ async def receive_webhook(request: Request, x_hub_signature_256: str | None = He
                 if not body:
                     body = '[Mensagem não textual recebida]'
                 name = str(contacts.get(phone, ''))[:120]
+                reply_to = msg.get('context', {}).get('id', '')[:256] or None
                 def persist_inbound():
                     with db() as con:
                         con.execute('''INSERT INTO zara_conversations(phone,name) VALUES(%s,%s)
                             ON CONFLICT(phone) DO UPDATE SET name=COALESCE(NULLIF(EXCLUDED.name,''),zara_conversations.name),updated_at=now()''', (phone, name))
-                        inserted = con.execute('''INSERT INTO zara_messages(message_id,phone,direction,body)
-                            VALUES(%s,%s,'in',%s) ON CONFLICT DO NOTHING RETURNING message_id''', (mid, phone, body)).fetchone()
+                        inserted = con.execute('''INSERT INTO zara_messages(message_id,phone,direction,body,reply_to)
+                            VALUES(%s,%s,'in',%s,%s) ON CONFLICT DO NOTHING RETURNING message_id''', (mid, phone, body, reply_to)).fetchone()
                         if not inserted:
                             return None
                         mode = con.execute('SELECT mode FROM zara_conversations WHERE phone=%s FOR UPDATE', (phone,)).fetchone()[0]
@@ -284,7 +328,8 @@ async def receive_webhook(request: Request, x_hub_signature_256: str | None = He
                 def persist_outbound():
                     with db() as con:
                         con.execute('''INSERT INTO zara_messages(message_id,phone,direction,body,delivered)
-                            VALUES(%s,%s,'out',%s,true) ON CONFLICT DO NOTHING''', (out_id, phone, answer))
+                            VALUES(%s,%s,'out',%s,false) ON CONFLICT DO NOTHING''', (out_id, phone, answer))
+                        con.execute('UPDATE zara_conversations SET updated_at=now() WHERE phone=%s', (phone,))
                 try:
                     await run_in_threadpool(persist_outbound)
                 except Exception as exc:
@@ -292,22 +337,105 @@ async def receive_webhook(request: Request, x_hub_signature_256: str | None = He
     return {'ok': True}
 
 
+def delivery_state(events):
+    statuses = set(events)
+    # A delayed 'sent'/'failed' must never undo known delivery or reading.
+    for status in ('read', 'delivered', 'failed', 'sent'):
+        if status in statuses:
+            return status
+    return 'graph_accepted'
+
+
+def record_statuses(statuses):
+    statuses = [e for e in statuses if e.get('id') and e.get('recipient_id') and e.get('timestamp')
+                and e.get('status') in ('sent', 'delivered', 'read', 'failed')]
+    if not statuses:
+        return
+    with db() as con:
+        for event in statuses:
+            mid, phone, status = event.get('id', ''), event.get('recipient_id', ''), event.get('status', '')
+            timestamp = event.get('timestamp', '')
+            if (not mid or len(mid) > 256 or not re.fullmatch(r'[0-9]{8,16}', phone)
+                    or status not in ('sent', 'delivered', 'read', 'failed')
+                    or not re.fullmatch(r'[0-9]{1,12}', timestamp)):
+                continue
+            # No FK: delivery callbacks can arrive before the send response is persisted.
+            con.execute("""INSERT INTO zara_delivery_events(message_id,phone,status,event_at)
+                VALUES(%s,%s,%s,%s) ON CONFLICT DO NOTHING""", (mid, phone, status, int(timestamp)))
+            con.execute("""UPDATE zara_messages SET delivered=true
+                WHERE message_id=%s AND phone=%s AND direction='out'
+                AND EXISTS(SELECT 1 FROM zara_delivery_events
+                    WHERE message_id=%s AND phone=%s AND status IN ('delivered','read'))""", (mid, phone, mid, phone))
+            con.execute('UPDATE zara_conversations SET updated_at=now() WHERE phone=%s', (phone,))
+            log_event(logging.WARNING if status == 'failed' else logging.INFO,
+                      'delivery_status_received', delivery_status=status)
+
+
+def message_views(con, phone):
+    rows = con.execute("""SELECT message_id,direction,body,created_at,reply_to,panel_confirmed_at
+        FROM zara_messages WHERE phone=%s ORDER BY created_at DESC,message_id DESC LIMIT 100""", (phone,)).fetchall()
+    events_by_id = {}
+    events = con.execute("""SELECT d.message_id,d.status FROM zara_delivery_events d
+        WHERE d.phone=%s AND d.message_id IN (SELECT message_id FROM zara_messages
+            WHERE phone=%s ORDER BY created_at DESC,message_id DESC LIMIT 100)""", (phone, phone)).fetchall()
+    for mid, status in events:
+        events_by_id.setdefault(mid, []).append(status)
+    replies = {row[0] for row in con.execute("""SELECT DISTINCT reply_to FROM zara_messages
+        WHERE phone=%s AND direction='in' AND reply_to IS NOT NULL
+        AND reply_to IN (SELECT message_id FROM zara_messages WHERE phone=%s
+            ORDER BY created_at DESC,message_id DESC LIMIT 100)""", (phone, phone)).fetchall()}
+    items = []
+    for mid, direction, body, at, reply_to, confirmed in reversed(rows):
+        state = delivery_state(events_by_id.get(mid, [])) if direction == 'out' else 'received'
+        replied = direction == 'out' and mid in replies
+        ready = direction == 'out' and state in ('delivered', 'read') and replied
+        items.append({'id': mid, 'direction': direction, 'body': body, 'at': at.isoformat(),
+                      'replyTo': reply_to, 'deliveryStatus': state, 'replyReceived': replied,
+                      'e2eReady': ready, 'e2eStatus': 'confirmed' if ready and confirmed else 'pending',
+                      'panelConfirmedAt': confirmed.isoformat() if confirmed else None})
+    return items
+
+
 @router.get('/api/zara/conversations')
 def conversations(authorization: str | None = Header(None)):
     admin(authorization)
     with db() as con:
-        rows = con.execute('''SELECT phone,name,mode,updated_at FROM zara_conversations
-                              ORDER BY updated_at DESC LIMIT 100''').fetchall()
-    return [{'phone': p, 'name': n, 'mode': m, 'updatedAt': d.isoformat()} for p,n,m,d in rows]
+        rows = con.execute("""SELECT phone,name,mode,updated_at FROM zara_conversations
+                              ORDER BY updated_at DESC LIMIT 100""").fetchall()
+        result = []
+        for phone, name, mode, at in rows:
+            items = message_views(con, phone)
+            outgoing = next((item for item in reversed(items) if item['direction'] == 'out'), None)
+            result.append({'phone': phone, 'name': name, 'mode': mode, 'updatedAt': at.isoformat(),
+                           'lastMessage': items[-1]['body'] if items else '',
+                           'deliveryStatus': outgoing['deliveryStatus'] if outgoing else None,
+                           'e2eStatus': 'confirmed' if any(i['e2eStatus']=='confirmed' for i in items) else 'pending'})
+    return result
 
 
 @router.get('/api/zara/conversations/{phone}')
 def conversation(phone: str, authorization: str | None = Header(None)):
     admin(authorization)
     with db() as con:
-        rows = con.execute('''SELECT message_id,direction,body,created_at FROM zara_messages
-                              WHERE phone=%s ORDER BY created_at DESC LIMIT 100''', (phone,)).fetchall()
-    return [{'id': i, 'direction': d, 'body': b, 'at': at.isoformat()} for i,d,b,at in reversed(rows)]
+        return message_views(con, phone)
+
+
+@router.post('/api/zara/conversations/{phone}/messages/{mid}/confirm-e2e')
+def confirm_e2e(phone: str, mid: str, authorization: str | None = Header(None)):
+    admin(authorization)
+    with db() as con:
+        # Serialize confirmation with the conversation; no arbitrary GET marks E2E complete.
+        con.execute('SELECT phone FROM zara_conversations WHERE phone=%s FOR UPDATE', (phone,))
+        item = next((item for item in message_views(con, phone) if item['id'] == mid), None)
+        if not item:
+            raise HTTPException(404, 'Mensagem não encontrada no histórico recente')
+        if not item['e2eReady']:
+            raise HTTPException(409, 'Aguarde entrega e resposta vinculada à mensagem de teste')
+        con.execute("""UPDATE zara_messages SET panel_confirmed_at=COALESCE(panel_confirmed_at,now())
+            WHERE message_id=%s AND phone=%s AND direction='out'""", (mid, phone))
+        con.execute('UPDATE zara_conversations SET updated_at=now() WHERE phone=%s', (phone,))
+    log_event(logging.INFO, 'e2e_panel_confirmed')
+    return {'ok': True, 'e2eStatus': 'confirmed'}
 
 
 @router.post('/api/zara/conversations/{phone}/resume')
@@ -349,6 +477,6 @@ async def reply(phone: str, data: HumanReply, authorization: str | None = Header
         raise HTTPException(502, 'Não foi possível enviar pelo WhatsApp')
     with db() as con:
         con.execute('''INSERT INTO zara_messages(message_id,phone,direction,body,delivered)
-                       VALUES(%s,%s,'out',%s,true) ON CONFLICT DO NOTHING''', (mid, phone, data.text))
+                       VALUES(%s,%s,'out',%s,false) ON CONFLICT DO NOTHING''', (mid, phone, data.text))
         con.execute('UPDATE zara_conversations SET updated_at=now() WHERE phone=%s', (phone,))
     return {'ok': True, 'id': mid}

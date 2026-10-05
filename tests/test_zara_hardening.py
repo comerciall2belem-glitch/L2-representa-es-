@@ -110,3 +110,4 @@ class HardeningTests(unittest.TestCase):
             with patch.object(zara.httpx, 'AsyncClient', side_effect=client):
                 with self.assertRaises(zara.WhatsAppSendError):
                     asyncio.run(zara.send('5591999999999', 'Oi'))
+

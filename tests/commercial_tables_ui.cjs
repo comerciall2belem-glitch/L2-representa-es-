@@ -1,0 +1,23 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const source=fs.readFileSync('app.js','utf8');
+const pick=name=>source.match(new RegExp('^function '+name+'\\([^\\n]+','m'))[0];
+const s={industries:[{name:'Bella Brazil',active:true},{name:'BT',active:true}],priceTables:[{id:'v',brand:'Bella Brazil',state:'ALL',active:true,channel:'VAREJO',commissionRate:8},{id:'r',brand:'Bella Brazil',state:'ALL',active:true,channel:'REVENDA',commissionRate:8},{id:'a',brand:'Bella Brazil',state:'ALL',active:true,channel:'ATACADO',commissionRate:5},{id:'BT|PA',brand:'BT',state:'PA',active:true}],prices:[{brand:'Bella Brazil',state:'ALL',tableId:'v',sku:'800',price:'5.37'},{brand:'Bella Brazil',state:'ALL',tableId:'r',sku:'800',price:'4.84'},{brand:'Bella Brazil',state:'ALL',tableId:'a',sku:'800',price:'4.41'},{brand:'BT',state:'PA',sku:'x',price:'10.00'}],orders:[],user:'Ana Paula'};
+const ctx={s,window:{currentOrder:{tableSelections:{}}},priceCents:v=>Math.round(Number(v)*100),money:x=>String(x),orderBrands:o=>o.items.map(i=>i.brand)};
+vm.createContext(ctx);vm.runInContext(['catalogTableId','catalogPrices','catalogPriceId','eligibleTables','pricesForTable','bellaItemRate','validateBellaDraft'].map(pick).join('\n'),ctx);
+assert.equal(ctx.pricesForTable('PA').length,1,'Multiple registered tables require explicit selection');
+ctx.window.currentOrder.tableSelections={'Bella Brazil':'r'};
+assert.equal(ctx.pricesForTable('PA').find(p=>p.brand==='Bella Brazil').price,'4.84');
+assert.equal(ctx.pricesForTable('AP').length,1,'Shared table usable in AP, local BT table excluded');
+ctx.window.currentOrder.tableSelections={'Bella Brazil':'a'};
+assert.equal(ctx.pricesForTable('AP')[0].price,'4.41');
+assert.equal(ctx.bellaItemRate({tableId:'r'}),0.08);assert.equal(ctx.bellaItemRate({tableId:'a'}),0.05);
+let order={id:'new',clientId:'x',priceTable:'PA',status:'Confirmado',paymentTerms:'28',items:[{brand:'Bella Brazil',tableId:'r',sku:'800',quantity:420,unitPrice:'4.84'}]};
+assert.equal(ctx.validateBellaDraft(order),'');
+assert.match(ctx.validateBellaDraft({...order,priceTable:'AP'}),/mínimo/);
+assert.match(ctx.validateBellaDraft({...order,items:[{...order.items[0],quantity:421}]}),/múltiplos/);
+assert.match(ctx.validateBellaDraft({...order,paymentTerms:'90'}),/prazo/);
+console.log('Independent tables, shared coverage, channel commissions and Bella order rules: OK');
+
+assert.equal(ctx.catalogPrices().length,4);ctx.window.catalogSelectedTable='r';assert.equal(ctx.catalogPrices().length,1);assert.equal(ctx.catalogPrices()[0].price,'4.84');ctx.window.catalogSelectedTable='';ctx.window.catalogUF='AP';assert.equal(ctx.catalogPrices().length,3);
+
+assert.match(ctx.validateBellaDraft({...order,clientState:'AP',priceTable:'PA'}),/mínimo 3000 em AP/);
