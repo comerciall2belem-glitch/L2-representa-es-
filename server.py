@@ -1826,3 +1826,23 @@ def commercial_lead_conversion(month: str, authorization: str | None = Header(de
         rows=con.execute("SELECT l.id,a.tax_id,l.owner,l.created_at,l.first_response_at,l.status,l.custom_fields FROM capture_leads l LEFT JOIN capture_accounts a ON a.id=l.account_id WHERE (%s OR l.owner=%s)",(all_users,user)).fetchall()
         leads += [{'id':r[0],'taxId':r[1],'owner':r[2],'createdAt':r[3].isoformat(),'firstResponseAt':r[4].isoformat() if r[4] else None,'status':r[5],'clientId':(r[6] or {}).get('clientId')} for r in rows]
         return conversion_metrics(leads,scoped_rows(con,'client',user),scoped_rows(con,'order',user),month)
+
+from financial_inputs import FinancialInput
+
+@app.get('/api/finance/inputs')
+def financial_inputs_list(authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    require_sector(user,'finance')
+    with db() as con:
+        return [r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='financial_input' ORDER BY updated_at,id")]
+
+@app.put('/api/finance/inputs')
+def financial_inputs_save(data: FinancialInput, authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    require_sector(user,'finance')
+    payload=data.model_dump(mode='json')
+    payload['updatedBy']=user
+    payload['updatedAt']=datetime.now(TZ).isoformat()
+    with db() as con:
+        con.execute("INSERT INTO entities(kind,id,payload) VALUES ('financial_input',%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=EXCLUDED.payload,updated_at=now()",(data.id,Jsonb(payload)))
+    return payload
