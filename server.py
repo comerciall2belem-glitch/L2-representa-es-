@@ -1949,6 +1949,20 @@ def correct_order_18_date():
     order_id = '858c6713-4712-4873-b716-8f5e76425468'
     with db() as con:
         row = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s FOR UPDATE", (order_id,)).fetchone()
+        seed_text = os.getenv('L2_HOMOLOGATION_ORDER18_SEED', '')
+        if not row and seed_text and os.getenv('L2_ENABLE_HOMOLOGATION_SEED') == '1':
+            # Carga privada da operação para esta instância; não vai para Git.
+            seed = json.loads(seed_text)
+            order, customer = seed['order'], seed['client']
+            if order.get('id') != order_id or str(order.get('orderNumber')) != '18' or customer.get('id') != order.get('clientId'):
+                raise RuntimeError('Carga de homologação do pedido 18 incompatível')
+            con.execute("INSERT INTO entities(kind,id,payload) VALUES('client',%s,%s) ON CONFLICT DO NOTHING", (customer['id'], Jsonb(customer)))
+            con.execute("""INSERT INTO clientes(id,razao_social,nome_fantasia,documento,curva_abc)
+                VALUES(%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""", (customer['id'], customer['name'], customer.get('tradeName'), customer.get('taxId'), customer.get('abc') if customer.get('abc') in ('A','B','C') else None))
+            con.execute("INSERT INTO entities(kind,id,payload) VALUES('order',%s,%s) ON CONFLICT DO NOTHING", (order_id, Jsonb(order)))
+            number = con.execute("SELECT coalesce(max((payload->>'orderNumber')::integer),0) FROM entities WHERE kind='order' AND payload->>'orderNumber' ~ '^[0-9]+$'").fetchone()[0]
+            con.execute('UPDATE order_counter SET value=greatest(value,%s) WHERE id=1', (number,))
+            row = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s FOR UPDATE", (order_id,)).fetchone()
         if not row:
             logging.getLogger('uvicorn.error').warning('order18_migration status=absent')
             return

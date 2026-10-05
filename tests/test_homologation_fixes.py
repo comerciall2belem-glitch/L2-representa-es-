@@ -40,7 +40,7 @@ class HomologationFixTests(unittest.TestCase):
         scope={'db':lambda:con, 'Login':object,'resolve_identity':resolve_identity,'password_ok':lambda p,h:p=='personal-password',
                'PASSWORDS':{'Ana Paula':'bootstrap-password'},'password_hash':lambda p:'new-hash','secrets':secrets,
                'time':SimpleNamespace(sleep=lambda _:None),'HTTPException':Failure,'hashlib':hashlib,'SESSION_HOURS':24,
-               'effective_sectors':lambda *args:['finance'],'Jsonb':lambda x:x,'logging':logging,
+               'effective_sectors':lambda *args:['finance'],'Jsonb':lambda x:x,'logging':logging,'os':SimpleNamespace(getenv=lambda *a:''),
                'project_order':lambda con,id,p:con.actions.append(('projection',p['date']))}
         exec(compile(ast.Module(body=nodes,type_ignores=[]),'<fixes>','exec'),scope)
         return scope
