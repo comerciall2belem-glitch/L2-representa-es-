@@ -1794,6 +1794,9 @@ async def security_headers(request, call_next):
         response.headers['Cache-Control'] = 'no-store'
     return response
 
+from table_delivery import register as register_table_delivery
+register_table_delivery(app, db, auth, require_sector, check_client_scope, normalize_uf, price_table_matches_client)
+
 @app.get('/')
 @app.get('/index.html')
 def home(): return FileResponse(BASE/'index.html',headers={'Cache-Control':'no-store'})
@@ -1811,3 +1814,4 @@ def asset(filename: str):
 
 from personal_finance import initialize_personal, install_personal
 install_personal(app, db, auth)
+
