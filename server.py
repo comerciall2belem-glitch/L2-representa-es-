@@ -1811,3 +1811,18 @@ def asset(filename: str):
 
 from personal_finance import initialize_personal, install_personal
 install_personal(app, db, auth)
+
+
+@app.get('/api/commercial/lead-conversion')
+def commercial_lead_conversion(month: str, authorization: str | None = Header(default=None)):
+    from lead_conversion import conversion_metrics
+    import re
+    if not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])',month):raise HTTPException(422,'Mês inválido')
+    user=auth(authorization)
+    require_sector(user,'commercial','office')
+    with db() as con:
+        all_users=not is_seller(con,user)
+        leads=[r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='lead' AND (%s OR payload->>'owner'=%s)",(all_users,user))]
+        rows=con.execute("SELECT l.id,a.tax_id,l.owner,l.created_at,l.first_response_at,l.status,l.custom_fields FROM capture_leads l LEFT JOIN capture_accounts a ON a.id=l.account_id WHERE (%s OR l.owner=%s)",(all_users,user)).fetchall()
+        leads += [{'id':r[0],'taxId':r[1],'owner':r[2],'createdAt':r[3].isoformat(),'firstResponseAt':r[4].isoformat() if r[4] else None,'status':r[5],'clientId':(r[6] or {}).get('clientId')} for r in rows]
+        return conversion_metrics(leads,scoped_rows(con,'client',user),scoped_rows(con,'order',user),month)
