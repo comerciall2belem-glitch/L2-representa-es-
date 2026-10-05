@@ -359,6 +359,7 @@ async def lifespan(app):
     initialize()
     initialize_personal(db)
     zara.log_configuration()
+    zara.verify_database_schema()
     correct_order_18_date()
     with db() as con:
         provisional = con.execute('SELECT count(*) FROM app_users WHERE active AND must_change_password').fetchone()[0]

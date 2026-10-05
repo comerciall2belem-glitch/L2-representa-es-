@@ -58,6 +58,30 @@ def log_configuration():
               graph_version_configured=bool(configured_value('WA_GRAPH_VERSION')))
 
 
+def verify_database_schema():
+    """Read-only readiness check after the startup transaction has committed."""
+    required = ('sessions', 'audit_log', 'zara_conversations', 'zara_messages',
+                'zara_delivery_events')
+    try:
+        with db() as con:
+            tables = {row[0] for row in con.execute(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema=current_schema() AND table_name=ANY(%s)",
+                (list(required),)).fetchall()}
+            columns = {row[0] for row in con.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema=current_schema() AND table_name='zara_messages' "
+                "AND column_name IN ('reply_to','panel_confirmed_at')").fetchall()}
+        ready = set(required).issubset(tables) and len(columns) == 2
+        log_event(logging.INFO if ready else logging.ERROR, 'database_schema_checked',
+                  ready=ready, **{name + '_present': name in tables for name in required},
+                  delivery_columns_present=len(columns) == 2)
+        return ready
+    except Exception as exc:
+        log_event(logging.ERROR, 'database_schema_check_failed', error_type=type(exc).__name__)
+        return False
+
+
 WELCOME = ('Olá{nome}! Tudo bem? Me chamo *Zara* e sou a assistente virtual da '
            'L2 Representações. Estou à disposição enquanto a Ana Paula não retorna.\n\n'
            'Como posso te ajudar hoje? 😊')
