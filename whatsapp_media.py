@@ -12,7 +12,7 @@ class MediaError(ValueError):
 
 
 LIMITS = {'image/jpeg': 5 * 1024 * 1024, 'image/png': 5 * 1024 * 1024,
-          'video/mp4': 16 * 1024 * 1024}
+          'video/mp4': 16 * 1024 * 1024, 'application/pdf': 10 * 1024 * 1024}
 
 
 def provider_config():
@@ -26,11 +26,13 @@ def provider_config():
 
 def validate_media(filename, declared_type, content, caption):
     name = (filename or '').lower()
-    types = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.mp4': 'video/mp4'}
+    types = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.mp4': 'video/mp4', '.pdf': 'application/pdf'}
     extension = next((ext for ext in types if name.endswith(ext)), None)
     mime = types.get(extension)
     if not mime or declared_type != mime or not content or len(content) > LIMITS[mime]:
-        raise MediaError('Envie JPG ou PNG de até 5 MB, ou MP4 de até 16 MB.')
+        raise MediaError('Envie JPG/PNG até 5 MB, MP4 até 16 MB ou PDF até 10 MB.')
+    if mime == 'application/pdf' and (not content.startswith(b'%PDF-') or b'%%EOF' not in content[-1024:]):
+        raise MediaError('O documento precisa ser um PDF válido.')
     if mime == 'image/jpeg' and not content.startswith(b'\xff\xd8\xff'):
         raise MediaError('A imagem JPG não é válida.')
     if mime == 'image/png' and not content.startswith(b'\x89PNG\r\n\x1a\n'):
@@ -39,14 +41,17 @@ def validate_media(filename, declared_type, content, caption):
         raise MediaError('O vídeo precisa ser um MP4 válido.')
     if not isinstance(caption, str) or len(caption) > 1024:
         raise MediaError('A legenda deve ter no máximo 1024 caracteres.')
-    return mime, 'image' if mime.startswith('image/') else 'video'
+    return mime, 'document' if mime == 'application/pdf' else ('image' if mime.startswith('image/') else 'video')
 
 
-def media_message_payload(to, kind, media_id, caption):
-    if kind not in ('image', 'video') or not re.fullmatch(r'55\d{10,11}', to):
+def media_message_payload(to, kind, media_id, caption, filename=None):
+    if kind not in ('image', 'video', 'document') or not re.fullmatch(r'55\d{10,11}', to):
         raise MediaError('Destinatário ou tipo de mídia inválido.')
+    media = {'id': media_id, 'caption': caption}
+    if kind == 'document':
+        media['filename'] = re.sub(r'[^a-zA-Z0-9_.-]', '_', str(filename or 'tabela.pdf'))[:150]
     return {'messaging_product': 'whatsapp', 'recipient_type': 'individual',
-            'to': to, 'type': kind, kind: {'id': media_id, 'caption': caption}}
+            'to': to, 'type': kind, kind: media}
 
 
 def _post(url, token, data, content_type):
@@ -78,7 +83,7 @@ def send_media(to, filename, mime, content, caption):
     media_id = uploaded.get('id')
     if not media_id:
         raise MediaError('O WhatsApp não confirmou o recebimento do arquivo.')
-    payload = media_message_payload(to, kind, media_id, caption)
+    payload = media_message_payload(to, kind, media_id, caption, filename)
     result = _post(base + '/messages', token, json.dumps(payload).encode(), 'application/json')
     messages = result.get('messages') or []
     if not messages or not messages[0].get('id'):

@@ -1,4 +1,5 @@
 """L2 ONE: secure FastAPI/PostgreSQL application for Render."""
+import logging
 import os, json, time, hashlib, secrets, re, base64, gzip, unicodedata, io, zipfile, asyncio
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -14,6 +15,8 @@ from daily_report import build_pdf, read_data, TZ
 from speedio_integration import lookup_cnpj, SpeedioError
 from order_reconciliation import reconcile_invoice, InvoiceError
 from lead_capture import LeadIntake, normalize_intake, ingest_lead, lead_sla
+from login_identity import resolve_identity
+from catalog_document import build_catalog_pdf
 from whatsapp_media import send_media, validate_media, provider_config, MediaError
 
 from commercial_tables import table_id, price_id, validate_table, seed_bella, validate_bella_order
@@ -32,7 +35,7 @@ DEFAULT_SECTORS = {
 }
 CATALOG_EDITORS = {'Ana Paula', 'Laís', 'Marlene'}
 INITIAL_PASSWORD = os.getenv('L2_INITIAL_PASSWORD', '')
-PASSWORDS = {u: INITIAL_PASSWORD or os.getenv(f'L2_PASSWORD_{i}', '') for i, u in enumerate(USERS, 1)}
+PASSWORDS = {u: os.getenv(f'L2_PASSWORD_{i}', '') or INITIAL_PASSWORD for i, u in enumerate(USERS, 1)}
 DATABASE_URL = os.getenv('DATABASE_URL', '')
 SESSION_HOURS = int(os.getenv('L2_SESSION_HOURS', '24'))
 config_errors = []
@@ -353,6 +356,9 @@ async def lifespan(app):
     initialize()
     initialize_personal(db)
     correct_order_18_date()
+    with db() as con:
+        provisional = con.execute('SELECT count(*) FROM app_users WHERE active AND must_change_password').fetchone()[0]
+    logging.getLogger('uvicorn.error').info('homologation_checks provisional_accounts=%s whatsapp_documents_configured=%s', provisional, bool(provider_config()))
     yield
 
 app = FastAPI(title='L2 ONE API', lifespan=lifespan, docs_url=None, redoc_url=None)
@@ -543,10 +549,24 @@ def auth(header, allow_password_change=False):
 @app.post('/api/login')
 def login(data: Login):
     with db() as con:
-        row = con.execute('SELECT password_hash, must_change_password, sectors, role FROM app_users WHERE username=%s AND active',(data.user,)).fetchone()
-    if not row or not password_ok(data.password, row[0]):
+        candidates = [r[0] for r in con.execute('SELECT username FROM app_users WHERE active')]
+        username = resolve_identity(data.user, candidates)
+        row = con.execute('SELECT password_hash, must_change_password, sectors, role FROM app_users WHERE username=%s AND active',(username,)).fetchone()
+    valid = bool(row and password_ok(data.password, row[0]))
+    # Só recupera o bootstrap de uma conta ainda provisória; nunca substitui senha pessoal.
+    configured = PASSWORDS.get(username, '')
+    if row and not valid and row[1] and configured and secrets.compare_digest(data.password, configured):
+        with db() as con:
+            updated = con.execute('UPDATE app_users SET password_hash=%s,updated_at=now() WHERE username=%s AND must_change_password AND password_hash=%s RETURNING username',
+                                  (password_hash(data.password), username, row[0])).fetchone()
+            if updated:
+                con.execute("DELETE FROM sessions WHERE username=%s", (username,))
+                con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'app_user',%s,'provisional_bootstrap_reconciled')", (username, username))
+                valid = True
+    if not valid:
         time.sleep(0.25)
-        raise HTTPException(401, 'Credenciais inválidas')
+        raise HTTPException(401, 'Usuário ou senha inválidos neste ambiente. Homologação possui contas e senhas próprias.')
+    data.user = username
     token = secrets.token_urlsafe(48)
     with db() as con:
         con.execute("DELETE FROM sessions WHERE expires_at<=now()")
@@ -1242,6 +1262,10 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     if any(''.join(ch for ch in str(row[1].get('taxId') or '') if ch.isdigit()) == tax_id for row in duplicates):
                         raise HTTPException(409, 'CNPJ já cadastrado em outro cliente')
             if kind == 'order':
+                # Uma fila offline antiga não pode desfazer a correção autorizada.
+                if entity_id == '858c6713-4712-4873-b716-8f5e76425468' and obj.get('date') == '2026-11-30':
+                    obj['date'] = '2026-09-29'
+                    obj['dateCorrection'] = {'original':'2026-11-30','corrected':'2026-09-29','reason':'Correção autorizada preservada na sincronização'}
                 if not isinstance(obj.get('items'), list) or not obj['items']:
                     raise HTTPException(400, 'Novo pedido exige itens e tabela de preços por UF; registros antigos permanecem somente para consulta')
                 if not isinstance(obj.get('brand'), str) or not obj['brand'].strip():
@@ -1395,7 +1419,66 @@ def restore_archived_order(order_id: str, authorization: str | None = Header(def
 def whatsapp_capabilities(authorization: str | None = Header(default=None)):
     user = auth(authorization)
     require_sector(user, 'commercial', 'office')
-    return {'mediaWithCaption': bool(provider_config())}
+    return {'mediaWithCaption': bool(provider_config()), 'tableDocuments': bool(provider_config())}
+
+def catalog_document_data(user, client_id, selected_table):
+    require_sector(user, 'commercial', 'office', 'catalog')
+    with db() as con:
+        check_client_scope(con, user, client_id)
+        customer = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (client_id,)).fetchone()
+        table = con.execute("SELECT payload FROM entities WHERE kind='price_table' AND id=%s", (selected_table,)).fetchone()
+        if not customer: raise HTTPException(404, 'Cliente não encontrado')
+        if not table or not table[0].get('active'): raise HTTPException(400, 'Selecione uma tabela ativa')
+        customer, table = customer[0], table[0]
+        uf = normalize_uf(customer.get('state'))
+        if not uf or (table.get('state') != 'ALL' and not price_table_matches_client(uf, table.get('state'))):
+            raise HTTPException(400, 'Tabela não permitida para a UF do cliente')
+        prices = [r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='price' AND coalesce(payload->>'tableId',(payload->>'brand')||'|'||(payload->>'state'))=%s ORDER BY id", (selected_table,))]
+        if not prices: raise HTTPException(400, 'Tabela sem produtos cadastrados')
+        industries = [r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='industry' AND (id=%s OR payload->>'name'=%s)", (table['brand'], table['brand']))]
+    industry = industries[0] if industries else {}
+    content = build_catalog_pdf(table, industry, prices, BASE, datetime.now(TZ).strftime('%d/%m/%Y'))
+    filename = 'tabela-'+re.sub(r'[^a-zA-Z0-9_-]', '-', selected_table)[:100]+'.pdf'
+    return customer, table, content, filename
+
+@app.get('/api/catalog/table.pdf')
+def catalog_table_pdf(client_id: str, table_id: str, authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    _, _, content, filename = catalog_document_data(user, client_id, table_id)
+    return Response(content=content, media_type='application/pdf', headers={'Cache-Control':'no-store','Content-Disposition':'attachment; filename="'+filename+'"'})
+
+class TableDocumentSend(BaseModel):
+    clientId: str = Field(min_length=1, max_length=128)
+    tableId: str = Field(min_length=1, max_length=200)
+    caption: str = Field(default='', max_length=1024)
+
+@app.post('/api/whatsapp/table-document')
+async def whatsapp_table_document(data: TableDocumentSend, authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    require_sector(user, 'commercial', 'office')
+    if not provider_config(): raise HTTPException(503, 'Configure a API oficial do WhatsApp para enviar PDFs')
+    customer, table, content, filename = catalog_document_data(user, data.clientId, data.tableId)
+    phone = re.sub(r'\D', '', str(customer.get('phone') or ''))
+    if len(phone) in (10,11): phone = '55'+phone
+    if not re.fullmatch(r'55\d{10,11}', phone): raise HTTPException(400, 'Cadastre telefone brasileiro com DDD')
+    caption = data.caption or ('Olá '+str(customer.get('name',''))+', segue a tabela atualizada da '+str(table['brand'])+' conforme solicitado.')
+    try:
+        message_id = await asyncio.to_thread(send_media, phone, filename, 'application/pdf', content, caption)
+    except MediaError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    event_id = secrets.token_hex(16)
+    payload = {'id':event_id,'clientId':data.clientId,'owner':user,'type':'WhatsApp','at':datetime.now(TZ).isoformat(),
+               'text':'Tabela PDF enviada: '+str(table['brand'])+' · '+str(table.get('title',data.tableId)),
+               'brand':table['brand'],'tableId':data.tableId,'messageId':message_id,'status':'Aceito pela API'}
+    try:
+        with db() as con:
+            con.execute("INSERT INTO entities(kind,id,payload) VALUES('interaction',%s,%s)", (event_id, Jsonb(payload)))
+            project_attendance(con, 'interaction', event_id, payload)
+            con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'whatsapp_document',%s,%s)", (user,data.clientId,'accepted_'+data.tableId))
+    except Exception:
+        logging.getLogger('uvicorn.error').error('whatsapp_document accepted history_failed')
+        return {'status':'accepted','messageId':message_id,'historyRecorded':False}
+    return {'status':'accepted','messageId':message_id,'historyRecorded':True}
 
 @app.post('/api/whatsapp/media')
 async def send_whatsapp_media(client_id: str = Form(...), caption: str = Form(''),
@@ -1407,6 +1490,8 @@ async def send_whatsapp_media(client_id: str = Form(...), caption: str = Form(''
     content = await file.read(16 * 1024 * 1024 + 1)
     try:
         mime, kind = validate_media(file.filename, file.content_type, content, caption)
+        if kind == 'document':
+            raise MediaError('Use o envio de tabela em PDF para documentos.')
     except MediaError as exc:
         raise HTTPException(400, str(exc)) from exc
     with db() as con:
@@ -1860,7 +1945,21 @@ def financial_analysis_read(month: str, authorization: str | None = Header(defau
 
 
 def correct_order_18_date():
-    # Correção pontual autorizada: data registrada na autorização do pedido 18.
+    # Idempotente, executada pela conexão interna na inicialização.
+    order_id = '858c6713-4712-4873-b716-8f5e76425468'
     with db() as con:
-        row=con.execute("""UPDATE entities SET payload=jsonb_set(payload,'{date}','"2026-09-29"'::jsonb)||jsonb_build_object('dateCorrection',jsonb_build_object('original','2026-11-30','corrected','2026-09-29','reason','Correção autorizada de competência; autorização do pedido em 29/09/2026')),updated_at=now() WHERE kind='order' AND id='858c6713-4712-4873-b716-8f5e76425468' AND payload->>'date'='2026-11-30' RETURNING payload""").fetchone()
-        if row:project_order(con,'858c6713-4712-4873-b716-8f5e76425468',row[0])
+        row = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s FOR UPDATE", (order_id,)).fetchone()
+        if not row:
+            logging.getLogger('uvicorn.error').warning('order18_migration status=absent')
+            return
+        payload = dict(row[0])
+        if payload.get('date') != '2026-09-29':
+            payload['dateCorrection'] = {'original': payload.get('date'), 'corrected':'2026-09-29', 'reason':'Correção expressamente autorizada pela administração'}
+            payload['date'] = '2026-09-29'
+            con.execute("UPDATE entities SET payload=%s,updated_at=now() WHERE kind='order' AND id=%s", (Jsonb(payload), order_id))
+            con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES('Ana Paula','order',%s,'date_correction_2026_09_29')", (order_id,))
+        project_order(con, order_id, payload)
+        verified = con.execute("SELECT payload->>'date' FROM entities WHERE kind='order' AND id=%s", (order_id,)).fetchone()
+        if not verified or verified[0] != '2026-09-29':
+            raise RuntimeError('Falha na conferência interna da migração do pedido 18')
+    logging.getLogger('uvicorn.error').info('order18_migration status=verified date=2026-09-29')
