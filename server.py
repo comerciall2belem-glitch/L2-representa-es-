@@ -1129,6 +1129,14 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                             try: date.fromisoformat(str(value))
                             except (ValueError,TypeError): raise HTTPException(400,'Data da oportunidade inválida')
                     if len(str(obj.get('notes','')))>2000: raise HTTPException(400,'Contexto muito extenso')
+            if kind in ('visit','interaction'):
+                previous_action = con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s', (kind,entity_id)).fetchone()
+                # Preserve previously queued historical records; require next step on new manual attendance.
+                if not previous_action and (kind=='visit' or obj.get('returnDate') or obj.get('next')):
+                    if not str(obj.get('next','')).strip() or not obj.get('returnDate'):
+                        raise HTTPException(400,'Informe próxima ação e data de retorno do atendimento')
+                    try: date.fromisoformat(str(obj['returnDate']))
+                    except (ValueError,TypeError): raise HTTPException(400,'Data de retorno inválida')
             if kind == 'price':
                 brand=str(obj.get('brand','')).strip()
                 table=validate_table(con,obj,brand)
@@ -1355,6 +1363,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 if kind in ('industry','price_table') and 'finance' not in permissions:
                     private_previous=con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s',(kind,entity_id)).fetchone()
                     obj=preserve_industry_commissions(private_previous[0] if private_previous else {},obj)
+                obj['updatedAt'] = datetime.now(TZ).isoformat()
                 obj['updatedBy'] = user
                 obj['updatedAs'] = 'Adm' if user=='Laís' or (account and account[0] in ('Administrativo','Administradora')) else 'Sócio' if user=='Euler' else 'Comercial'
                 con.execute('INSERT INTO entities(kind,id,payload) VALUES(%s,%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,updated_at=now()', (kind,entity_id,Jsonb(obj)))
@@ -1501,8 +1510,6 @@ async def send_whatsapp_media(client_id: str = Form(...), caption: str = Form(''
     content = await file.read(16 * 1024 * 1024 + 1)
     try:
         mime, kind = validate_media(file.filename, file.content_type, content, caption)
-        if kind == 'document':
-            raise MediaError('Use o envio de tabela em PDF para documentos.')
     except MediaError as exc:
         raise HTTPException(400, str(exc)) from exc
     with db() as con:
@@ -1901,7 +1908,7 @@ def zara_page():
 
 @app.get('/{filename}')
 def asset(filename: str):
-    if filename not in ('app.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
+    if filename not in ('app.js','crm_operations.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
         raise HTTPException(404)
     if filename in ('logo-l2-light.jpg','logo-l2-dark.jpg'):
         source={'logo-l2-light.jpg':'logo-light.jpg.b64','logo-l2-dark.jpg':'logo-dark.jpg.b64'}[filename]
@@ -1992,3 +1999,39 @@ def correct_order_18_date():
         if not verified or verified[0] != '2026-09-29':
             raise RuntimeError('Falha na conferência interna da migração do pedido 18')
     logging.getLogger('uvicorn.error').info('order18_migration status=verified date=2026-09-29')
+
+
+@app.post('/api/catalog/import-pdf/preview')
+async def preview_price_pdf(file: UploadFile = File(...), authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    if user not in CATALOG_EDITORS or 'catalog' not in sectors_for(user):
+        raise HTTPException(403, 'Importação de preços restrita aos editores do catálogo')
+    content = await file.read(10 * 1024 * 1024 + 1)
+    from pdf_price_import import extract_price_candidates
+    try:
+        return extract_price_candidates(content)
+    except Exception as exc:
+        raise HTTPException(400, 'Não foi possível extrair esta tabela. Use PDF textual de até 10 MB e 100 páginas ou importe CSV.') from exc
+
+
+@app.get('/api/commercial/activity')
+def commercial_activity(authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    require_sector(user, 'commercial', 'office')
+    with db() as con:
+        clients = {x['id']: x for x in scoped_rows(con, 'client', user)}
+        kinds = ['client', 'visit', 'interaction', 'task', 'opportunity', 'order', 'route']
+        allowed = set()
+        for kind in kinds:
+            for x in scoped_rows(con, kind, user):
+                if kind == 'client' or x.get('clientId') in clients or (kind == 'task' and not x.get('clientId') and (not is_seller(con,user) or x.get('user')==user)):
+                    allowed.add((kind,x['id']))
+        event_kinds=kinds+['whatsapp_media','whatsapp_document']
+        events=[]
+        for actor,kind,entity_id,action,at,payload in con.execute("SELECT a.username,a.kind,a.entity_id,a.action,a.created_at,e.payload FROM audit_log a JOIN entities e ON e.kind=CASE WHEN a.kind IN ('whatsapp_media','whatsapp_document') THEN 'client' ELSE a.kind END AND e.id=a.entity_id WHERE a.kind=ANY(%s) ORDER BY a.id DESC LIMIT 2000",(event_kinds,)):
+            access_kind='client' if kind in ('whatsapp_media','whatsapp_document') else kind
+            if (access_kind,entity_id) not in allowed: continue
+            cid=entity_id if access_kind=='client' else payload.get('clientId')
+            events.append({'user':actor,'kind':kind,'action':action,'at':at.isoformat(),'clientName':clients.get(cid,{}).get('name','')})
+            if len(events)>=100: break
+    return events
