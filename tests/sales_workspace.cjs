@@ -1,0 +1,16 @@
+const {chromium}=require('playwright');const fs=require('fs'),assert=require('node:assert/strict');
+(async()=>{const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+for(const width of [390,768,1440]){for(const user of ['Ana Paula','Marlene','Erika']){
+const page=await browser.newPage({viewport:{width,height:900}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
+await page.route('http://l2.test/**',async route=>{const path=new URL(route.request().url()).pathname.slice(1)||'index.html';if(path.startsWith('api/'))return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(path.includes('chat')?[]:{leads:0,clients:0,buyers:0,conversion:null,undated:0})});if(fs.existsSync(path))return route.fulfill({contentType:path.endsWith('.js')?'application/javascript':path.endsWith('.jpg')?'image/jpeg':'text/html',body:fs.readFileSync(path)});return route.fulfill({status:404,body:''})});
+await page.addInitScript(user=>{localStorage.setItem('l2one_state_v2',JSON.stringify({user,token:'x'.repeat(40),server:'http://l2.test',role:user==='Erika'?'Vendedor':'Administrativo',sectors:user==='Erika'?['commercial','routes']:['commercial','routes','office','management','admin','catalog'],sellers:['Ana Paula','Erika'],clients:[{id:'c1',name:'Cliente de teste',state:'PA',city:'Belém',owner:user}],orders:[{id:'o1',clientId:'c1',user,sellerResponsible:user,status:'Pendente',amount:100,date:new Date().toLocaleDateString('sv-SE')}],tasks:[],opportunities:[],pending:[]}))},user);
+await page.goto('http://l2.test');await page.getByRole('heading',{name:'Vender e acompanhar'}).waitFor();assert((await page.locator('#tabs button').count())<=5);assert.equal(await page.locator('details.nav-more').count(),0);
+assert.equal(await page.locator('body').evaluate(el=>el.scrollWidth>window.innerWidth),false,`${user} overflow at ${width}`);
+await page.getByRole('button',{name:'Clientes',exact:true}).click();await page.getByRole('button',{name:'Funil e retornos da carteira'}).click();assert(await page.locator('#clientWorkspaceDrawer').isVisible());await page.getByRole('button',{name:'Fechar acompanhamento'}).click();assert.equal(await page.locator('#clientWorkspaceDrawer').count(),0);
+await page.locator('#tabs').getByRole('button',{name:'Crescimento',exact:true}).click();await page.getByRole('heading',{name:'Crescimento da carteira'}).waitFor();
+await page.locator('#tabs').getByRole('button',{name:'Hoje',exact:true}).click();await page.getByRole('button',{name:'+ Novo pedido',exact:true}).click();await page.locator('#orderForm').waitFor();
+if(user==='Erika'){assert.equal(await page.locator('#tabs').getByRole('button',{name:'Escritório',exact:true}).count(),1);await page.locator('#tabs').getByRole('button',{name:'Escritório',exact:true}).click();assert.equal(await page.locator('#sectionTabs').getByRole('button',{name:'Financeiro',exact:true}).count(),0);assert.equal(await page.locator('#sectionTabs').getByRole('button',{name:'Equipe',exact:true}).count(),0)}
+assert.deepEqual(errors,[],`${user} JavaScript errors`);await page.close();
+}}
+await browser.close();console.log('9 layouts validated: navigation, client drawer, growth, orders, permissions and overflow');
+})().catch(e=>{console.error(e);process.exit(1)});

@@ -1,7 +1,7 @@
 name: Validacao L2 ONE
 on:
   push:
-    branches: [main, feature/precos-uf-cliente]
+    branches: [main, feature/precos-uf-cliente, feature/zara-whatsapp]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -32,3 +32,7 @@ jobs:
           node tests/order_multibrand_ui.cjs
           node tests/commercial_tables_ui.cjs
           node tests/admin_seller_ui.cjs
+          node tests/test_zara_panel.cjs
+      - name: Simular protocolo E2E da Zara
+        run: python scripts/zara_e2e_mock.py
+

@@ -2,7 +2,7 @@ import json
 import os
 import unittest
 from unittest.mock import patch
-from whatsapp_media import MediaError, validate_media, media_message_payload, provider_config, send_media
+from whatsapp_media import MediaError, validate_media, media_message_payload, provider_config, send_media, send_text
 
 
 class WhatsAppMediaTests(unittest.TestCase):
@@ -53,3 +53,17 @@ class WhatsAppMediaTests(unittest.TestCase):
                 self.assertIsNone(provider_config())
         with patch.dict(os.environ, {**values,'WHATSAPP_GRAPH_VERSION':'https://evil.test'}):
             self.assertIsNone(provider_config())
+
+    @patch.dict(os.environ, {'WHATSAPP_ACCESS_TOKEN':'mock-token','WHATSAPP_PHONE_NUMBER_ID':'12345','WHATSAPP_GRAPH_VERSION':'v27.0'})
+    @patch('whatsapp_media._post')
+    def test_text_uses_real_provider_path_and_keeps_body(self,post):
+        post.return_value={'messages':[{'id':'wamid.mock'}]}
+        self.assertEqual(send_text('5591999999999','Olá, segue nossa proposta.'),'wamid.mock')
+        self.assertTrue(post.call_args.args[0].endswith('/12345/messages'))
+        payload=json.loads(post.call_args.args[2])
+        self.assertEqual(payload['text']['body'],'Olá, segue nossa proposta.')
+        self.assertEqual(payload['type'],'text')
+
+    @patch.dict(os.environ, {'WHATSAPP_ACCESS_TOKEN':'seu_token_aqui','WHATSAPP_PHONE_NUMBER_ID':'12345','WHATSAPP_GRAPH_VERSION':'v27.0'})
+    def test_placeholder_is_not_live_configuration(self):
+        self.assertIsNone(provider_config())

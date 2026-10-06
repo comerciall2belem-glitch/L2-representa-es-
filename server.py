@@ -1,4 +1,5 @@
 """L2 ONE: secure FastAPI/PostgreSQL application for Render."""
+import logging
 import os, json, time, hashlib, secrets, re, base64, gzip, unicodedata, io, zipfile, asyncio
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -14,12 +15,17 @@ from daily_report import build_pdf, read_data, TZ
 from speedio_integration import lookup_cnpj, SpeedioError
 from order_reconciliation import reconcile_invoice, InvoiceError
 from lead_capture import LeadIntake, normalize_intake, ingest_lead, lead_sla
-from whatsapp_media import send_media, validate_media, provider_config, MediaError
+from login_identity import resolve_identity
+from catalog_document import build_catalog_pdf
+from whatsapp_media import send_media, validate_media, provider_config, MediaError, send_text
 
 from commercial_tables import table_id, price_id, validate_table, seed_bella, validate_bella_order
 from access_policy import effective_sectors, attribute_order, COMMERCIAL_SECTORS
 from seller_commission import validate_rate, apply_seller_commission
 from financial_visibility import hide_industry_commissions, preserve_industry_commissions
+
+import zara
+import webchat
 
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
@@ -32,7 +38,7 @@ DEFAULT_SECTORS = {
 }
 CATALOG_EDITORS = {'Ana Paula', 'Laís', 'Marlene'}
 INITIAL_PASSWORD = os.getenv('L2_INITIAL_PASSWORD', '')
-PASSWORDS = {u: INITIAL_PASSWORD or os.getenv(f'L2_PASSWORD_{i}', '') for i, u in enumerate(USERS, 1)}
+PASSWORDS = {u: os.getenv(f'L2_PASSWORD_{i}', '') or INITIAL_PASSWORD for i, u in enumerate(USERS, 1)}
 DATABASE_URL = os.getenv('DATABASE_URL', '')
 SESSION_HOURS = int(os.getenv('L2_SESSION_HOURS', '24'))
 config_errors = []
@@ -103,9 +109,12 @@ def project_order(con,entity_id,payload,created_at=None,updated_at=None):
 
 def initialize():
     with db() as con:
+        zara.setup(con)
+        webchat.setup(con)
         con.execute('CREATE TABLE IF NOT EXISTS entities (kind TEXT NOT NULL, id TEXT NOT NULL, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(kind,id))')
         con.execute('ALTER TABLE entities ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ')
         con.execute('ALTER TABLE entities ALTER COLUMN created_at SET DEFAULT now()')
+        con.execute('CREATE TABLE IF NOT EXISTS commercial_drafts (username TEXT NOT NULL, draft_key TEXT NOT NULL, payload JSONB, client_timestamp BIGINT NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(username,draft_key))')
         con.execute('CREATE TABLE IF NOT EXISTS applied_changes (change_id TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE TABLE IF NOT EXISTS audit_log (id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, kind TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         seed_bella(con, BASE)
@@ -352,9 +361,19 @@ def initialize():
 async def lifespan(app):
     initialize()
     initialize_personal(db)
+    from homologation_access import recover
+    recover(db, password_hash)
+    zara.log_configuration()
+    zara.verify_database_schema()
+    correct_order_18_date()
+    with db() as con:
+        provisional = con.execute('SELECT count(*) FROM app_users WHERE active AND must_change_password').fetchone()[0]
+    logging.getLogger('uvicorn.error').info('homologation_checks provisional_accounts=%s whatsapp_documents_configured=%s', provisional, bool(provider_config()))
     yield
 
 app = FastAPI(title='L2 ONE API', lifespan=lifespan, docs_url=None, redoc_url=None)
+app.include_router(zara.router)
+app.include_router(webchat.router)
 
 def sectors_for(user):
     with db() as con:
@@ -542,10 +561,24 @@ def auth(header, allow_password_change=False):
 @app.post('/api/login')
 def login(data: Login):
     with db() as con:
-        row = con.execute('SELECT password_hash, must_change_password, sectors, role FROM app_users WHERE username=%s AND active',(data.user,)).fetchone()
-    if not row or not password_ok(data.password, row[0]):
+        candidates = [r[0] for r in con.execute('SELECT username FROM app_users WHERE active')]
+        username = resolve_identity(data.user, candidates)
+        row = con.execute('SELECT password_hash, must_change_password, sectors, role FROM app_users WHERE username=%s AND active',(username,)).fetchone()
+    valid = bool(row and password_ok(data.password, row[0]))
+    # Só recupera o bootstrap de uma conta ainda provisória; nunca substitui senha pessoal.
+    configured = PASSWORDS.get(username, '')
+    if row and not valid and row[1] and configured and secrets.compare_digest(data.password, configured):
+        with db() as con:
+            updated = con.execute('UPDATE app_users SET password_hash=%s,updated_at=now() WHERE username=%s AND must_change_password AND password_hash=%s RETURNING username',
+                                  (password_hash(data.password), username, row[0])).fetchone()
+            if updated:
+                con.execute("DELETE FROM sessions WHERE username=%s", (username,))
+                con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'app_user',%s,'provisional_bootstrap_reconciled')", (username, username))
+                valid = True
+    if not valid:
         time.sleep(0.25)
-        raise HTTPException(401, 'Credenciais inválidas')
+        raise HTTPException(401, 'Usuário ou senha inválidos neste ambiente. Homologação possui contas e senhas próprias.')
+    data.user = username
     token = secrets.token_urlsafe(48)
     with db() as con:
         con.execute("DELETE FROM sessions WHERE expires_at<=now()")
@@ -1097,6 +1130,14 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                             try: date.fromisoformat(str(value))
                             except (ValueError,TypeError): raise HTTPException(400,'Data da oportunidade inválida')
                     if len(str(obj.get('notes','')))>2000: raise HTTPException(400,'Contexto muito extenso')
+            if kind in ('visit','interaction'):
+                previous_action = con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s', (kind,entity_id)).fetchone()
+                # Preserve previously queued historical records; require next step on new manual attendance.
+                if not previous_action and (kind=='visit' or obj.get('returnDate') or obj.get('next')):
+                    if not str(obj.get('next','')).strip() or not obj.get('returnDate'):
+                        raise HTTPException(400,'Informe próxima ação e data de retorno do atendimento')
+                    try: date.fromisoformat(str(obj['returnDate']))
+                    except (ValueError,TypeError): raise HTTPException(400,'Data de retorno inválida')
             if kind == 'price':
                 brand=str(obj.get('brand','')).strip()
                 table=validate_table(con,obj,brand)
@@ -1241,6 +1282,10 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     if any(''.join(ch for ch in str(row[1].get('taxId') or '') if ch.isdigit()) == tax_id for row in duplicates):
                         raise HTTPException(409, 'CNPJ já cadastrado em outro cliente')
             if kind == 'order':
+                # Uma fila offline antiga não pode desfazer a correção autorizada.
+                if entity_id == '858c6713-4712-4873-b716-8f5e76425468' and obj.get('date') == '2026-11-30':
+                    obj['date'] = '2026-09-29'
+                    obj['dateCorrection'] = {'original':'2026-11-30','corrected':'2026-09-29','reason':'Correção autorizada preservada na sincronização'}
                 if not isinstance(obj.get('items'), list) or not obj['items']:
                     raise HTTPException(400, 'Novo pedido exige itens e tabela de preços por UF; registros antigos permanecem somente para consulta')
                 if not isinstance(obj.get('brand'), str) or not obj['brand'].strip():
@@ -1319,6 +1364,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 if kind in ('industry','price_table') and 'finance' not in permissions:
                     private_previous=con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s',(kind,entity_id)).fetchone()
                     obj=preserve_industry_commissions(private_previous[0] if private_previous else {},obj)
+                obj['updatedAt'] = datetime.now(TZ).isoformat()
                 obj['updatedBy'] = user
                 obj['updatedAs'] = 'Adm' if user=='Laís' or (account and account[0] in ('Administrativo','Administradora')) else 'Sócio' if user=='Euler' else 'Comercial'
                 con.execute('INSERT INTO entities(kind,id,payload) VALUES(%s,%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,updated_at=now()', (kind,entity_id,Jsonb(obj)))
@@ -1394,7 +1440,66 @@ def restore_archived_order(order_id: str, authorization: str | None = Header(def
 def whatsapp_capabilities(authorization: str | None = Header(default=None)):
     user = auth(authorization)
     require_sector(user, 'commercial', 'office')
-    return {'mediaWithCaption': bool(provider_config())}
+    return {'mediaWithCaption': bool(provider_config()), 'tableDocuments': bool(provider_config())}
+
+def catalog_document_data(user, client_id, selected_table):
+    require_sector(user, 'commercial', 'office', 'catalog')
+    with db() as con:
+        check_client_scope(con, user, client_id)
+        customer = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (client_id,)).fetchone()
+        table = con.execute("SELECT payload FROM entities WHERE kind='price_table' AND id=%s", (selected_table,)).fetchone()
+        if not customer: raise HTTPException(404, 'Cliente não encontrado')
+        if not table or not table[0].get('active'): raise HTTPException(400, 'Selecione uma tabela ativa')
+        customer, table = customer[0], table[0]
+        uf = normalize_uf(customer.get('state'))
+        if not uf or (table.get('state') != 'ALL' and not price_table_matches_client(uf, table.get('state'))):
+            raise HTTPException(400, 'Tabela não permitida para a UF do cliente')
+        prices = [r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='price' AND coalesce(payload->>'tableId',(payload->>'brand')||'|'||(payload->>'state'))=%s ORDER BY id", (selected_table,))]
+        if not prices: raise HTTPException(400, 'Tabela sem produtos cadastrados')
+        industries = [r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='industry' AND (id=%s OR payload->>'name'=%s)", (table['brand'], table['brand']))]
+    industry = industries[0] if industries else {}
+    content = build_catalog_pdf(table, industry, prices, BASE, datetime.now(TZ).strftime('%d/%m/%Y'))
+    filename = 'tabela-'+re.sub(r'[^a-zA-Z0-9_-]', '-', selected_table)[:100]+'.pdf'
+    return customer, table, content, filename
+
+@app.get('/api/catalog/table.pdf')
+def catalog_table_pdf(client_id: str, table_id: str, authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    _, _, content, filename = catalog_document_data(user, client_id, table_id)
+    return Response(content=content, media_type='application/pdf', headers={'Cache-Control':'no-store','Content-Disposition':'attachment; filename="'+filename+'"'})
+
+class TableDocumentSend(BaseModel):
+    clientId: str = Field(min_length=1, max_length=128)
+    tableId: str = Field(min_length=1, max_length=200)
+    caption: str = Field(default='', max_length=1024)
+
+@app.post('/api/whatsapp/table-document')
+async def whatsapp_table_document(data: TableDocumentSend, authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    require_sector(user, 'commercial', 'office')
+    if not provider_config(): raise HTTPException(503, 'Configure a API oficial do WhatsApp para enviar PDFs')
+    customer, table, content, filename = catalog_document_data(user, data.clientId, data.tableId)
+    phone = re.sub(r'\D', '', str(customer.get('phone') or ''))
+    if len(phone) in (10,11): phone = '55'+phone
+    if not re.fullmatch(r'55\d{10,11}', phone): raise HTTPException(400, 'Cadastre telefone brasileiro com DDD')
+    caption = data.caption or ('Olá '+str(customer.get('name',''))+', segue a tabela atualizada da '+str(table['brand'])+' conforme solicitado.')
+    try:
+        message_id = await asyncio.to_thread(send_media, phone, filename, 'application/pdf', content, caption)
+    except MediaError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    event_id = secrets.token_hex(16)
+    payload = {'id':event_id,'clientId':data.clientId,'owner':user,'type':'WhatsApp','at':datetime.now(TZ).isoformat(),
+               'text':'Tabela PDF enviada: '+str(table['brand'])+' · '+str(table.get('title',data.tableId)),
+               'brand':table['brand'],'tableId':data.tableId,'messageId':message_id,'status':'Aceito pela API'}
+    try:
+        with db() as con:
+            con.execute("INSERT INTO entities(kind,id,payload) VALUES('interaction',%s,%s)", (event_id, Jsonb(payload)))
+            project_attendance(con, 'interaction', event_id, payload)
+            con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'whatsapp_document',%s,%s)", (user,data.clientId,'accepted_'+data.tableId))
+    except Exception:
+        logging.getLogger('uvicorn.error').error('whatsapp_document accepted history_failed')
+        return {'status':'accepted','messageId':message_id,'historyRecorded':False}
+    return {'status':'accepted','messageId':message_id,'historyRecorded':True}
 
 @app.post('/api/whatsapp/media')
 async def send_whatsapp_media(client_id: str = Form(...), caption: str = Form(''),
@@ -1420,10 +1525,14 @@ async def send_whatsapp_media(client_id: str = Form(...), caption: str = Form(''
         message_id = await asyncio.to_thread(send_media, phone, file.filename, mime, content, caption)
     except MediaError as exc:
         raise HTTPException(502, str(exc)) from exc
-    with db() as con:
-        con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'whatsapp_media',%s,%s)",
-                    (user, client_id, 'sent_'+kind))
-    return {'status': 'sent', 'messageId': message_id}
+    try:
+        with db() as con:
+            con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'whatsapp_media',%s,%s)",
+                        (user, client_id, 'accepted_'+kind))
+    except Exception:
+        logging.getLogger('uvicorn.error').error('whatsapp_media accepted history_failed')
+        return {'status':'accepted','messageId':message_id,'historyRecorded':False}
+    return {'status':'accepted','messageId':message_id,'historyRecorded':True}
 
 @app.get('/api/visits/{visit_id}/photos')
 def list_visit_photos(visit_id: str, authorization: str | None = Header(default=None)):
@@ -1798,9 +1907,13 @@ async def security_headers(request, call_next):
 @app.get('/index.html')
 def home(): return FileResponse(BASE/'index.html',headers={'Cache-Control':'no-store'})
 
+@app.get('/zara.html')
+def zara_page():
+    return FileResponse(BASE/'zara.html', headers={'Cache-Control':'no-store'})
+
 @app.get('/{filename}')
 def asset(filename: str):
-    if filename not in ('app.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
+    if filename not in ('app.js','crm_operations.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
         raise HTTPException(404)
     if filename in ('logo-l2-light.jpg','logo-l2-dark.jpg'):
         source={'logo-l2-light.jpg':'logo-light.jpg.b64','logo-l2-dark.jpg':'logo-dark.jpg.b64'}[filename]
@@ -1811,3 +1924,188 @@ def asset(filename: str):
 
 from personal_finance import initialize_personal, install_personal
 install_personal(app, db, auth)
+
+
+@app.get('/api/commercial/lead-conversion')
+def commercial_lead_conversion(month: str, authorization: str | None = Header(default=None)):
+    from lead_conversion import conversion_metrics
+    import re
+    if not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])',month):raise HTTPException(422,'Mês inválido')
+    user=auth(authorization)
+    require_sector(user,'commercial','office')
+    with db() as con:
+        all_users=not is_seller(con,user)
+        leads=[r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='lead' AND (%s OR payload->>'owner'=%s)",(all_users,user))]
+        rows=con.execute("SELECT l.id,a.tax_id,l.owner,l.created_at,l.first_response_at,l.status,l.custom_fields FROM capture_leads l LEFT JOIN capture_accounts a ON a.id=l.account_id WHERE (%s OR l.owner=%s)",(all_users,user)).fetchall()
+        leads += [{'id':r[0],'taxId':r[1],'owner':r[2],'createdAt':r[3].isoformat(),'firstResponseAt':r[4].isoformat() if r[4] else None,'status':r[5],'clientId':(r[6] or {}).get('clientId')} for r in rows]
+        return conversion_metrics(leads,scoped_rows(con,'client',user),scoped_rows(con,'order',user),month)
+
+from financial_inputs import FinancialInput
+
+@app.get('/api/finance/inputs')
+def financial_inputs_list(authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    require_sector(user,'finance')
+    with db() as con:
+        return [r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='financial_input' ORDER BY updated_at,id")]
+
+@app.put('/api/finance/inputs')
+def financial_inputs_save(data: FinancialInput, authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    require_sector(user,'finance')
+    payload=data.model_dump(mode='json')
+    payload['updatedBy']=user
+    payload['updatedAt']=datetime.now(TZ).isoformat()
+    with db() as con:
+        con.execute("INSERT INTO entities(kind,id,payload) VALUES ('financial_input',%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=EXCLUDED.payload,updated_at=now()",(data.id,Jsonb(payload)))
+    return payload
+
+@app.get('/api/finance/analysis')
+def financial_analysis_read(month: str, authorization: str | None = Header(default=None)):
+    from financial_analysis import analyze_finance
+    if not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])',month):raise HTTPException(422,'Mês inválido')
+    user=auth(authorization)
+    require_sector(user,'finance')
+    with db() as con:
+        inputs=[r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='financial_input'")]
+        return analyze_finance(inputs,scoped_rows(con,'order',user),scoped_rows(con,'office_finance',user),scoped_rows(con,'commission_rate',user),month,scoped_rows(con,'goal',user))
+
+
+def correct_order_18_date():
+    # This data correction belongs exclusively to the authorized homologation service.
+    if os.getenv('RENDER_SERVICE_ID') != 'srv-daqk8ifavr4c738m78f0':
+        return
+    order_id = '858c6713-4712-4873-b716-8f5e76425468'
+    with db() as con:
+        row = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s FOR UPDATE", (order_id,)).fetchone()
+        seed_text = os.getenv('L2_HOMOLOGATION_ORDER18_SEED', '')
+        if not row and seed_text and os.getenv('L2_ENABLE_HOMOLOGATION_SEED') == '1':
+            # Carga privada da operação para esta instância; não vai para Git.
+            seed = json.loads(seed_text)
+            order, customer = seed['order'], seed['client']
+            if order.get('id') != order_id or str(order.get('orderNumber')) != '18' or customer.get('id') != order.get('clientId'):
+                raise RuntimeError('Carga de homologação do pedido 18 incompatível')
+            con.execute("INSERT INTO entities(kind,id,payload) VALUES('client',%s,%s) ON CONFLICT DO NOTHING", (customer['id'], Jsonb(customer)))
+            con.execute("""INSERT INTO clientes(id,razao_social,nome_fantasia,documento,curva_abc)
+                VALUES(%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""", (customer['id'], customer['name'], customer.get('tradeName'), customer.get('taxId'), customer.get('abc') if customer.get('abc') in ('A','B','C') else None))
+            con.execute("INSERT INTO entities(kind,id,payload) VALUES('order',%s,%s) ON CONFLICT DO NOTHING", (order_id, Jsonb(order)))
+            number = con.execute("SELECT coalesce(max((payload->>'orderNumber')::integer),0) FROM entities WHERE kind='order' AND payload->>'orderNumber' ~ '^[0-9]+$'").fetchone()[0]
+            con.execute('UPDATE order_counter SET value=greatest(value,%s) WHERE id=1', (number,))
+            row = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s FOR UPDATE", (order_id,)).fetchone()
+        if not row:
+            logging.getLogger('uvicorn.error').warning('order18_migration status=absent')
+            return
+        payload = dict(row[0])
+        if payload.get('date') != '2026-09-29':
+            payload['dateCorrection'] = {'original': payload.get('date'), 'corrected':'2026-09-29', 'reason':'Correção expressamente autorizada pela administração'}
+            payload['date'] = '2026-09-29'
+            con.execute("UPDATE entities SET payload=%s,updated_at=now() WHERE kind='order' AND id=%s", (Jsonb(payload), order_id))
+            con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES('Ana Paula','order',%s,'date_correction_2026_09_29')", (order_id,))
+        project_order(con, order_id, payload)
+        verified = con.execute("SELECT payload->>'date' FROM entities WHERE kind='order' AND id=%s", (order_id,)).fetchone()
+        if not verified or verified[0] != '2026-09-29':
+            raise RuntimeError('Falha na conferência interna da migração do pedido 18')
+    logging.getLogger('uvicorn.error').info('order18_migration status=verified date=2026-09-29')
+
+
+@app.post('/api/catalog/import-pdf/preview')
+async def preview_price_pdf(file: UploadFile = File(...), authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    if user not in CATALOG_EDITORS or 'catalog' not in sectors_for(user):
+        raise HTTPException(403, 'Importação de preços restrita aos editores do catálogo')
+    content = await file.read(10 * 1024 * 1024 + 1)
+    from pdf_price_import import extract_price_candidates
+    try:
+        return await asyncio.to_thread(extract_price_candidates, content)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(400, 'Não foi possível extrair esta tabela. Confira o PDF ou use CSV.') from exc
+
+
+@app.get('/api/commercial/activity')
+def commercial_activity(authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    require_sector(user, 'commercial', 'office')
+    with db() as con:
+        clients = {x['id']: x for x in scoped_rows(con, 'client', user)}
+        kinds = ['client', 'visit', 'interaction', 'task', 'opportunity', 'order', 'route']
+        allowed = set()
+        for kind in kinds:
+            for x in scoped_rows(con, kind, user):
+                if kind == 'client' or x.get('clientId') in clients or (kind == 'task' and not x.get('clientId') and (not is_seller(con,user) or x.get('user')==user)):
+                    allowed.add((kind,x['id']))
+        event_kinds=kinds+['whatsapp_media','whatsapp_document']
+        events=[]
+        for actor,kind,entity_id,action,at,payload in con.execute("SELECT a.username,a.kind,a.entity_id,a.action,a.created_at,e.payload FROM audit_log a JOIN entities e ON e.kind=CASE WHEN a.kind IN ('whatsapp_media','whatsapp_document') THEN 'client' ELSE a.kind END AND e.id=a.entity_id WHERE a.kind=ANY(%s) ORDER BY a.id DESC LIMIT 2000",(event_kinds,)):
+            access_kind='client' if kind in ('whatsapp_media','whatsapp_document') else kind
+            if (access_kind,entity_id) not in allowed: continue
+            cid=entity_id if access_kind=='client' else payload.get('clientId')
+            events.append({'user':actor,'kind':kind,'action':action,'at':at.isoformat(),'clientName':clients.get(cid,{}).get('name','')})
+            if len(events)>=100: break
+    return events
+
+
+class CommercialDraft(BaseModel):
+    key: str
+    payload: dict | None = None
+    updatedAt: int
+
+@app.get('/api/commercial/drafts')
+def commercial_drafts_list(authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    require_sector(user, 'commercial', 'office')
+    with db() as con:
+        return [{'key':r[0],'payload':r[1],'updatedAt':r[2]} for r in con.execute('SELECT draft_key,payload,client_timestamp FROM commercial_drafts WHERE username=%s ORDER BY updated_at DESC LIMIT 100',(user,))]
+
+@app.put('/api/commercial/drafts')
+def commercial_drafts_save(data: CommercialDraft, authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    require_sector(user, 'commercial', 'office')
+    if not re.fullmatch(r'(order|visit|interaction):[A-Za-z0-9_.-]{1,128}',data.key) or not 0<data.updatedAt<=int(datetime.now(TZ).timestamp()*1000)+300000:
+        raise HTTPException(422,'Identificação ou data do rascunho inválida')
+    if len(json.dumps(data.payload,ensure_ascii=False).encode())>100000:
+        raise HTTPException(413,'Rascunho acima de 100 KB')
+    with db() as con:
+        if data.payload:
+            fields=data.payload.get('fields',{})
+            if not isinstance(fields,dict) or any(re.search(r'token|password|secret|senha',k,re.I) for k in fields):
+                raise HTTPException(422,'Campos não permitidos no rascunho')
+            cid=fields.get('clientId') or (data.payload.get('order') or {}).get('clientId')
+            if cid:check_client_scope(con,user,cid)
+        con.execute("INSERT INTO commercial_drafts(username,draft_key,payload,client_timestamp) VALUES(%s,%s,%s,%s) ON CONFLICT(username,draft_key) DO UPDATE SET payload=excluded.payload,client_timestamp=excluded.client_timestamp,updated_at=now() WHERE commercial_drafts.client_timestamp<excluded.client_timestamp",(user,data.key,Jsonb(data.payload),data.updatedAt))
+    return {'saved':True}
+
+
+class WhatsAppText(BaseModel):
+    clientId: str
+    message: str
+
+@app.post('/api/whatsapp/text')
+async def send_whatsapp_text(data: WhatsAppText, authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    require_sector(user,'commercial','office')
+    if not provider_config():raise HTTPException(503,'API oficial do WhatsApp não configurada')
+    if not data.message.strip() or len(data.message)>4096:raise HTTPException(422,'Mensagem vazia ou acima de 4.096 caracteres')
+    with db() as con:
+        check_client_scope(con,user,data.clientId)
+        row=con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s",(data.clientId,)).fetchone()
+        if not row:raise HTTPException(404,'Cliente não encontrado')
+        phone=re.sub(r'\D','',str(row[0].get('phone') or ''))
+        if len(phone) in (10,11):phone='55'+phone
+        if not re.fullmatch(r'55\d{10,11}',phone):raise HTTPException(422,'Cadastre um telefone brasileiro com DDD')
+    try:
+        mid=await asyncio.to_thread(send_text,phone,data.message)
+    except MediaError as exc:
+        raise HTTPException(502,str(exc)) from exc
+    try:
+        with db() as con:
+            event_id=secrets.token_hex(16)
+            payload={'id':event_id,'clientId':data.clientId,'type':'WhatsApp','text':data.message,'owner':user,'at':datetime.now(TZ).isoformat(),'messageId':mid,'deliveryStatus':'accepted'}
+            con.execute("INSERT INTO entities(kind,id,payload) VALUES('interaction',%s,%s)",(event_id,Jsonb(payload)))
+            project_attendance(con,'interaction',event_id,payload)
+            con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'interaction',%s,'whatsapp_text_accepted')",(user,event_id))
+    except Exception:
+        logging.getLogger('uvicorn.error').error('whatsapp_text accepted history_failed')
+        return {'status':'accepted','messageId':mid,'historyRecorded':False}
+    return {'status':'accepted','messageId':mid,'historyRecorded':True}
