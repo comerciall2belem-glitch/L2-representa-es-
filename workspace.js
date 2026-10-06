@@ -1,7 +1,7 @@
 /* Shared operational workspace. Data permissions remain in the existing access policy. */
 const WORKSPACE_GROUPS=[
  {id:'inicio',label:'Hoje',sections:[['hoje','Prioridades'],['rota','Rota e visitas'],['registro','Registrar atividade']]},
- {id:'vendas',label:'Vendas',sections:[['pedidos','Pedidos'],['marcas','Marcas e preços'],['whatsapp','Mensagens e tabelas']]},
+ {id:'vendas',label:'Vendas',sections:[['pedidos','Pedidos'],['marcas','Marcas e preços'],['whatsapp','Chat e tabelas']]},
  {id:'clientes',label:'Clientes',sections:[['clientes','Carteira e acompanhamento']]},
  {id:'crescimento',label:'Crescimento',sections:[['crescimento','Desempenho'],['gestao','Metas e gestão']]},
  {id:'escritorio',label:'Escritório',sections:[['office','Processos'],['operations','Operações'],['admin','Equipe'],['finance','Financeiro'],['cash','Caixa'],['personal','Pessoal'],['config','Configurações']]}
