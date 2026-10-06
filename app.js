@@ -58,7 +58,7 @@ function show(t){if(!sectionAllowed(t)){alert('Acesso restrito para este setor.'
 function render(){if(tab==='pedidos')CommercialDrafts.restoreOrder();setTimeout(checkTaskReminders,0);workspaceNav();document.querySelectorAll('[data-finance]').forEach(el=>el.hidden=!financeAllowed());document.querySelectorAll('[data-management]').forEach(el=>el.hidden=!managementAllowed());if(!sectionAllowed(tab))tab='hoje';if(s.mustChangePassword){window.personalFinanceClear?.();renderPasswordChange();return}if(tab==='personal'){window.renderPersonalFinance?.();return}window.personalFinanceClear?.();let h='';if(tab==='hoje')h=dailyGoalAlertHTML()+renderSalesHome()+operationsOverviewHTML()+teamActivityHTML();
 if(tab==='crescimento')h=renderCommercialDashboard();
 if(tab==='clientes')h=renderClientWorkspace();
-if(tab==='crm')h=renderClientDrawer();
+if(tab==='crm')h=window.crmClientId?renderClientDrawer():renderCRM();
  if(tab==='operations')h=renderOperations();
  if(tab==='admin')h=renderAdmin();
  if(tab==='hoje'&&!s.token)h='<div class="box"><h2>Entre no L2 ONE</h2><p>Abra Configurações para acessar sua conta e sincronizar os dados.</p><button onclick="show(\'config\')">Acessar configurações</button></div>';
