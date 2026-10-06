@@ -35,6 +35,7 @@
    return {...g,daily,weekly:Number(g.amount||0)*week.length/days.length,dailySales:sum([day]),weeklySales:sum(week),planned,perAttendance:planned?daily/planned:null};
   });
  }
- root.CRMOperations={overview,targets,businessDays,closed};
+ function filterPending(rows,day,filter='all',owner=''){return rows.filter(x=>(!owner||(x.owner||x.user||'Não definido')===owner)&&(filter==='all'||filter==='overdue'&&x.due&&x.due<day||filter==='today'&&x.due===day||filter==='future'&&x.due>day||filter==='undated'&&!x.due));}
+ root.CRMOperations={overview,targets,businessDays,closed,filterPending};
  if(typeof module!=='undefined')module.exports=root.CRMOperations;
 })(typeof window==='undefined'?globalThis:window);
