@@ -10,3 +10,5 @@ assert.equal(crm.targets(state,'2026-10-06','Marlene',false,()=>new Map(),o=>o.u
 assert.equal(crm.targets(state,'2026-10-04','Euler',false,()=>new Map(),o=>o.user)[0].daily,0);
 assert.equal(crm.overview({...state,clients:state.clients.filter(c=>c.id==='b')},'2026-10-06').reorders.length,0);
 console.log('Pendências, deduplicação, escopo, recompra e metas: OK');
+
+{const state={clients:[{id:'c'}],routes:[{id:'bad',clientId:'c',date:'[object HTMLInputElement]'},{id:'impossible',clientId:'c',date:'2026-02-30'},{id:'valid',clientId:'c',date:'2026-10-05'}]};const result=require('../crm_operations.js').overview(state,'2026-10-06');assert.equal(result.overdue,1);assert.equal(result.pending.find(x=>x.id==='bad').due,'');assert.equal(result.pending.find(x=>x.id==='impossible').due,'');}

@@ -1,7 +1,7 @@
 /* Derived commercial indicators. No commission, cash or cost data. */
 (function(root){
  const closed=x=>['Concluída','Concluído','Concluido','Concluida','Cancelado','Cancelada','Resolvido','Resolvida','Ganho','Perdido','Pós-venda','Entregue','Faturado','Pedido confirmado'].includes(x);
- const date=x=>String(x||'').slice(0,10);
+ const date=x=>{if(typeof x!=='string')return '';const d=x.trim().slice(0,10);if(!/^\d{4}-\d{2}-\d{2}$/.test(d))return '';const parsed=new Date(d+'T12:00:00Z');return Number.isFinite(parsed.getTime())&&parsed.toISOString().slice(0,10)===d?d:'';};
  const dayNumber=x=>Date.parse(date(x)+'T12:00:00Z')/86400000;
  const businessDays=month=>{const result=[];const [y,m]=month.split('-').map(Number);for(let d=1;d<=31;d++){const x=new Date(Date.UTC(y,m-1,d,12));if(x.getUTCMonth()!==m-1)break;if(x.getUTCDay()>0&&x.getUTCDay()<6)result.push(x.toISOString().slice(0,10));}return result;};
  function overview(state,day){
