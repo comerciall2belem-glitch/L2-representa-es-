@@ -360,6 +360,8 @@ def initialize():
 async def lifespan(app):
     initialize()
     initialize_personal(db)
+    from homologation_access import recover
+    recover(db, password_hash)
     zara.log_configuration()
     zara.verify_database_schema()
     correct_order_18_date()
