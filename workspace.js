@@ -34,8 +34,8 @@ function renderClientDrawer(){return renderClientWorkspace()+`<dialog id="client
 function closeClientWorkspace(){show('clientes')}
 function bindWorkspace(){
  workspaceNav();const drawer=$('clientWorkspaceDrawer');if(drawer){drawer.showModal();drawer.addEventListener('cancel',e=>{e.preventDefault();closeClientWorkspace()})}
- if(tab==='hoje')loadWorkspaceChatCount();
- if(tab==='crescimento')setTimeout(loadLeadConversion,0);
+
+
 }
 async function loadWorkspaceChatCount(){const badge=$('workspaceChatBadge');if(!badge||!s.token||!navigator.onLine)return;const token=s.token;try{const r=await fetch(s.server+'/api/chat/staff/conversations',{headers:{Authorization:'Bearer '+token},cache:'no-store'});if(!r.ok)return;const rows=await r.json();if(token!==s.token||badge!==$('workspaceChatBadge'))return;const count=rows.filter(r=>r.unread>0).length;badge.textContent=count?'· '+count+' pendente(s)':''}catch(_){}}
 function openWorkspaceChat(){

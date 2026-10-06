@@ -14,3 +14,5 @@ console.log('Pendências, deduplicação, escopo, recompra e metas: OK');
 {const state={clients:[{id:'c'}],routes:[{id:'bad',clientId:'c',date:'[object HTMLInputElement]'},{id:'impossible',clientId:'c',date:'2026-02-30'},{id:'valid',clientId:'c',date:'2026-10-05'}]};const result=require('../crm_operations.js').overview(state,'2026-10-06');assert.equal(result.overdue,1);assert.equal(result.pending.find(x=>x.id==='bad').due,'');assert.equal(result.pending.find(x=>x.id==='impossible').due,'');}
 
 {const rows=[{due:'2026-10-05',user:'Euler'},{due:'2026-10-06',owner:'Ana Paula'},{due:'2026-10-07',user:'Marlene'},{due:'',user:'Euler'}];assert.equal(crm.filterPending(rows,'2026-10-06','overdue').length,1);assert.equal(crm.filterPending(rows,'2026-10-06','today').length,1);assert.equal(crm.filterPending(rows,'2026-10-06','future','Marlene').length,1);assert.equal(crm.filterPending(rows,'2026-10-06','undated').length,1);assert.equal(crm.filterPending(rows,'2026-10-06','all','Euler').length,2);}
+
+assert.equal(crm.filterPending([{due:'2026-10-05'},{due:'2026-10-06'},{due:'2026-10-07'},{due:''}],'2026-10-06','action').length,2);
