@@ -25,6 +25,7 @@ from seller_commission import validate_rate, apply_seller_commission
 from financial_visibility import hide_industry_commissions, preserve_industry_commissions
 
 import zara
+import webchat
 
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
@@ -109,6 +110,7 @@ def project_order(con,entity_id,payload,created_at=None,updated_at=None):
 def initialize():
     with db() as con:
         zara.setup(con)
+        webchat.setup(con)
         con.execute('CREATE TABLE IF NOT EXISTS entities (kind TEXT NOT NULL, id TEXT NOT NULL, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(kind,id))')
         con.execute('ALTER TABLE entities ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ')
         con.execute('ALTER TABLE entities ALTER COLUMN created_at SET DEFAULT now()')
@@ -368,6 +370,7 @@ async def lifespan(app):
 
 app = FastAPI(title='L2 ONE API', lifespan=lifespan, docs_url=None, redoc_url=None)
 app.include_router(zara.router)
+app.include_router(webchat.router)
 
 def sectors_for(user):
     with db() as con:
