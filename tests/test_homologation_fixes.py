@@ -40,7 +40,7 @@ class HomologationFixTests(unittest.TestCase):
         scope={'db':lambda:con, 'Login':object,'resolve_identity':resolve_identity,'password_ok':lambda p,h:p=='personal-password',
                'PASSWORDS':{'Ana Paula':'bootstrap-password'},'password_hash':lambda p:'new-hash','secrets':secrets,
                'time':SimpleNamespace(sleep=lambda _:None),'HTTPException':Failure,'hashlib':hashlib,'SESSION_HOURS':24,
-               'effective_sectors':lambda *args:['finance'],'Jsonb':lambda x:x,'logging':logging,'os':SimpleNamespace(getenv=lambda *a:''),
+               'effective_sectors':lambda *args:['finance'],'Jsonb':lambda x:x,'logging':logging,'os':SimpleNamespace(getenv=lambda name,*a:'srv-daqk8ifavr4c738m78f0' if name=='RENDER_SERVICE_ID' else ''),
                'project_order':lambda con,id,p:con.actions.append(('projection',p['date']))}
         exec(compile(ast.Module(body=nodes,type_ignores=[]),'<fixes>','exec'),scope)
         return scope
@@ -70,3 +70,9 @@ class HomologationFixTests(unittest.TestCase):
     def test_migration_does_not_create_missing_order(self):
         con=Connection(); self.scope(con)['correct_order_18_date']()
         self.assertFalse(any(sql.startswith('UPDATE entities') for sql,_ in con.actions))
+
+    def test_production_startup_never_corrects_homologation_order(self):
+        con=Connection(payload={'date':'2026-11-30'}); scope=self.scope(con)
+        scope['os']=SimpleNamespace(getenv=lambda *a:'srv-production')
+        scope['correct_order_18_date']()
+        self.assertFalse(con.actions)

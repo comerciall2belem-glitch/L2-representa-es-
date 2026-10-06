@@ -17,7 +17,7 @@ from order_reconciliation import reconcile_invoice, InvoiceError
 from lead_capture import LeadIntake, normalize_intake, ingest_lead, lead_sla
 from login_identity import resolve_identity
 from catalog_document import build_catalog_pdf
-from whatsapp_media import send_media, validate_media, provider_config, MediaError
+from whatsapp_media import send_media, validate_media, provider_config, MediaError, send_text
 
 from commercial_tables import table_id, price_id, validate_table, seed_bella, validate_bella_order
 from access_policy import effective_sectors, attribute_order, COMMERCIAL_SECTORS
@@ -114,6 +114,7 @@ def initialize():
         con.execute('CREATE TABLE IF NOT EXISTS entities (kind TEXT NOT NULL, id TEXT NOT NULL, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(kind,id))')
         con.execute('ALTER TABLE entities ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ')
         con.execute('ALTER TABLE entities ALTER COLUMN created_at SET DEFAULT now()')
+        con.execute('CREATE TABLE IF NOT EXISTS commercial_drafts (username TEXT NOT NULL, draft_key TEXT NOT NULL, payload JSONB, client_timestamp BIGINT NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(username,draft_key))')
         con.execute('CREATE TABLE IF NOT EXISTS applied_changes (change_id TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE TABLE IF NOT EXISTS audit_log (id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, kind TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         seed_bella(con, BASE)
@@ -1524,10 +1525,14 @@ async def send_whatsapp_media(client_id: str = Form(...), caption: str = Form(''
         message_id = await asyncio.to_thread(send_media, phone, file.filename, mime, content, caption)
     except MediaError as exc:
         raise HTTPException(502, str(exc)) from exc
-    with db() as con:
-        con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'whatsapp_media',%s,%s)",
-                    (user, client_id, 'sent_'+kind))
-    return {'status': 'sent', 'messageId': message_id}
+    try:
+        with db() as con:
+            con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'whatsapp_media',%s,%s)",
+                        (user, client_id, 'accepted_'+kind))
+    except Exception:
+        logging.getLogger('uvicorn.error').error('whatsapp_media accepted history_failed')
+        return {'status':'accepted','messageId':message_id,'historyRecorded':False}
+    return {'status':'accepted','messageId':message_id,'historyRecorded':True}
 
 @app.get('/api/visits/{visit_id}/photos')
 def list_visit_photos(visit_id: str, authorization: str | None = Header(default=None)):
@@ -1908,7 +1913,7 @@ def zara_page():
 
 @app.get('/{filename}')
 def asset(filename: str):
-    if filename not in ('app.js','crm_operations.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
+    if filename not in ('app.js','crm_operations.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
         raise HTTPException(404)
     if filename in ('logo-l2-light.jpg','logo-l2-dark.jpg'):
         source={'logo-l2-light.jpg':'logo-light.jpg.b64','logo-l2-dark.jpg':'logo-dark.jpg.b64'}[filename]
@@ -1967,7 +1972,9 @@ def financial_analysis_read(month: str, authorization: str | None = Header(defau
 
 
 def correct_order_18_date():
-    # Idempotente, executada pela conexão interna na inicialização.
+    # This data correction belongs exclusively to the authorized homologation service.
+    if os.getenv('RENDER_SERVICE_ID') != 'srv-daqk8ifavr4c738m78f0':
+        return
     order_id = '858c6713-4712-4873-b716-8f5e76425468'
     with db() as con:
         row = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s FOR UPDATE", (order_id,)).fetchone()
@@ -2009,9 +2016,11 @@ async def preview_price_pdf(file: UploadFile = File(...), authorization: str | N
     content = await file.read(10 * 1024 * 1024 + 1)
     from pdf_price_import import extract_price_candidates
     try:
-        return extract_price_candidates(content)
+        return await asyncio.to_thread(extract_price_candidates, content)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(400, 'Não foi possível extrair esta tabela. Use PDF textual de até 10 MB e 100 páginas ou importe CSV.') from exc
+        raise HTTPException(400, 'Não foi possível extrair esta tabela. Confira o PDF ou use CSV.') from exc
 
 
 @app.get('/api/commercial/activity')
@@ -2035,3 +2044,68 @@ def commercial_activity(authorization: str | None = Header(default=None)):
             events.append({'user':actor,'kind':kind,'action':action,'at':at.isoformat(),'clientName':clients.get(cid,{}).get('name','')})
             if len(events)>=100: break
     return events
+
+
+class CommercialDraft(BaseModel):
+    key: str
+    payload: dict | None = None
+    updatedAt: int
+
+@app.get('/api/commercial/drafts')
+def commercial_drafts_list(authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    require_sector(user, 'commercial', 'office')
+    with db() as con:
+        return [{'key':r[0],'payload':r[1],'updatedAt':r[2]} for r in con.execute('SELECT draft_key,payload,client_timestamp FROM commercial_drafts WHERE username=%s ORDER BY updated_at DESC LIMIT 100',(user,))]
+
+@app.put('/api/commercial/drafts')
+def commercial_drafts_save(data: CommercialDraft, authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    require_sector(user, 'commercial', 'office')
+    if not re.fullmatch(r'(order|visit|interaction):[A-Za-z0-9_.-]{1,128}',data.key) or not 0<data.updatedAt<=int(datetime.now(TZ).timestamp()*1000)+300000:
+        raise HTTPException(422,'Identificação ou data do rascunho inválida')
+    if len(json.dumps(data.payload,ensure_ascii=False).encode())>100000:
+        raise HTTPException(413,'Rascunho acima de 100 KB')
+    with db() as con:
+        if data.payload:
+            fields=data.payload.get('fields',{})
+            if not isinstance(fields,dict) or any(re.search(r'token|password|secret|senha',k,re.I) for k in fields):
+                raise HTTPException(422,'Campos não permitidos no rascunho')
+            cid=fields.get('clientId') or (data.payload.get('order') or {}).get('clientId')
+            if cid:check_client_scope(con,user,cid)
+        con.execute("INSERT INTO commercial_drafts(username,draft_key,payload,client_timestamp) VALUES(%s,%s,%s,%s) ON CONFLICT(username,draft_key) DO UPDATE SET payload=excluded.payload,client_timestamp=excluded.client_timestamp,updated_at=now() WHERE commercial_drafts.client_timestamp<excluded.client_timestamp",(user,data.key,Jsonb(data.payload),data.updatedAt))
+    return {'saved':True}
+
+
+class WhatsAppText(BaseModel):
+    clientId: str
+    message: str
+
+@app.post('/api/whatsapp/text')
+async def send_whatsapp_text(data: WhatsAppText, authorization: str | None = Header(default=None)):
+    user=auth(authorization)
+    require_sector(user,'commercial','office')
+    if not provider_config():raise HTTPException(503,'API oficial do WhatsApp não configurada')
+    if not data.message.strip() or len(data.message)>4096:raise HTTPException(422,'Mensagem vazia ou acima de 4.096 caracteres')
+    with db() as con:
+        check_client_scope(con,user,data.clientId)
+        row=con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s",(data.clientId,)).fetchone()
+        if not row:raise HTTPException(404,'Cliente não encontrado')
+        phone=re.sub(r'\D','',str(row[0].get('phone') or ''))
+        if len(phone) in (10,11):phone='55'+phone
+        if not re.fullmatch(r'55\d{10,11}',phone):raise HTTPException(422,'Cadastre um telefone brasileiro com DDD')
+    try:
+        mid=await asyncio.to_thread(send_text,phone,data.message)
+    except MediaError as exc:
+        raise HTTPException(502,str(exc)) from exc
+    try:
+        with db() as con:
+            event_id=secrets.token_hex(16)
+            payload={'id':event_id,'clientId':data.clientId,'type':'WhatsApp','text':data.message,'owner':user,'at':datetime.now(TZ).isoformat(),'messageId':mid,'deliveryStatus':'accepted'}
+            con.execute("INSERT INTO entities(kind,id,payload) VALUES('interaction',%s,%s)",(event_id,Jsonb(payload)))
+            project_attendance(con,'interaction',event_id,payload)
+            con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'interaction',%s,'whatsapp_text_accepted')",(user,event_id))
+    except Exception:
+        logging.getLogger('uvicorn.error').error('whatsapp_text accepted history_failed')
+        return {'status':'accepted','messageId':mid,'historyRecorded':False}
+    return {'status':'accepted','messageId':mid,'historyRecorded':True}

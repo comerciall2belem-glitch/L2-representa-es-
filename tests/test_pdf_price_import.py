@@ -17,3 +17,19 @@ class PDFPriceImportTests(unittest.TestCase):
         self.assertEqual(extract_price_candidates(self.make_pdf(['Tabela sem valores']))['candidates'],[])
     def test_invalid_pdf_is_rejected(self):
         with self.assertRaises(ValueError):extract_price_candidates(b'not a PDF')
+
+    def test_scanned_pdf_uses_local_ocr_and_requires_review(self):
+        from PIL import Image, ImageDraw, ImageFont
+        from reportlab.lib.utils import ImageReader
+        image=Image.new('RGB',(1400,500),'white')
+        draw=ImageDraw.Draw(image)
+        font=ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',38)
+        draw.text((40,90),'SKU01 Batom vermelho R$ 12,50',font=font,fill='black')
+        buffer=io.BytesIO();pdf=canvas.Canvas(buffer,pagesize=(700,250))
+        pdf.drawImage(ImageReader(image),0,0,width=700,height=250);pdf.save()
+        result=extract_price_candidates(buffer.getvalue())
+        self.assertEqual(result['ocrPages'],[1])
+        self.assertEqual(result['candidates'][0]['sku'],'SKU01')
+        self.assertEqual(result['candidates'][0]['price'],'12.50')
+        self.assertEqual(result['candidates'][0]['source'],'ocr')
+        self.assertTrue(result['requiresReview'])

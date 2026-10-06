@@ -19,7 +19,7 @@ def provider_config():
     token = os.getenv('WHATSAPP_ACCESS_TOKEN', '')
     phone_id = os.getenv('WHATSAPP_PHONE_NUMBER_ID', '')
     version = os.getenv('WHATSAPP_GRAPH_VERSION', '')
-    if not token or not re.fullmatch(r'\d+', phone_id) or not re.fullmatch(r'v\d+\.\d+', version):
+    if not token or token != token.strip() or any(x in token.lower() for x in ('seu_token','your_token','placeholder','<')) or not re.fullmatch(r'\d+', phone_id) or not re.fullmatch(r'v\d+\.\d+', version):
         return None
     return token, phone_id, version
 
@@ -89,3 +89,20 @@ def send_media(to, filename, mime, content, caption):
     if not messages or not messages[0].get('id'):
         raise MediaError('O WhatsApp não confirmou a mensagem.')
     return messages[0]['id']
+
+
+def send_text(to, body):
+    config=provider_config()
+    if not config:
+        raise MediaError('Envio pela API indisponível: configure o acesso do WhatsApp no servidor.')
+    if not re.fullmatch(r'55\d{10,11}',to) or not isinstance(body,str) or not body.strip() or len(body)>4096:
+        raise MediaError('Destinatário ou mensagem inválida (até 4.096 caracteres).')
+    token,phone_id,version=config
+    result=_post(f'https://graph.facebook.com/{version}/{phone_id}/messages',token,
+        json.dumps({'messaging_product':'whatsapp','to':to,'type':'text','text':{'body':body}}).encode(),'application/json')
+    try:
+        mid=result['messages'][0]['id']
+        if not isinstance(mid,str) or not mid or len(mid)>256:raise ValueError()
+        return mid
+    except (KeyError,IndexError,TypeError,ValueError) as exc:
+        raise MediaError('Resposta de envio inválida. Confira o histórico antes de repetir.') from exc
