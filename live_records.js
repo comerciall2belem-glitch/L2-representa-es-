@@ -15,7 +15,7 @@
    const preview=document.createElement('div');preview.innerHTML=html;const app=$('app');
    // Replace only read-only metrics and record tables. Form nodes, files, selection,
    // focus, scroll position and unsaved field contents are never recreated.
-   for(const selector of ['.cards','.workspace-stats','.workspace-sync','.scroll','#clientTimeline']){
+   for(const selector of ['.cards','.workspace-stats','.workspace-sync','.scroll','#clientTimeline','h3','.muted','.fin-chart','[data-live-client-facts]']){
     const current=[...app.querySelectorAll(selector)],next=[...preview.querySelectorAll(selector)];
     if(current.length!==next.length)continue;
     current.forEach((node,index)=>{if(node.closest('form')||node.querySelector('input,textarea,select,form,[contenteditable="true"]')||next[index].querySelector('input,textarea,select,form'))return;
