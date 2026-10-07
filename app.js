@@ -1100,7 +1100,7 @@ function crm360Facts(data){
 function crm360Panel(){
  const data=crmTeamState(),facts=crm360Facts(data),clientName=id=>(data.clients||[]).find(c=>c.id===id)?.name||'Cliente não informado';
  const sum=rows=>rows.reduce((n,x)=>n+Math.round(Number(x.amount||0)*100),0)/100;
- const cards=[...CRM_STAGES.filter(x=>x!=='Perdido'),'Pedido pendente','Orçamento em elaboração'].map(stage=>{const rows=facts.rows.filter(x=>x.stage===stage);return `<div class="card">${stage==='Prospectado'?'Clientes prospectados':stage==='Qualificado'?'Qualificação':esc(stage)}<strong>${rows.length}</strong><small>${money(sum(rows))}</small></div>`}).join('');
+ const cards=[...CRM_STAGES.filter(x=>x!=='Perdido'),'Pedido pendente','Orçamento em elaboração'].map(stage=>{const rows=facts.rows.filter(x=>x.stage===stage),count=stage==='Prospectado'?new Set(rows.map(x=>x.clientId||x.taxId||x.id)).size:rows.length;return `<div class="card">${stage==='Prospectado'?'Clientes prospectados':stage==='Qualificado'?'Qualificação':esc(stage)}<strong>${count}</strong><small>${money(sum(rows))}</small></div>`}).join('');
  const table=(heads,rows)=>`<div class="scroll"><table><thead><tr>${heads.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan="${heads.length}">Nenhum registro nesta etapa.</td></tr>`}</tbody></table></div>`;
  const tr=values=>`<tr>${values.map(v=>`<td>${esc(v??'—')}</td>`).join('')}</tr>`;
  const details=facts.rows.filter(x=>!['Pedido confirmado','Faturado','Entregue','Pós-venda','Visita agendada'].includes(x.stage));

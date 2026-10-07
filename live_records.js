@@ -40,7 +40,7 @@
   const form=$('memberCreateForm');if(form){toggleSellerFields(form);if(!form.dataset.validationBound){form.dataset.validationBound='1';form.addEventListener('invalid',event=>{const out=$('adminTeamNotice');if(out)out.textContent='Confira o campo '+(event.target.closest('label')?.textContent.trim()||event.target.name)+'.';},true);}}
   if($('leadConversionPanel'))loadLeadConversion();
   if($('commercialActivity'))loadCommercialActivity();
-  clearInterval(activityTimer);activityTimer=setInterval(()=>{if(!document.hidden&&navigator.onLine&&s.token&&$('commercialActivity'))loadCommercialActivity();},15000);
+  clearInterval(activityTimer);activityTimer=setInterval(()=>{if(!document.hidden&&navigator.onLine&&s.token){if(tab==='crm')requestRead();else if($('commercialActivity'))loadCommercialActivity();}},15000);
   connected();
  }
  async function connected(){
