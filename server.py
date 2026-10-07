@@ -3,8 +3,8 @@ import logging
 import os, json, time, hashlib, secrets, re, base64, gzip, unicodedata, io, zipfile, asyncio
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Header, UploadFile, File, Form
-from fastapi.responses import FileResponse, Response
+from fastapi import FastAPI, HTTPException, Header, UploadFile, File, Form, Request
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
 from pydantic import BaseModel, Field
@@ -708,7 +708,7 @@ def assign_portfolio(data: AssignPortfolio, authorization: str | None = Header(d
     return {'count':len(selected),'sample':[p.get('name','') for _,p in selected[:10]],'applied':not data.dryRun}
 
 def validate_member(user, role, sectors):
-    name = user.strip()
+    name = unicodedata.normalize('NFC', user).strip()
     if not re.fullmatch(r"[\wÀ-ÿ .'-]{2,80}",name) or role not in ('Vendedor','Administrativo','Gestão') or set(sectors)-SECTORS or len(set(sectors))!=len(sectors):
         raise HTTPException(400,'Nome, função ou setores inválidos')
     if role=='Vendedor' and 'commercial' not in sectors:
@@ -724,7 +724,8 @@ def validate_member(user, role, sectors):
 def validate_seller_profile(profile):
     required=('fullName','document','email','phone','bank','accountType','branch','accountNumber','pixKey')
     if not isinstance(profile,dict) or any(not str(profile.get(k,'')).strip() or len(str(profile[k]))>180 for k in required):
-        raise HTTPException(400,'Preencha cadastro e dados bancários completos do vendedor')
+        missing=[{'fullName':'nome completo','document':'CPF/CNPJ','email':'e-mail','phone':'telefone','bank':'banco','accountType':'tipo de conta','branch':'agência','accountNumber':'conta','pixKey':'chave PIX'}[k] for k in required if not isinstance(profile,dict) or not str(profile.get(k,'')).strip()]
+        raise HTTPException(400,'Complete o cadastro do vendedor: '+', '.join(missing or ['campos com até 180 caracteres']))
     if profile['accountType'] not in ('Corrente','Poupança','Pagamento') or '@' not in profile['email']:
         raise HTTPException(400,'E-mail ou tipo de conta inválido')
     validate_rate(profile.get('commissionRate'))
@@ -747,6 +748,7 @@ def create_team_member(data: TeamMember, authorization: str | None = Header(defa
             con.execute('UPDATE app_users SET seller_commission_rate=%s WHERE username=%s',(validate_rate(data.profile.get('commissionRate')),name))
             con.execute('INSERT INTO seller_profiles(username,full_name,document,email,phone,bank,account_type,branch,account_number,pix_key) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',(name,*profile))
         con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'app_user',%s,'create')",(actor,name))
+        con.execute("SELECT pg_notify('l2_records_changed', '')")
     return {'user':name,'temporaryPassword':provisional,'mustChangePassword':True}
 
 @app.get('/api/admin/sellers/{member}/profile')
@@ -940,6 +942,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
         account=con.execute('SELECT role,sectors FROM app_users WHERE username=%s AND active',(user,)).fetchone()
         permissions=effective_sectors(user,account[0],account[1]) if account else set()
         # Catalog dependencies must exist before prices and orders, even in offline queues.
+        changed=False
         priority={'industry':0,'price_table':1,'client':2,'price':3}
         for change in sorted(data.changes,key=lambda c:priority.get(c.type,4)):
             kind, obj = change.type, dict(change.data)
@@ -1384,6 +1387,9 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 elif kind=='order': project_order(con,entity_id,obj)
             con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
             con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,kind,entity_id,'delete' if kind=='delete_route' else 'upsert'))
+            changed=True
+        if changed:
+            con.execute("SELECT pg_notify('l2_records_changed', '')")
         result = {'role':account[0] if account else '', 'sectors':sorted(permissions),'team':[row[0] for row in con.execute('SELECT username FROM app_users WHERE active ORDER BY username')],
                   'sellers':[row[0] for row in con.execute("SELECT username FROM app_users WHERE active AND role='Vendedor' ORDER BY username")]}
         result['sellerCommissions']=[{'user':name,'rate':str(rate) if rate is not None else None} for name,rate in con.execute("SELECT username,seller_commission_rate FROM app_users WHERE active AND role='Vendedor' ORDER BY username") if not is_seller(con,user) or name==user]
@@ -2035,11 +2041,15 @@ def commercial_activity(authorization: str | None = Header(default=None)):
     require_sector(user, 'commercial', 'office')
     with db() as con:
         clients = {x['id']: x for x in scoped_rows(con, 'client', user)}
-        kinds = ['client', 'visit', 'interaction', 'task', 'opportunity', 'order', 'route']
+        permissions=sectors_for(user)
+        kinds = ['client', 'visit', 'interaction', 'task', 'opportunity', 'order', 'route','fulfillment']
+        if 'office' in permissions:kinds+=['office_action','office_commercial','office_administrative']
+        if 'catalog' in permissions:kinds+=['price_table','price','industry']
         allowed = set()
         for kind in kinds:
             for x in scoped_rows(con, kind, user):
-                if kind == 'client' or x.get('clientId') in clients or (kind == 'task' and not x.get('clientId') and (not is_seller(con,user) or x.get('user')==user)):
+                if kind.startswith('office_') and 'finance' not in permissions and str(x.get('Área',''))=='Financeiro':continue
+                if kind in ('client','price_table','price','industry','office_action','office_commercial','office_administrative') or x.get('clientId') in clients or (kind == 'task' and not x.get('clientId') and (not is_seller(con,user) or x.get('user')==user)):
                     allowed.add((kind,x['id']))
         event_kinds=kinds+['whatsapp_media','whatsapp_document']
         events=[]
@@ -2047,7 +2057,7 @@ def commercial_activity(authorization: str | None = Header(default=None)):
             access_kind='client' if kind in ('whatsapp_media','whatsapp_document') else kind
             if (access_kind,entity_id) not in allowed: continue
             cid=entity_id if access_kind=='client' else payload.get('clientId')
-            events.append({'user':actor,'kind':kind,'action':action,'at':at.isoformat(),'clientName':clients.get(cid,{}).get('name','')})
+            events.append({'user':actor,'kind':kind,'action':action,'at':at.isoformat(),'clientName':clients.get(cid,{}).get('name','') or str(payload.get('Demanda ou problema') or payload.get('Demanda') or payload.get('title') or payload.get('brand') or '')})
             if len(events)>=100: break
     return events
 
@@ -2115,3 +2125,39 @@ async def send_whatsapp_text(data: WhatsAppText, authorization: str | None = Hea
         logging.getLogger('uvicorn.error').error('whatsapp_text accepted history_failed')
         return {'status':'accepted','messageId':mid,'historyRecorded':False}
     return {'status':'accepted','messageId':mid,'historyRecorded':True}
+
+
+@app.get('/api/records/events')
+async def records_events(request: Request, authorization: str | None = Header(default=None)):
+    # The channel carries only an invalidation signal, never customer data or secrets.
+    await asyncio.to_thread(auth, authorization)
+    async def messages():
+        async with await psycopg.AsyncConnection.connect(DATABASE_URL, autocommit=True) as con:
+            await con.execute('LISTEN l2_records_changed')
+            yield 'event: ready\ndata: {}\n\n'
+            while not await request.is_disconnected():
+                received=False
+                async for _ in con.notifies(timeout=25, stop_after=1):
+                    received=True
+                try:
+                    await asyncio.to_thread(auth, authorization)
+                except HTTPException:
+                    break
+                yield 'event: records\ndata: {}\n\n' if received else ': heartbeat\n\n'
+    return StreamingResponse(messages(),media_type='text/event-stream',headers={'Cache-Control':'no-cache','X-Accel-Buffering':'no'})
+
+
+def notify_record_change():
+    with db() as con:
+        con.execute("SELECT pg_notify('l2_records_changed', '')")
+
+@app.middleware('http')
+async def record_change_notifications(request: Request, call_next):
+    response=await call_next(request)
+    # Draft saves are private, and cannot recursively invalidate business records.
+    if request.method in ('POST','PUT','PATCH','DELETE') and response.status_code<400 and request.url.path.startswith('/api/') and request.url.path not in ('/api/sync','/api/login','/api/logout','/api/commercial/drafts'):
+        try:
+            await asyncio.to_thread(notify_record_change)
+        except Exception:
+            logging.warning('record_notification_unavailable')
+    return response

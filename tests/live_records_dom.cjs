@@ -1,0 +1,20 @@
+const fs=require('fs'),assert=require('assert'),{JSDOM}=require(process.env.L2_JSDOM||'jsdom');
+(async()=>{
+ const html=fs.readFileSync('index.html','utf8').replace(/<script[\s\S]*?<\/script>/g,'');const dom=new JSDOM(html,{url:'https://l2.test',runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window;
+ w.structuredClone=structuredClone;w.matchMedia=()=>({matches:false});w.alert=()=>{};w.confirm=()=>true;w.Element.prototype.scrollIntoView=()=>{};w.HTMLDialogElement.prototype.showModal=function(){this.open=true};
+ w.localStorage.setItem('l2one_state_v2',JSON.stringify({user:'Ana Paula',role:'Administrativo',server:'https://l2.test',token:'x'.repeat(40),sectors:['commercial','routes','office','management','admin','catalog'],team:['Ana Paula','Euler'],sellers:['Euler'],clients:[{id:'c1',name:'Cliente Teste',owner:'Euler',state:'PA'}],orders:[],goals:[{id:'g1',month:'2026-10',user:'Equipe',amount:1000}],pending:[]}));
+ let request;
+ w.fetch=async(url,options)=>{if(url.includes('/team-access')&&options?.method==='POST'){request=JSON.parse(options.body);return {ok:true,json:async()=>({user:'Nova Vendedora',temporaryPassword:'only-test-value'})};}if(url.includes('/team-access'))return {ok:true,json:async()=>[{user:'Euler',active:true,role:'Vendedor'},{user:'Nova Vendedora',active:true,role:'Vendedor'}]};if(url.includes('lead-conversion'))return {ok:true,json:async()=>({leads:0,clients:0,buyers:0,conversion:null,undated:0})};return {ok:true,json:async()=>[]};};
+ w.eval(['commercial_drafts.js','crm_operations.js','workspace.js','app.js','live_records.js'].map(p=>fs.readFileSync(p,'utf8')).join('\n')+'\nwindow.testState=s;');
+
+ w.eval('L2Live.pause();');w.show('pedidos');
+ const form=w.document.getElementById('orderForm'),notes=form.elements.namedItem('notes');notes.value='Texto não salvo';notes.focus();notes.setSelectionRange(3,8);
+ w.eval("testState.orders.push({id:'o1',clientId:'c1',brand:'BT',sellerResponsible:'Euler',date:'2026-10-07',status:'Confirmado',amount:250});queue('order',testState.orders[0]);L2Live.refresh();");
+ assert.equal(w.document.getElementById('orderForm'),form);assert.equal(notes.value,'Texto não salvo');assert.equal(w.document.activeElement,notes);assert.equal(notes.selectionStart,3);assert(w.document.querySelector('.cards').textContent.includes('250,00'));
+ w.show('hoje');assert(w.document.getElementById('commercialActivity').textContent.includes('Pedido atualizado'));assert(w.document.getElementById('commercialActivity').textContent.includes('aguardando nuvem'));
+ w.eval("testState.fulfillments.push({id:'f1',orderId:'o1',clientId:'c1',stage:'Em transporte',due:'2026-10-06',owner:'Marlene'});");w.show('office');assert(w.document.getElementById('app').textContent.includes('Pedido · Em transporte'));assert(w.document.getElementById('app').textContent.includes('Processos'));
+ w.show('admin');const sellerForm=w.document.getElementById('memberCreateForm');const fields={user:'Nova Vendedora',fullName:'Nome de Teste',document:'12345678900',email:'teste@example.com',phone:'91999999999',bank:'Banco Teste',accountType:'Corrente',branch:'0001',accountNumber:'123',pixKey:'teste@example.com',commissionRate:'2,50'};for(const [name,value]of Object.entries(fields))sellerForm.elements.namedItem(name).value=value;
+ sellerForm.querySelector('input[name="sectors"][value="finance"]').checked=true;w.toggleSellerFields(sellerForm);assert(sellerForm.querySelector('input[value="finance"]').disabled);assert(!sellerForm.querySelector('input[value="finance"]').checked);
+ await w.createMember({preventDefault(){},target:sellerForm});assert.equal(request.profile.commissionRate,'2.50');assert(request.sectors.includes('commercial'));assert(!request.sectors.includes('finance'));assert(w.eval("testState.sellers.includes('Nova Vendedora')"));
+ dom.window.close();console.log('Atualização de números, preservação do formulário/foco, feed local, entrega no escritório e criação de vendedor: OK');
+})().catch(error=>{console.error(error);process.exit(1)});
