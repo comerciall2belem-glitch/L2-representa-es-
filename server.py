@@ -2043,8 +2043,8 @@ def commercial_activity(authorization: str | None = Header(default=None)):
     with db() as con:
         def visible(kind):
             if monitoring:
-                return [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id', (kind,))]
-            return scoped_rows(con, kind, user)
+                return [{**row[1], 'id': row[0]} for row in con.execute('SELECT id,payload FROM entities WHERE kind=%s ORDER BY updated_at,id', (kind,))]
+            return [{**x, 'id': x.get('id') or (price_id(x) if kind == 'price' else '')} for x in scoped_rows(con, kind, user)]
         clients = {x['id']: x for x in visible('client')}
         permissions = sectors_for(user)
         kinds = ['client', 'visit', 'interaction', 'task', 'opportunity', 'order', 'route', 'fulfillment']
@@ -2055,7 +2055,7 @@ def commercial_activity(authorization: str | None = Header(default=None)):
             for x in visible(kind):
                 if kind.startswith('office_') and 'finance' not in permissions and str(x.get('Área', '')).casefold() == 'financeiro': continue
                 if kind in ('client', 'price_table', 'price', 'industry', 'office_action', 'office_commercial', 'office_administrative') or x.get('clientId') in clients or (kind == 'task' and not x.get('clientId') and (monitoring or not is_seller(con, user) or x.get('user') == user)):
-                    allowed.add((kind, x['id']))
+                    if x.get('id'): allowed.add((kind, x['id']))
         event_kinds = kinds + ['whatsapp_media', 'whatsapp_document']
         events, audited = [], set()
         query = "SELECT a.username,a.kind,a.entity_id,a.action,a.created_at,e.payload FROM audit_log a JOIN entities e ON e.kind=CASE WHEN a.kind IN ('whatsapp_media','whatsapp_document') THEN 'client' ELSE a.kind END AND e.id=a.entity_id WHERE a.kind=ANY(%s) ORDER BY a.id DESC LIMIT 2000"

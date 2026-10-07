@@ -340,11 +340,17 @@ function pendingTableIssues(){
  const issues=[];
  for(const change of s.pending){
   const items=change.type==='price'?[change.data]:change.type==='order'?change.data.items||[]:[];
-  items.forEach((item,index)=>{const brand=item.brand||change.data.brand,uf=item.state||change.data.priceTable,id=item.tableId||brand+'|'+uf;
+  items.forEach((item,index)=>{const brand=item.brand||change.data.brand,uf=change.type==='order'?change.data.priceTable:item.state,id=item.tableId||brand+'|'+uf;
    if(!s.priceTables.some(t=>t.id===id&&t.active&&t.brand===brand&&(!uf||t.state===uf||t.state==='ALL')))issues.push({change,item,index,brand,uf});
   });
  }
  return issues;
+}
+function syncReadyBatch(limit=500){
+ const blocked=new Set([...pendingTableIssues().map(x=>x.change.changeId),...pendingOrderSellerIssues().map(x=>x.changeId),...pendingClientRegistrationIssues().map(x=>x.changeId)]);
+ const blockedClients=new Set(s.pending.filter(x=>blocked.has(x.changeId)&&x.type==='client').map(x=>x.data.id));
+ const blockedOrders=new Set(s.pending.filter(x=>blocked.has(x.changeId)&&x.type==='order').map(x=>x.data.id));
+ return s.pending.filter(x=>!blocked.has(x.changeId)&&!blockedClients.has(x.data.clientId)&&!(x.type==='client'&&blockedClients.has(x.data.id))&&!blockedOrders.has(x.data.orderId)&&!(x.type==='order'&&blockedOrders.has(x.data.id))).slice(0,limit);
 }
 function pendingTableRepairsHTML(){
  const issues=pendingTableIssues();if(!issues.length)return '';
@@ -357,12 +363,12 @@ function repairPendingTable(event,changeId,index){
  if(change.type==='price'){
   const oldId=item.id,newId=table.id+'|'+item.sku;
   if(newId!==oldId&&(s.prices.some(p=>p.id===newId)||s.pending.some(x=>x.type==='price'&&x.data.id===newId)))return alert('Este produto já existe na tabela escolhida. Revise o preço em Marcas e preços antes de substituir.');
-  for(const x of s.pending.filter(x=>x.type==='price'&&x.data.id===oldId)){x.data.tableId=table.id;x.data.state=table.state;x.data.id=newId;}
+  for(const x of s.pending.filter(x=>x.type==='price'&&x.data.id===oldId)){x.data.tableId=table.id;x.data.state=table.state;x.data.id=newId;x.changeId=uid();}
   const local=s.prices.find(p=>p.id===oldId);if(local){local.tableId=table.id;local.state=table.state;local.id=newId;}
  }else{
   if(!s.prices.some(p=>(p.tableId||p.brand+'|'+p.state)===table.id&&p.sku===item.sku))return alert('Produto não cadastrado nessa tabela. Cadastre ou selecione o produto correto antes de sincronizar.');
   const previousTable=item.tableId;
-  for(const x of s.pending.filter(x=>x.type==='order'&&x.data.id===change.data.id))for(const i of x.data.items||[])if(i.sku===item.sku&&(i.brand||x.data.brand)===table.brand&&i.tableId===previousTable)i.tableId=table.id;
+  for(const x of s.pending.filter(x=>x.type==='order'&&x.data.id===change.data.id))for(const i of x.data.items||[])if(i.sku===item.sku&&(i.brand||x.data.brand)===table.brand&&i.tableId===previousTable){i.tableId=table.id;x.changeId=uid();}
   const local=s.orders.find(o=>o.id===change.data.id);if(local)for(const i of local.items||[])if(i.sku===item.sku&&(i.brand||local.brand)===table.brand)i.tableId=table.id;
  }
  save();show('config');
@@ -857,18 +863,6 @@ async function sync(options={}){
  const automatic=options.automatic===true;
  if(s.mustChangePassword||syncing||!s.server||!s.token||!navigator.onLine)return;
  for(const form of document.forms)CommercialDrafts.capture(form);
- if(pendingOrderSellerIssues().length){
-  window.lastSyncError='Informe o vendedor responsável dos pedidos pendentes antes de sincronizar.';
-  if(!automatic)show('config');
-  if(!automatic)document.querySelector('#pendingOrderRepairs')?.scrollIntoView({behavior:'smooth',block:'center'});
-  return;
- }
- if(pendingClientRegistrationIssues().length){
-  window.lastSyncError='Corrija a inscrição estadual dos cadastros pendentes antes de sincronizar.';
-  if(!automatic)show('config');
-  if(!automatic)document.querySelector('#pendingClientRepairs')?.scrollIntoView({behavior:'smooth',block:'center'});
-  return;
- }
  if(pendingTableIssues().length){
   syncing=true;network();
   try{
@@ -882,9 +876,8 @@ async function sync(options={}){
    }
   }catch(error){window.lastSyncError=error.message;if(!automatic)show('config');return;}finally{syncing=false;network();}
  }
- if(pendingTableIssues().length){window.lastSyncError='Corrija o vínculo das tabelas nas alterações pendentes.';if(!automatic)show('config');if(!automatic)document.querySelector('#pendingTableRepairs')?.scrollIntoView({block:'center'});return;}
  syncing=true;network();
- const batch=s.pending.slice(0,500), user=s.user, server=s.server, token=s.token;
+ const batch=syncReadyBatch(), user=s.user, server=s.server, token=s.token;
  try{
   const r=await fetch(server+'/api/sync',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({changes:batch})});
   if(!r.ok){let detail='';try{const payload=await r.json();detail=typeof payload.detail==='string'?payload.detail:''}catch(_){}if(r.status===401){s.token='';clearRestrictedCache();save();if(!automatic)alert('Sua sessão expirou. Entre novamente em Configurações.')}throw Error('Sincronização recusada ('+r.status+'): '+(detail||'verifique os dados enviados'))}
@@ -895,7 +888,7 @@ async function sync(options={}){
   for(const name of ['clients','visits','orders','tasks','routes','goals','prices','officeProcesses','officeActions','officeCommercial','officeAdministrative','officeRituals','officeRoles','officeFinance','officeBudget','officeMonthlyClose','commissionRates','commissionReceipts','cashDays','cashEntries','whatsappTemplates','opportunities','interactions','fulfillments','settlements','industries','priceTables'])if(Array.isArray(data[name]))s[name]=data[name];
   // Reaplica alterações criadas enquanto a solicitação estava em andamento.
   for(const change of s.pending){const name={...entityCollections,industry:'industries',price_table:'priceTables',delete_industry:'industries',delete_price_table:'priceTables',fulfillment:'fulfillments',settlement:'settlements',delete_fulfillment:'fulfillments',delete_settlement:'settlements',opportunity:'opportunities',interaction:'interactions',delete_opportunity:'opportunities',delete_interaction:'interactions',delete_lead:'leads',lead:'leads',delete_whatsapp_template:'whatsappTemplates',delete_client:'clients',delete_visit:'visits',delete_order:'orders',delete_task:'tasks',delete_goal:'goals',delete_price:'prices',delete_cash_entry:'cashEntries',delete_office_process:'officeProcesses',delete_office_action:'officeActions',delete_office_commercial:'officeCommercial',delete_office_administrative:'officeAdministrative',delete_office_ritual:'officeRituals',delete_office_role:'officeRoles',delete_office_finance:'officeFinance',delete_office_budget:'officeBudget',delete_office_monthly_close:'officeMonthlyClose',delete_commission_rate:'commissionRates',delete_commission_receipt:'commissionReceipts',commission_rate:'commissionRates',commission_receipt:'commissionReceipts',client:'clients',visit:'visits',order:'orders',task:'tasks',route:'routes',delete_route:'routes',office_action:'officeActions',office_commercial:'officeCommercial',office_administrative:'officeAdministrative',office_ritual:'officeRituals',office_role:'officeRoles',office_finance:'officeFinance',office_budget:'officeBudget',office_monthly_close:'officeMonthlyClose',office_process:'officeProcesses',cash_day:'cashDays',cash_entry:'cashEntries'}[change.type];if(!name)continue;s[name]=s[name].filter(x=>(name==='prices'?(x.id||catalogPriceId(x)):x.id)!==change.data.id);if(!change.type.startsWith('delete_'))s[name].push(change.data)}
-  if(data.role)s.role=data.role;if(Array.isArray(data.sectors))s.sectors=data.sectors;if(Array.isArray(data.team))s.team=data.team;if(Array.isArray(data.sellers))s.sellers=data.sellers;if(Array.isArray(data.sellerCommissions))s.sellerCommissions=data.sellerCommissions;await CommercialDrafts.flush();await CommercialDrafts.load();s.syncAt=new Date().toLocaleString('pt-BR');window.routeAttemptedDay='';save();window.lastSyncError='';if(!automatic&&!editingForm())show(tab);else window.L2Live?.refresh();await loadCommercialActivity();await loadWorkspaceChatCount();await loadLeadConversion();window.L2Live?.connected();
+  if(data.role)s.role=data.role;if(Array.isArray(data.sectors))s.sectors=data.sectors;if(Array.isArray(data.team))s.team=data.team;if(Array.isArray(data.sellers))s.sellers=data.sellers;if(Array.isArray(data.sellerCommissions))s.sellerCommissions=data.sellerCommissions;await CommercialDrafts.flush();await CommercialDrafts.load();s.syncAt=new Date().toLocaleString('pt-BR');window.routeAttemptedDay='';save();window.lastSyncError=s.pending.length&&!syncReadyBatch().length?'Os demais registros foram sincronizados. Revise as pendências em Configurações.':'';if(!automatic&&!editingForm())show(s.pending.length&&!syncReadyBatch().length?'config':tab);else window.L2Live?.refresh();await loadCommercialActivity();await loadWorkspaceChatCount();await loadLeadConversion();window.L2Live?.connected();
  }catch(e){console.warn(e);window.lastSyncError=e.message;network();if(batch.length&&!automatic)alert('Os dados foram salvos neste aparelho, mas NÃO foram enviados à nuvem. '+e.message)}finally{syncing=false;network();window.L2Live?.settled()}
 }
 

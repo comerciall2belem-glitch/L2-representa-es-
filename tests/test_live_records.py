@@ -24,8 +24,8 @@ class LiveRecordTests(unittest.TestCase):
         finance = {'id':'secret','Área':'Financeiro','Demanda':'Restrita'}
         class FeedDB(DB):
             def execute(self, q, params=()):
-                if 'SELECT payload FROM entities' in q:
-                    return [(x,) for x in {'client':[client],'order':[order],'visit':[visit],'office_action':[finance]}.get(params[0],[])]
+                if 'SELECT id,payload FROM entities' in q:
+                    return [(x['id'],{k:v for k,v in x.items() if k!='id'}) for x in {'client':[client],'order':[order],'visit':[visit],'office_action':[finance]}.get(params[0],[])]
                 if 'FROM audit_log a' in q:
                     return [('Laís','order','o','upsert',at,order),('Laís','office_action','secret','upsert',at,finance)]
                 if 'SELECT kind,id,payload,updated_at' in q:
