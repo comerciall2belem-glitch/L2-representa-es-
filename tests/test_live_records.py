@@ -84,6 +84,7 @@ class LiveRecordTests(unittest.TestCase):
         empty=DB();server.restore_bt_pa_table(empty);self.assertFalse(any('UPDATE entities' in q for q,_ in empty.queries))
 
     def test_live_script_is_served_as_an_allowed_asset(self):
+        self.assertTrue(server.asset('goals_dashboard.js').path.is_file())
         response=server.asset('live_records.js')
         self.assertEqual(response.status_code,200)
         self.assertTrue(response.path.is_file())

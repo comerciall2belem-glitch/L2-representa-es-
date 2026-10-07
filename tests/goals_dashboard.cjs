@@ -1,0 +1,18 @@
+const assert=require('assert'),G=require('../goals_dashboard.js');
+const data={industries:[{name:'BT'},{name:'Proart'},{name:'RK'}],goals:[{id:'g1',brand:'BT',month:'2026-10',user:'Equipe',amount:1000},{id:'g2',brand:'BT',month:'2026-10',user:'Euler',amount:400},{id:'g3',brand:'Proart',month:'2026-10',user:'Euler',amount:300},{id:'g4',brand:'Proart',month:'2026-10',user:'Erika',amount:200},{id:'g5',brand:'RK',month:'2026-10',user:'Equipe',amount:500},{id:'global',month:'2026-10',user:'Equipe',amount:2000}],orders:[{id:'o',date:'2026-10-07',status:'Confirmado',amount:800,items:[{brand:'BT',subtotal:600},{brand:'Proart',subtotal:400}]},{id:'b',date:'2026-10-03',status:'Faturado',amount:100,items:[{brand:'RK',subtotal:100}]},{id:'budget',date:'2026-10-07',status:'Orçamento',amount:999},{id:'pending',date:'2026-10-07',status:'Pendente',amount:999},{id:'cancel',date:'2026-10-07',status:'Cancelado',amount:999},{id:'future',date:'2026-10-08',status:'Confirmado',brand:'BT',amount:999}],fulfillments:[],billedDocuments:[]};
+let m=G.compute(data,'2026-10','2026-10-07');assert.equal(m.target,200000);assert.equal(m.total,90000);assert.equal(m.day,80000);assert.equal(m.week,80000);assert.equal(m.pct,45);assert.equal(m.remainingPct,55);assert.equal(m.remaining,110000);assert.equal(m.workdays,22);assert.equal(m.generalReference,200000);assert.equal(m.rows.find(x=>x.brand==='BT').month,48000);assert.equal(m.rows.find(x=>x.brand==='Proart').month,32000);assert.equal(m.rows.find(x=>x.brand==='Proart').target,50000);assert.equal(m.rows.find(x=>x.brand==='BT').target,100000);assert.equal([...G.orderAmounts(data.orders[0]).values()].reduce((a,b)=>a+b),80000);
+// Saturday sales contribute to weekly/monthly totals, without inventing a Saturday target.
+m=G.compute(data,'2026-10','2026-10-04');assert.equal(m.week,10000);assert.equal(m.day,0);assert.equal(m.weekly,18181);assert.equal(m.total,10000);
+// Missing industry target remains missing, and cannot inflate the global percentage.
+data.industries.push({name:'Creamy'});m=G.compute(data,'2026-10','2026-10-07');assert.equal(m.missing,1);assert.equal(m.pct,null);assert.equal(m.rows.find(x=>x.brand==='Creamy').target,null);assert.equal(m.rows.find(x=>x.brand==='Creamy').pace,'missing');
+// Actual invoices use invoice dates/values, not the order total or order date.
+data.billedDocuments=[{orderId:'o',brand:'BT',billed:250,billedDate:'2026-10-06'},{orderId:'cancel',brand:'BT',billed:999,billedDate:'2026-10-06'}];m=G.compute(data,'2026-10','2026-10-07','invoices');assert.equal(m.total,25000);assert.equal(m.week,25000);assert.equal(m.day,0);
+m=G.compute(data,'2026-10','2026-10-07','billed');assert.equal(m.total,10000);
+// Above-target brands never show negative remaining values.
+data.goals.find(x=>x.id==='g1').amount=100;m=G.compute(data,'2026-10','2026-10-07');const bt=m.rows.find(x=>x.brand==='BT');assert.equal(bt.pct,480);assert.equal(bt.remaining,0);assert.equal(bt.remainingPct,0);assert.equal(bt.pace,'done');
+// Retained delivery milestone and malformed dates.
+data.orders[0].status='Pendente';data.fulfillments=[{orderId:'o',stage:'Ocorrência',stageHistory:[{stage:'Entregue'}]}];data.orders.push({id:'bad',date:'[object HTMLInputElement]',status:'Confirmado',amount:1});m=G.compute(data,'2026-10','2026-10-07');assert.equal(m.total,90000);assert.equal(m.invalidDates,1);
+assert.throws(()=>G.compute(data,'2026-13','2026-10-07'));
+console.log('Metas: equipe, marcas, prioridades de meta, descontos, datas, NF, fins de semana e lacunas: OK');
+
+m=G.compute(data,'2026-11','2026-10-07');assert.equal(m.total,0);assert.equal(m.weekStart,null);

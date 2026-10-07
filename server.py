@@ -1460,6 +1460,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
         if {'commercial','office','management'} & permissions:
             fields = {
                 'client': ('name','owner','taxId'),
+                'goal': ('month','user','brand','amount','updatedAt'),
+                'industry': ('name','active'),
                 'lead': ('name','owner','createdAt','taxId'),
                 'opportunity': ('clientId','brand','stage','owner','amount','followUp','closeDate','orderId','stageHistory','updatedAt','createdAt','notes'),
                 'order': ('clientId','brand','status','sellerResponsible','user','amount','date','orderNumber','stageHistory','items','proposalSentAt','proposalSentBy'),
@@ -1467,7 +1469,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 'visit': ('clientId','user','date','result','checkIn','checkOut','next','notes','returnDate','brand'),
                 'fulfillment': ('clientId','orderId','stage','owner','due','at','stageHistory','notes','postSaleDate','postSaleResult')
             }
-            names = {'client':'clients','lead':'leads','opportunity':'opportunities','order':'orders','route':'routes','visit':'visits','fulfillment':'fulfillments'}
+            names = {'goal':'goals','industry':'industries','client':'clients','lead':'leads','opportunity':'opportunities','order':'orders','route':'routes','visit':'visits','fulfillment':'fulfillments'}
             for kind, keys in fields.items():
                 rows = []
                 for entity_id, payload in con.execute('SELECT id,payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,)):
@@ -1996,7 +1998,7 @@ def zara_page():
 
 @app.get('/{filename}')
 def asset(filename: str):
-    if filename not in ('app.js','live_records.js','crm_operations.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
+    if filename not in ('app.js','live_records.js','crm_operations.js','goals_dashboard.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
         raise HTTPException(404)
     if filename in ('logo-l2-light.jpg','logo-l2-dark.jpg'):
         source={'logo-l2-light.jpg':'logo-light.jpg.b64','logo-l2-dark.jpg':'logo-dark.jpg.b64'}[filename]
