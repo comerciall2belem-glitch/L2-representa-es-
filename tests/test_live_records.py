@@ -40,6 +40,15 @@ class LiveRecordTests(unittest.TestCase):
             self.assertEqual(next(x for x in result if x['kind']=='visit')['action'],'existing')
             self.assertEqual(sum(x['kind']=='order' for x in result),1)
 
+    def test_rejected_sync_identifies_record_for_marlene_without_acknowledging_it(self):
+        data=server.Sync(changes=[server.Change(type='unknown',data={'id':'local-record'},changeId='rejected-change')])
+        with patch.object(server,'auth',return_value='Marlene'),patch.object(server,'db',return_value=DB()):
+            with self.assertRaises(HTTPException) as error:
+                server.sync(data,'test-only')
+        self.assertEqual(error.exception.status_code,400)
+        self.assertEqual(error.exception.headers['X-L2-Change-Id'],'rejected-change')
+        self.assertEqual(error.exception.detail,'Alteração inválida')
+
     def test_live_script_is_served_as_an_allowed_asset(self):
         response=server.asset('live_records.js')
         self.assertEqual(response.status_code,200)

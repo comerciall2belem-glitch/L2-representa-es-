@@ -17,3 +17,5 @@ s.pending=[{changeId:'bad',type:'order',data:{id:'o',brand:'BT',priceTable:'AP',
 assert.deepEqual(Array.from(context.syncReadyBatch(),x=>x.changeId),['visit']);assert.equal(s.pending.length,4);
 s.pending[0].data.items[0].tableId='normal';assert.equal(context.syncReadyBatch().length,4);
 s.pending=[{changeId:'all',type:'order',data:{id:'o2',brand:'Bella Brazil',priceTable:'PA',items:[{sku:'sku',brand:'Bella Brazil',tableId:'Bella Brazil|VAREJO'}]}}];s.priceTables.push({id:'Bella Brazil|VAREJO',brand:'Bella Brazil',state:'ALL',active:true});assert.equal(context.pendingTableIssues().length,0);
+
+s.pending=[{changeId:'bad-record',type:'visit',data:{id:'bad'}},{changeId:'valid-record',type:'visit',data:{id:'good'}}];s.syncFaults={'bad-record':'Data inválida'};assert.deepEqual(Array.from(context.syncReadyBatch(),x=>x.changeId),['valid-record']);assert(context.syncFaultsHTML().includes('Data inválida'));assert.equal(s.pending.length,2);

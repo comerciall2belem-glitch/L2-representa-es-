@@ -945,449 +945,456 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
         changed=False
         priority={'industry':0,'price_table':1,'client':2,'price':3}
         for change in sorted(data.changes,key=lambda c:priority.get(c.type,4)):
-            kind, obj = change.type, dict(change.data)
-            entity_id = obj.get('id')
-            deletable = {'delete_industry':'industry','delete_price_table':'price_table','delete_fulfillment':'fulfillment','delete_settlement':'settlement','delete_opportunity':'opportunity','delete_lead':'lead','delete_interaction':'interaction','delete_whatsapp_template':'whatsapp_template','delete_client':'client','delete_visit':'visit','delete_task':'task','delete_goal':'goal','delete_route':'route','delete_order':'order','delete_price':'price','delete_cash_entry':'cash_entry','delete_commission_rate':'commission_rate','delete_commission_receipt':'commission_receipt','delete_office_process':'office_process','delete_office_action':'office_action','delete_office_commercial':'office_commercial','delete_office_administrative':'office_administrative','delete_office_ritual':'office_ritual','delete_office_role':'office_role','delete_office_finance':'office_finance','delete_office_budget':'office_budget','delete_office_monthly_close':'office_monthly_close'}
-            if kind not in ('industry','price_table','fulfillment','settlement','opportunity','interaction','lead','whatsapp_template','client','visit','order','task','route','goal','price','commission_rate','commission_receipt','office_action','office_commercial','office_administrative','office_ritual','office_role','office_finance','office_budget','office_monthly_close','office_process','cash_day','cash_entry',*deletable) or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
-                raise HTTPException(400, 'Alteração inválida')
-            # Replays were already validated and committed; catalog changes must not
-            # invalidate their acknowledgements or create duplicate audit entries.
-            if con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s',(change.changeId,)).fetchone():
-                continue
-            target_kind=deletable.get(kind,kind)
-            if target_kind=='client':
-                previous_client=con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s",(entity_id,)).fetchone()
-                if not admin_access(user) and previous_client and obj.get('owner',previous_client[0].get('owner'))!=previous_client[0].get('owner'):
-                    raise HTTPException(403,'Somente a administradora pode transferir a carteira')
-                if not admin_access(user) and not previous_client and obj.get('owner')!=user:
-                    raise HTTPException(403,'Novo cliente deve pertencer ao seu usuário')
-                if obj.get('owner') and not valid_client_responsible(con,obj['owner']) and obj['owner']!='Ana Paula' and not (previous_client and obj['owner']==previous_client[0].get('owner')):
-                    raise HTTPException(400,'Responsável precisa ser vendedor ou administrador ativo')
-                if previous_client: check_client_scope(con,user,entity_id)
-            elif target_kind in ('order','visit','task','route','opportunity','interaction','fulfillment','lead','settlement','office_finance'):
-                previous_entity=con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s',(target_kind,entity_id)).fetchone()
-                if previous_entity and previous_entity[0].get('clientId'):
-                    check_client_scope(con,user,previous_entity[0]['clientId'])
-                if obj.get('clientId'): check_client_scope(con,user,obj['clientId'])
-            if kind.startswith('delete_') and kind not in ('delete_industry','delete_price_table','delete_price','delete_client','delete_order'):
-                base=kind[7:]
-                required='finance' if base in ('settlement','cash_entry','commission_rate','commission_receipt','office_finance','office_budget','office_monthly_close') else 'routes' if base=='route' else 'office' if base.startswith('office_') or base=='fulfillment' else 'commercial'
-                if required not in permissions and not (base=='fulfillment' and 'commercial' in permissions): raise HTTPException(403,'Setor sem permissão')
-            if kind in deletable:
-                target = deletable[kind]
-                if target in ('industry','price_table') and not admin_access(user): raise HTTPException(403,'Catálogo restrito à administradora')
-                if target == 'industry' and con.execute("SELECT 1 FROM entities WHERE kind='price_table' AND payload->>'brand'=%s LIMIT 1",(entity_id,)).fetchone(): raise HTTPException(409,'Indústria possui tabelas cadastradas')
-                if target == 'price_table' and con.execute("SELECT 1 FROM entities WHERE kind='price' AND coalesce(nullif(payload->>'tableId',''),concat(payload->>'brand','|',payload->>'state'))=%s LIMIT 1",(entity_id,)).fetchone(): raise HTTPException(409,'Tabela possui produtos cadastrados')
-                if target in ('office_finance','office_budget','office_monthly_close','cash_entry','commission_rate','commission_receipt','settlement') and 'finance' not in permissions:
-                    raise HTTPException(403, 'Acesso financeiro restrito')
-                if target == 'cash_entry':
-                    previous = con.execute("SELECT payload FROM entities WHERE kind='cash_entry' AND id=%s",(entity_id,)).fetchone()
-                    if previous:
-                        day = con.execute("SELECT payload FROM entities WHERE kind='cash_day' AND payload->>'date'=%s",(previous[0].get('date'),)).fetchone()
-                        if not day or day[0].get('status') != 'Aberto':
-                            raise HTTPException(409, 'Caixa fechado não permite excluir lançamentos')
-                if target == 'route' and 'routes' not in permissions:
-                    raise HTTPException(403, 'Roteirização restrita a representantes')
-                if target in ('price','client') and not admin_access(user):
-                    raise HTTPException(403, 'Exclusão restrita à administradora')
-                if target == 'office_process' and 'finance' not in permissions:
-                    previous = con.execute("SELECT payload FROM entities WHERE kind=%s AND id=%s", (target,entity_id)).fetchone()
-                    if previous and previous[0].get('Área') == 'Financeiro':
-                        raise HTTPException(403, 'Acesso financeiro restrito')
-                if target == 'client':
-                    if con.execute('SELECT 1 FROM documentos_cliente WHERE client_id=%s LIMIT 1',(entity_id,)).fetchone():
-                        raise HTTPException(409, 'Cliente possui documentos; preserve o cadastro')
-                    for dependent in ('order','visit','route','task','opportunity','interaction','fulfillment','settlement'):
-                        if con.execute("SELECT 1 FROM entities WHERE kind=%s AND payload->>'clientId'=%s LIMIT 1",(dependent,entity_id)).fetchone():
-                            raise HTTPException(409, 'Cliente possui histórico vinculado; preserve o cadastro')
-                if target == 'order':
-                    if con.execute("SELECT 1 FROM entities WHERE kind='settlement' AND payload->>'orderId'=%s LIMIT 1",(entity_id,)).fetchone():
-                        raise HTTPException(409,'Pedido com faturamento vinculado deve ser conciliado antes de arquivar')
-                    previous = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
-                    if previous and previous[0].get('status') not in ('Pendente','Cancelado') and not admin_access(user):
-                        raise HTTPException(403, 'Somente Ana Paula pode arquivar pedido confirmado ou faturado')
+            try:
+                kind, obj = change.type, dict(change.data)
+                entity_id = obj.get('id')
+                deletable = {'delete_industry':'industry','delete_price_table':'price_table','delete_fulfillment':'fulfillment','delete_settlement':'settlement','delete_opportunity':'opportunity','delete_lead':'lead','delete_interaction':'interaction','delete_whatsapp_template':'whatsapp_template','delete_client':'client','delete_visit':'visit','delete_task':'task','delete_goal':'goal','delete_route':'route','delete_order':'order','delete_price':'price','delete_cash_entry':'cash_entry','delete_commission_rate':'commission_rate','delete_commission_receipt':'commission_receipt','delete_office_process':'office_process','delete_office_action':'office_action','delete_office_commercial':'office_commercial','delete_office_administrative':'office_administrative','delete_office_ritual':'office_ritual','delete_office_role':'office_role','delete_office_finance':'office_finance','delete_office_budget':'office_budget','delete_office_monthly_close':'office_monthly_close'}
+                if kind not in ('industry','price_table','fulfillment','settlement','opportunity','interaction','lead','whatsapp_template','client','visit','order','task','route','goal','price','commission_rate','commission_receipt','office_action','office_commercial','office_administrative','office_ritual','office_role','office_finance','office_budget','office_monthly_close','office_process','cash_day','cash_entry',*deletable) or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
+                    raise HTTPException(400, 'Alteração inválida')
+                # Replays were already validated and committed; catalog changes must not
+                # invalidate their acknowledgements or create duplicate audit entries.
                 if con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s',(change.changeId,)).fetchone():
                     continue
-                if target in ('opportunity','interaction','fulfillment','settlement','lead'):
-                    previous_crm = con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s',(target,entity_id)).fetchone()
-                    if previous_crm:
-                        con.execute('INSERT INTO archived_entities(kind,id,payload,reason) VALUES(%s,%s,%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,reason=excluded.reason,archived_at=now()',(target,entity_id,Jsonb(previous_crm[0]),'arquivado por '+user))
-                if target == 'visit':
-                    con.execute('DELETE FROM visit_photos WHERE visit_id=%s',(entity_id,))
-                if target == 'order' and previous:
-                    con.execute("INSERT INTO archived_entities(kind,id,payload,reason) VALUES('order',%s,%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,reason=excluded.reason,archived_at=now()",(entity_id,Jsonb(previous[0]),'arquivado por '+user))
-                if target in ('visit','interaction'):
-                    con.execute('DELETE FROM atendimentos WHERE id=%s',(target+':'+entity_id,))
-                elif target=='order':
-                    con.execute("UPDATE faturamento_pedidos SET status_pedido='Arquivado',updated_at=now() WHERE id=%s",(entity_id,))
-                elif target=='client':
-                    con.execute('DELETE FROM clientes WHERE id=%s',(entity_id,))
-                con.execute('DELETE FROM entities WHERE kind=%s AND id=%s',(target,entity_id))
-                con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
-                con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,target,entity_id,'delete'))
-                continue
-            if kind in ('opportunity','interaction','lead','visit','order','task','goal','whatsapp_template','client') and 'commercial' not in permissions and 'office' not in permissions:
-                raise HTTPException(403,'Setor comercial sem permissão')
-            if kind in ('fulfillment',) and not ({'office','commercial'} & permissions): raise HTTPException(403,'Setor operacional sem permissão')
-            if kind.startswith('office_') and kind not in ('office_finance','office_budget','office_monthly_close') and 'office' not in permissions: raise HTTPException(403,'Setor escritório sem permissão')
-            if kind in ('industry','price_table'):
-                if not admin_access(user) and not (kind == 'price_table' and user in CATALOG_EDITORS and 'catalog' in permissions): raise HTTPException(403,'Catálogo restrito à administração')
-                brand=str(obj.get('name' if kind=='industry' else 'brand','')).strip()
-                if not brand or len(brand)>120 or '|' in brand: raise HTTPException(400,'Indústria inválida')
-                if kind=='industry':
-                    if con.execute("SELECT 1 FROM entities WHERE kind='industry' AND lower(id)=lower(%s) AND id<>%s LIMIT 1",(brand,entity_id)).fetchone(): raise HTTPException(409,'Indústria já cadastrada')
-                    if entity_id!=brand: raise HTTPException(400,'Identificação da indústria inválida')
-                    if not isinstance(obj.get('active'),bool): raise HTTPException(400,'Situação inválida')
-                    policy=obj.get('commercialPolicy',[])
-                    if not isinstance(policy,list) or len(policy)>12: raise HTTPException(400,'Política comercial inválida')
-                    for tier in policy:
-                        try:
-                            minimum=Decimal(str(tier['minimum']))
-                            terms=tier['paymentTerms']
-                            freight=tier['freight']
-                        except (KeyError,TypeError,InvalidOperation):
-                            raise HTTPException(400,'Faixa comercial inválida')
-                        if not minimum.is_finite() or minimum<=0 or minimum.as_tuple().exponent < -2 or not isinstance(terms,str) or not re.fullmatch(r'\d+(?:/\d+)*',terms) or freight not in ('CIF','FOB'):
-                            raise HTTPException(400,'Faixa comercial inválida')
-                else:
-                    state='ALL' if obj.get('state')=='ALL' else normalize_uf(obj.get('state'))
-                    if not state: raise HTTPException(400,'Abrangência da tabela inválida')
-                    previous_table=con.execute("SELECT payload FROM entities WHERE kind='price_table' AND id=%s",(entity_id,)).fetchone()
-                    if previous_table and (previous_table[0].get('brand')!=brand or previous_table[0].get('state')!=state): raise HTTPException(400,'Tabela vinculada não pode mudar de indústria ou abrangência')
-                    if not str(obj.get('title','')).strip(): raise HTTPException(400,'Nome da tabela obrigatório')
-                    if not admin_access(user):
+                target_kind=deletable.get(kind,kind)
+                if target_kind=='client':
+                    previous_client=con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s",(entity_id,)).fetchone()
+                    if not admin_access(user) and previous_client and obj.get('owner',previous_client[0].get('owner'))!=previous_client[0].get('owner'):
+                        raise HTTPException(403,'Somente a administradora pode transferir a carteira')
+                    if not admin_access(user) and not previous_client and obj.get('owner')!=user:
+                        raise HTTPException(403,'Novo cliente deve pertencer ao seu usuário')
+                    if obj.get('owner') and not valid_client_responsible(con,obj['owner']) and obj['owner']!='Ana Paula' and not (previous_client and obj['owner']==previous_client[0].get('owner')):
+                        raise HTTPException(400,'Responsável precisa ser vendedor ou administrador ativo')
+                    if previous_client: check_client_scope(con,user,entity_id)
+                elif target_kind in ('order','visit','task','route','opportunity','interaction','fulfillment','lead','settlement','office_finance'):
+                    previous_entity=con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s',(target_kind,entity_id)).fetchone()
+                    if previous_entity and previous_entity[0].get('clientId'):
+                        check_client_scope(con,user,previous_entity[0]['clientId'])
+                    if obj.get('clientId'): check_client_scope(con,user,obj['clientId'])
+                if kind.startswith('delete_') and kind not in ('delete_industry','delete_price_table','delete_price','delete_client','delete_order'):
+                    base=kind[7:]
+                    required='finance' if base in ('settlement','cash_entry','commission_rate','commission_receipt','office_finance','office_budget','office_monthly_close') else 'routes' if base=='route' else 'office' if base.startswith('office_') or base=='fulfillment' else 'commercial'
+                    if required not in permissions and not (base=='fulfillment' and 'commercial' in permissions): raise HTTPException(403,'Setor sem permissão')
+                if kind in deletable:
+                    target = deletable[kind]
+                    if target in ('industry','price_table') and not admin_access(user): raise HTTPException(403,'Catálogo restrito à administradora')
+                    if target == 'industry' and con.execute("SELECT 1 FROM entities WHERE kind='price_table' AND payload->>'brand'=%s LIMIT 1",(entity_id,)).fetchone(): raise HTTPException(409,'Indústria possui tabelas cadastradas')
+                    if target == 'price_table' and con.execute("SELECT 1 FROM entities WHERE kind='price' AND coalesce(nullif(payload->>'tableId',''),concat(payload->>'brand','|',payload->>'state'))=%s LIMIT 1",(entity_id,)).fetchone(): raise HTTPException(409,'Tabela possui produtos cadastrados')
+                    if target in ('office_finance','office_budget','office_monthly_close','cash_entry','commission_rate','commission_receipt','settlement') and 'finance' not in permissions:
+                        raise HTTPException(403, 'Acesso financeiro restrito')
+                    if target == 'cash_entry':
+                        previous = con.execute("SELECT payload FROM entities WHERE kind='cash_entry' AND id=%s",(entity_id,)).fetchone()
+                        if previous:
+                            day = con.execute("SELECT payload FROM entities WHERE kind='cash_day' AND payload->>'date'=%s",(previous[0].get('date'),)).fetchone()
+                            if not day or day[0].get('status') != 'Aberto':
+                                raise HTTPException(409, 'Caixa fechado não permite excluir lançamentos')
+                    if target == 'route' and 'routes' not in permissions:
+                        raise HTTPException(403, 'Roteirização restrita a representantes')
+                    if target in ('price','client') and not admin_access(user):
+                        raise HTTPException(403, 'Exclusão restrita à administradora')
+                    if target == 'office_process' and 'finance' not in permissions:
+                        previous = con.execute("SELECT payload FROM entities WHERE kind=%s AND id=%s", (target,entity_id)).fetchone()
+                        if previous and previous[0].get('Área') == 'Financeiro':
+                            raise HTTPException(403, 'Acesso financeiro restrito')
+                    if target == 'client':
+                        if con.execute('SELECT 1 FROM documentos_cliente WHERE client_id=%s LIMIT 1',(entity_id,)).fetchone():
+                            raise HTTPException(409, 'Cliente possui documentos; preserve o cadastro')
+                        for dependent in ('order','visit','route','task','opportunity','interaction','fulfillment','settlement'):
+                            if con.execute("SELECT 1 FROM entities WHERE kind=%s AND payload->>'clientId'=%s LIMIT 1",(dependent,entity_id)).fetchone():
+                                raise HTTPException(409, 'Cliente possui histórico vinculado; preserve o cadastro')
+                    if target == 'order':
+                        if con.execute("SELECT 1 FROM entities WHERE kind='settlement' AND payload->>'orderId'=%s LIMIT 1",(entity_id,)).fetchone():
+                            raise HTTPException(409,'Pedido com faturamento vinculado deve ser conciliado antes de arquivar')
+                        previous = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
+                        if previous and previous[0].get('status') not in ('Pendente','Cancelado') and not admin_access(user):
+                            raise HTTPException(403, 'Somente Ana Paula pode arquivar pedido confirmado ou faturado')
+                    if con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s',(change.changeId,)).fetchone():
+                        continue
+                    if target in ('opportunity','interaction','fulfillment','settlement','lead'):
+                        previous_crm = con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s',(target,entity_id)).fetchone()
+                        if previous_crm:
+                            con.execute('INSERT INTO archived_entities(kind,id,payload,reason) VALUES(%s,%s,%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,reason=excluded.reason,archived_at=now()',(target,entity_id,Jsonb(previous_crm[0]),'arquivado por '+user))
+                    if target == 'visit':
+                        con.execute('DELETE FROM visit_photos WHERE visit_id=%s',(entity_id,))
+                    if target == 'order' and previous:
+                        con.execute("INSERT INTO archived_entities(kind,id,payload,reason) VALUES('order',%s,%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,reason=excluded.reason,archived_at=now()",(entity_id,Jsonb(previous[0]),'arquivado por '+user))
+                    if target in ('visit','interaction'):
+                        con.execute('DELETE FROM atendimentos WHERE id=%s',(target+':'+entity_id,))
+                    elif target=='order':
+                        con.execute("UPDATE faturamento_pedidos SET status_pedido='Arquivado',updated_at=now() WHERE id=%s",(entity_id,))
+                    elif target=='client':
+                        con.execute('DELETE FROM clientes WHERE id=%s',(entity_id,))
+                    con.execute('DELETE FROM entities WHERE kind=%s AND id=%s',(target,entity_id))
+                    con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
+                    con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,target,entity_id,'delete'))
+                    continue
+                if kind in ('opportunity','interaction','lead','visit','order','task','goal','whatsapp_template','client') and 'commercial' not in permissions and 'office' not in permissions:
+                    raise HTTPException(403,'Setor comercial sem permissão')
+                if kind in ('fulfillment',) and not ({'office','commercial'} & permissions): raise HTTPException(403,'Setor operacional sem permissão')
+                if kind.startswith('office_') and kind not in ('office_finance','office_budget','office_monthly_close') and 'office' not in permissions: raise HTTPException(403,'Setor escritório sem permissão')
+                if kind in ('industry','price_table'):
+                    if not admin_access(user) and not (kind == 'price_table' and user in CATALOG_EDITORS and 'catalog' in permissions): raise HTTPException(403,'Catálogo restrito à administração')
+                    brand=str(obj.get('name' if kind=='industry' else 'brand','')).strip()
+                    if not brand or len(brand)>120 or '|' in brand: raise HTTPException(400,'Indústria inválida')
+                    if kind=='industry':
+                        if con.execute("SELECT 1 FROM entities WHERE kind='industry' AND lower(id)=lower(%s) AND id<>%s LIMIT 1",(brand,entity_id)).fetchone(): raise HTTPException(409,'Indústria já cadastrada')
+                        if entity_id!=brand: raise HTTPException(400,'Identificação da indústria inválida')
+                        if not isinstance(obj.get('active'),bool): raise HTTPException(400,'Situação inválida')
+                        policy=obj.get('commercialPolicy',[])
+                        if not isinstance(policy,list) or len(policy)>12: raise HTTPException(400,'Política comercial inválida')
+                        for tier in policy:
+                            try:
+                                minimum=Decimal(str(tier['minimum']))
+                                terms=tier['paymentTerms']
+                                freight=tier['freight']
+                            except (KeyError,TypeError,InvalidOperation):
+                                raise HTTPException(400,'Faixa comercial inválida')
+                            if not minimum.is_finite() or minimum<=0 or minimum.as_tuple().exponent < -2 or not isinstance(terms,str) or not re.fullmatch(r'\d+(?:/\d+)*',terms) or freight not in ('CIF','FOB'):
+                                raise HTTPException(400,'Faixa comercial inválida')
+                    else:
+                        state='ALL' if obj.get('state')=='ALL' else normalize_uf(obj.get('state'))
+                        if not state: raise HTTPException(400,'Abrangência da tabela inválida')
                         previous_table=con.execute("SELECT payload FROM entities WHERE kind='price_table' AND id=%s",(entity_id,)).fetchone()
-                        if not previous_table or obj.get('active') != previous_table[0].get('active'):
-                            raise HTTPException(403,'Somente a administração altera a situação da tabela')
-                    industry=con.execute("SELECT payload FROM entities WHERE kind='industry' AND id=%s",(brand,)).fetchone()
-                    if not industry or not industry[0].get('active'): raise HTTPException(400,'Cadastre uma indústria ativa antes da tabela')
-                    if not isinstance(obj.get('active'),bool): raise HTTPException(400,'Situação inválida')
-                    obj['state']=state
-            if kind in ('fulfillment','settlement'):
-                order_ref = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(obj.get('orderId'),)).fetchone()
-                if not order_ref or obj.get('clientId') != order_ref[0].get('clientId'):
-                    raise HTTPException(400,'Pedido e cliente não correspondem')
-                if kind == 'fulfillment':
-                    if obj.get('stage') not in ('Conferência','Enviado à indústria','Confirmado pela indústria','Faturado','Em transporte','Entregue','Pós-venda concluído','Ocorrência') or not con.execute('SELECT 1 FROM app_users WHERE username=%s AND active',(obj.get('owner'),)).fetchone():
-                        raise HTTPException(400,'Etapa operacional ou responsável inválido')
-                    other = con.execute("SELECT 1 FROM entities WHERE kind='fulfillment' AND payload->>'orderId'=%s AND id<>%s LIMIT 1",(obj.get('orderId'),entity_id)).fetchone()
-                    if other: raise HTTPException(409,'Pedido já tem acompanhamento')
-                else:
-                    if 'finance' not in permissions: raise HTTPException(403,'Acesso financeiro restrito')
-                    if not isinstance(obj.get('invoiceNumber'),str) or not 1<=len(obj['invoiceNumber'].strip())<=80:
-                        raise HTTPException(400,'Documento de faturamento inválido')
-                    other = con.execute("SELECT 1 FROM entities WHERE kind='settlement' AND payload->>'orderId'=%s AND payload->>'invoiceNumber'=%s AND id<>%s LIMIT 1",(obj.get('orderId'),obj['invoiceNumber'],entity_id)).fetchone()
-                    if other: raise HTTPException(409,'Documento de faturamento já cadastrado')
-                    values={}
-                    for field in ('billed','commissionReceived','allocatedCost'):
-                        try: value=Decimal(str(obj.get(field,'0')))
-                        except (ValueError,TypeError,InvalidOperation): raise HTTPException(400,'Valor financeiro inválido')
-                        if not value.is_finite() or value<0 or value>Decimal('10000000000') or value.as_tuple().exponent < -2: raise HTTPException(400,'Valor financeiro inválido')
-                        values[field]=value
-                    try: rate=Decimal(str(obj.get('rate','')))
-                    except (ValueError,TypeError,InvalidOperation): raise HTTPException(400,'Percentual inválido')
-                    if not rate.is_finite() or rate<0 or rate>100 or rate.as_tuple().exponent < -2: raise HTTPException(400,'Percentual inválido')
-                    calculated=(values['billed']*rate/100).quantize(Decimal('0.01'))
-                    if values['commissionReceived']>calculated: raise HTTPException(400,'Recebimento maior que comissão prevista')
-                    if values['commissionReceived']>0 and not obj.get('receivedDate'): raise HTTPException(400,'Data de recebimento obrigatória')
-                    obj['commissionDue']=str(calculated)
-                    order_brands={item.get('brand') or order_ref[0].get('brand') for item in order_ref[0].get('items',[])}
-                    if obj.get('brand') not in (order_brands or {order_ref[0].get('brand')}):
-                        raise HTTPException(400,'Indústria do lançamento não corresponde ao pedido')
-                    for field in ('billedDate','due','receivedDate'):
-                        if obj.get(field):
-                            try: date.fromisoformat(str(obj[field]))
-                            except (ValueError,TypeError): raise HTTPException(400,'Data financeira inválida')
-                    if not obj.get('billedDate'): raise HTTPException(400,'Data do faturamento obrigatória')
-            if kind == 'lead':
-                tax=re.sub(r'\D','',str(obj.get('taxId','')))
-                uf=normalize_uf(obj.get('state'))
-                name=str(obj.get('name','')).strip()
-                if not valid_cnpj(tax) or entity_id != 'speedio:'+tax or not uf or not name or len(name)>180:
-                    raise HTTPException(400,'Lead: CNPJ, UF PA/AP ou nome inválido')
-                if any(len(str(obj.get(field,'')))>length for field,length in (('city',120),('contact',120),('phone',30))):
-                    raise HTTPException(400,'Dados do lead excedem o limite')
-                if not con.execute('SELECT 1 FROM app_users WHERE username=%s AND active',(obj.get('owner'),)).fetchone():
-                    raise HTTPException(400,'Responsável inválido')
-                if con.execute("SELECT 1 FROM clientes WHERE regexp_replace(coalesce(documento,''),'[^0-9]','','g')=%s LIMIT 1",(tax,)).fetchone():
-                    raise HTTPException(409,'CNPJ já cadastrado como cliente')
-                obj={key:obj.get(key) for key in ('id','name','taxId','state','city','contact','phone','owner','origin','createdAt')}
-                obj['taxId'],obj['state'],obj['origin']=tax,uf,'Speedio'
-            if kind in ('opportunity','interaction'):
-                if not isinstance(obj.get('clientId'),str) or not con.execute("SELECT 1 FROM entities WHERE kind='client' AND id=%s",(obj.get('clientId'),)).fetchone():
-                    raise HTTPException(400,'Cliente da oportunidade ou interação não encontrado')
-                if not con.execute('SELECT 1 FROM app_users WHERE username=%s AND active',(obj.get('owner'),)).fetchone():
-                    raise HTTPException(400,'Responsável inválido')
-                if kind == 'interaction':
-                    if obj.get('type') not in ('Conversa','Ligação','WhatsApp','E-mail','Reunião','Ocorrência','Pós-venda') or not isinstance(obj.get('text'),str) or not 1 <= len(obj['text'].strip()) <= 2000:
-                        raise HTTPException(400,'Interação inválida')
-                    try: datetime.fromisoformat(str(obj.get('at','')).replace('Z','+00:00'))
-                    except (ValueError,TypeError): raise HTTPException(400,'Data da interação inválida')
-                else:
-                    stages = ('Prospectado','Qualificado','Visita agendada','Proposta enviada','Negociação','Ganho','Pedido confirmado','Faturado','Entregue','Pós-venda','Perdido')
-                    if obj.get('stage') not in stages or not isinstance(obj.get('brand'),str) or not 1 <= len(obj['brand'].strip()) <= 120:
-                        raise HTTPException(400,'Etapa ou indústria inválida')
-                    if obj.get('stage') == 'Perdido' and not str(obj.get('lossReason','')).strip():
-                        raise HTTPException(400,'Informe o motivo da perda')
-                    try: amount=Decimal(str(obj.get('amount','')))
-                    except (ValueError,TypeError,InvalidOperation): raise HTTPException(400,'Valor previsto inválido')
-                    if not amount.is_finite() or amount<0 or amount>Decimal('10000000000') or amount.as_tuple().exponent < -2:
-                        raise HTTPException(400,'Valor previsto inválido')
-                    for field in ('closeDate','followUp'):
-                        value=obj.get(field)
-                        if value:
-                            try: date.fromisoformat(str(value))
-                            except (ValueError,TypeError): raise HTTPException(400,'Data da oportunidade inválida')
-                    if len(str(obj.get('notes','')))>2000: raise HTTPException(400,'Contexto muito extenso')
-            if kind in ('visit','interaction'):
-                previous_action = con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s', (kind,entity_id)).fetchone()
-                # Preserve previously queued historical records; require next step on new manual attendance.
-                if not previous_action and (kind=='visit' or obj.get('returnDate') or obj.get('next')):
-                    if not str(obj.get('next','')).strip() or not obj.get('returnDate'):
-                        raise HTTPException(400,'Informe próxima ação e data de retorno do atendimento')
-                    try: date.fromisoformat(str(obj['returnDate']))
-                    except (ValueError,TypeError): raise HTTPException(400,'Data de retorno inválida')
-            if kind == 'price':
-                brand=str(obj.get('brand','')).strip()
-                table=validate_table(con,obj,brand)
-                obj['state']=table['state']
-                obj['tableId']=table_id(obj)
-                if user not in CATALOG_EDITORS or 'catalog' not in permissions:
-                    raise HTTPException(403, 'Preço restrito à administração')
-                brand,sku,state = str(obj.get('brand','')).strip(),str(obj.get('sku','')).strip(),('ALL' if obj.get('state')=='ALL' else normalize_uf(obj.get('state')))
-                try: price=Decimal(str(obj.get('price','')))
-                except (ValueError,InvalidOperation): raise HTTPException(400,'Preço inválido')
-                if not brand or not sku or not state or entity_id != price_id(obj) or not price.is_finite() or price <= 0 or price.as_tuple().exponent < -2:
-                    raise HTTPException(400,'Preço ou identificação inválida')
-                description=str(obj.get('description','')).strip()
-                if not 1 <= len(description) <= 250: raise HTTPException(400,'Descrição inválida')
-                obj.update(brand=brand,sku=sku,state=state,price=str(price),description=description)
-            if (kind in ('office_finance','office_budget','office_monthly_close','cash_day','cash_entry','commission_rate','commission_receipt') or (kind == 'office_process' and str(obj.get('Área','')) == 'Financeiro')) and 'finance' not in permissions:
-                raise HTTPException(403, 'Acesso financeiro restrito')
-            if kind == 'office_finance' and obj.get('Data'):
-                try:
-                    date.fromisoformat(str(obj['Data']))
-                    if obj.get('Vencimento'): date.fromisoformat(str(obj['Vencimento']))
-                    if obj.get('Liquidação'): date.fromisoformat(str(obj['Liquidação']))
-                    amount=Decimal(str(obj['Valor']))
-                except (ValueError, TypeError, KeyError, InvalidOperation):
-                    raise HTTPException(400, 'Data ou valor financeiro inválido')
-                if not amount.is_finite() or amount<=0 or amount.as_tuple().exponent < -2 or amount>Decimal('10000000000'):
-                    raise HTTPException(400, 'Valor financeiro inválido')
-                if obj.get('Tipo') not in ('Receita','Despesa') or obj.get('Situação') not in ('Previsto','Pago/Recebido'):
-                    raise HTTPException(400, 'Tipo ou situação financeira inválida')
-                if not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])',str(obj.get('Competência') or obj['Data'][:7])):
-                    raise HTTPException(400, 'Competência inválida')
-                if obj['Situação']=='Pago/Recebido' and obj.get('Grupo DRE') and not obj.get('Liquidação'):
-                    raise HTTPException(400, 'Data de liquidação obrigatória')
-                if obj.get('Grupo DRE') and obj['Grupo DRE'] not in ('Receita operacional','Deduções','Custo direto','Despesa operacional','Resultado financeiro','Tributos sobre o resultado','Não classificado'):
-                    raise HTTPException(400, 'Grupo DRE inválido')
-                if obj.get('clientId') and not con.execute("SELECT 1 FROM entities WHERE kind='client' AND id=%s",(obj['clientId'],)).fetchone():
-                    raise HTTPException(400, 'Cliente do lançamento não encontrado')
-                if len(str(obj.get('Centro de custo','')))>120:
-                    raise HTTPException(400, 'Centro de custo muito longo')
-                if obj.get('sourceOpportunityId'):
-                    source=con.execute("SELECT payload FROM entities WHERE kind='opportunity' AND id=%s",(obj['sourceOpportunityId'],)).fetchone()
-                    if not source or source[0].get('stage') not in ('Ganho','Pedido confirmado') or source[0].get('clientId')!=obj.get('clientId') or obj.get('Tipo')!='Receita':
-                        raise HTTPException(400, 'Vínculo com oportunidade inválido')
-                    duplicates=con.execute("SELECT 1 FROM entities WHERE kind='office_finance' AND id<>%s AND payload->>'sourceOpportunityId'=%s LIMIT 1",(entity_id,obj['sourceOpportunityId'])).fetchone()
-                    if duplicates:
-                        raise HTTPException(409, 'Oportunidade já vinculada a um recebível')
-            if kind in ('commission_rate','commission_receipt'):
-                brand = str(obj.get('brand','')).strip()
-                normalized = re.sub(r'[^a-z0-9]+','-',''.join(c for c in unicodedata.normalize('NFD',brand) if not '\u0300' <= c <= '\u036f').lower()).strip('-')
-                if not normalized or len(brand)>120 or len(normalized)>120:
-                    raise HTTPException(400, 'Indústria inválida')
-                from decimal import Decimal as _Decimal
-                try:
-                    value = _Decimal(str(obj['rate' if kind=='commission_rate' else 'received']))
-                except (KeyError, ValueError, InvalidOperation):
-                    raise HTTPException(400, 'Valor de comissão inválido')
-                if not value.is_finite() or value<0 or value.as_tuple().exponent < -2 or (kind=='commission_rate' and value>100) or (kind=='commission_receipt' and value>10000000000):
-                    raise HTTPException(400, 'Valor de comissão inválido')
-                expected_id = normalized if kind=='commission_rate' else str(obj.get('month',''))+'|'+normalized
-                if kind=='commission_receipt' and not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])',str(obj.get('month',''))):
-                    raise HTTPException(400, 'Mês de comissão inválido')
-                if entity_id != expected_id:
-                    raise HTTPException(400, 'Identificação de comissão inválida')
-            if kind == 'office_process' and 'finance' not in permissions:
-                previous_process = con.execute("SELECT payload FROM entities WHERE kind='office_process' AND id=%s",(entity_id,)).fetchone()
-                if previous_process and str(previous_process[0].get('Área','')) == 'Financeiro':
+                        if previous_table and (previous_table[0].get('brand')!=brand or previous_table[0].get('state')!=state): raise HTTPException(400,'Tabela vinculada não pode mudar de indústria ou abrangência')
+                        if not str(obj.get('title','')).strip(): raise HTTPException(400,'Nome da tabela obrigatório')
+                        if not admin_access(user):
+                            previous_table=con.execute("SELECT payload FROM entities WHERE kind='price_table' AND id=%s",(entity_id,)).fetchone()
+                            if not previous_table or obj.get('active') != previous_table[0].get('active'):
+                                raise HTTPException(403,'Somente a administração altera a situação da tabela')
+                        industry=con.execute("SELECT payload FROM entities WHERE kind='industry' AND id=%s",(brand,)).fetchone()
+                        if not industry or not industry[0].get('active'): raise HTTPException(400,'Cadastre uma indústria ativa antes da tabela')
+                        if not isinstance(obj.get('active'),bool): raise HTTPException(400,'Situação inválida')
+                        obj['state']=state
+                if kind in ('fulfillment','settlement'):
+                    order_ref = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(obj.get('orderId'),)).fetchone()
+                    if not order_ref or obj.get('clientId') != order_ref[0].get('clientId'):
+                        raise HTTPException(400,'Pedido e cliente não correspondem')
+                    if kind == 'fulfillment':
+                        if obj.get('stage') not in ('Conferência','Enviado à indústria','Confirmado pela indústria','Faturado','Em transporte','Entregue','Pós-venda concluído','Ocorrência') or not con.execute('SELECT 1 FROM app_users WHERE username=%s AND active',(obj.get('owner'),)).fetchone():
+                            raise HTTPException(400,'Etapa operacional ou responsável inválido')
+                        other = con.execute("SELECT 1 FROM entities WHERE kind='fulfillment' AND payload->>'orderId'=%s AND id<>%s LIMIT 1",(obj.get('orderId'),entity_id)).fetchone()
+                        if other: raise HTTPException(409,'Pedido já tem acompanhamento')
+                    else:
+                        if 'finance' not in permissions: raise HTTPException(403,'Acesso financeiro restrito')
+                        if not isinstance(obj.get('invoiceNumber'),str) or not 1<=len(obj['invoiceNumber'].strip())<=80:
+                            raise HTTPException(400,'Documento de faturamento inválido')
+                        other = con.execute("SELECT 1 FROM entities WHERE kind='settlement' AND payload->>'orderId'=%s AND payload->>'invoiceNumber'=%s AND id<>%s LIMIT 1",(obj.get('orderId'),obj['invoiceNumber'],entity_id)).fetchone()
+                        if other: raise HTTPException(409,'Documento de faturamento já cadastrado')
+                        values={}
+                        for field in ('billed','commissionReceived','allocatedCost'):
+                            try: value=Decimal(str(obj.get(field,'0')))
+                            except (ValueError,TypeError,InvalidOperation): raise HTTPException(400,'Valor financeiro inválido')
+                            if not value.is_finite() or value<0 or value>Decimal('10000000000') or value.as_tuple().exponent < -2: raise HTTPException(400,'Valor financeiro inválido')
+                            values[field]=value
+                        try: rate=Decimal(str(obj.get('rate','')))
+                        except (ValueError,TypeError,InvalidOperation): raise HTTPException(400,'Percentual inválido')
+                        if not rate.is_finite() or rate<0 or rate>100 or rate.as_tuple().exponent < -2: raise HTTPException(400,'Percentual inválido')
+                        calculated=(values['billed']*rate/100).quantize(Decimal('0.01'))
+                        if values['commissionReceived']>calculated: raise HTTPException(400,'Recebimento maior que comissão prevista')
+                        if values['commissionReceived']>0 and not obj.get('receivedDate'): raise HTTPException(400,'Data de recebimento obrigatória')
+                        obj['commissionDue']=str(calculated)
+                        order_brands={item.get('brand') or order_ref[0].get('brand') for item in order_ref[0].get('items',[])}
+                        if obj.get('brand') not in (order_brands or {order_ref[0].get('brand')}):
+                            raise HTTPException(400,'Indústria do lançamento não corresponde ao pedido')
+                        for field in ('billedDate','due','receivedDate'):
+                            if obj.get(field):
+                                try: date.fromisoformat(str(obj[field]))
+                                except (ValueError,TypeError): raise HTTPException(400,'Data financeira inválida')
+                        if not obj.get('billedDate'): raise HTTPException(400,'Data do faturamento obrigatória')
+                if kind == 'lead':
+                    tax=re.sub(r'\D','',str(obj.get('taxId','')))
+                    uf=normalize_uf(obj.get('state'))
+                    name=str(obj.get('name','')).strip()
+                    if not valid_cnpj(tax) or entity_id != 'speedio:'+tax or not uf or not name or len(name)>180:
+                        raise HTTPException(400,'Lead: CNPJ, UF PA/AP ou nome inválido')
+                    if any(len(str(obj.get(field,'')))>length for field,length in (('city',120),('contact',120),('phone',30))):
+                        raise HTTPException(400,'Dados do lead excedem o limite')
+                    if not con.execute('SELECT 1 FROM app_users WHERE username=%s AND active',(obj.get('owner'),)).fetchone():
+                        raise HTTPException(400,'Responsável inválido')
+                    if con.execute("SELECT 1 FROM clientes WHERE regexp_replace(coalesce(documento,''),'[^0-9]','','g')=%s LIMIT 1",(tax,)).fetchone():
+                        raise HTTPException(409,'CNPJ já cadastrado como cliente')
+                    obj={key:obj.get(key) for key in ('id','name','taxId','state','city','contact','phone','owner','origin','createdAt')}
+                    obj['taxId'],obj['state'],obj['origin']=tax,uf,'Speedio'
+                if kind in ('opportunity','interaction'):
+                    if not isinstance(obj.get('clientId'),str) or not con.execute("SELECT 1 FROM entities WHERE kind='client' AND id=%s",(obj.get('clientId'),)).fetchone():
+                        raise HTTPException(400,'Cliente da oportunidade ou interação não encontrado')
+                    if not con.execute('SELECT 1 FROM app_users WHERE username=%s AND active',(obj.get('owner'),)).fetchone():
+                        raise HTTPException(400,'Responsável inválido')
+                    if kind == 'interaction':
+                        if obj.get('type') not in ('Conversa','Ligação','WhatsApp','E-mail','Reunião','Ocorrência','Pós-venda') or not isinstance(obj.get('text'),str) or not 1 <= len(obj['text'].strip()) <= 2000:
+                            raise HTTPException(400,'Interação inválida')
+                        try: datetime.fromisoformat(str(obj.get('at','')).replace('Z','+00:00'))
+                        except (ValueError,TypeError): raise HTTPException(400,'Data da interação inválida')
+                    else:
+                        stages = ('Prospectado','Qualificado','Visita agendada','Proposta enviada','Negociação','Ganho','Pedido confirmado','Faturado','Entregue','Pós-venda','Perdido')
+                        if obj.get('stage') not in stages or not isinstance(obj.get('brand'),str) or not 1 <= len(obj['brand'].strip()) <= 120:
+                            raise HTTPException(400,'Etapa ou indústria inválida')
+                        if obj.get('stage') == 'Perdido' and not str(obj.get('lossReason','')).strip():
+                            raise HTTPException(400,'Informe o motivo da perda')
+                        try: amount=Decimal(str(obj.get('amount','')))
+                        except (ValueError,TypeError,InvalidOperation): raise HTTPException(400,'Valor previsto inválido')
+                        if not amount.is_finite() or amount<0 or amount>Decimal('10000000000') or amount.as_tuple().exponent < -2:
+                            raise HTTPException(400,'Valor previsto inválido')
+                        for field in ('closeDate','followUp'):
+                            value=obj.get(field)
+                            if value:
+                                try: date.fromisoformat(str(value))
+                                except (ValueError,TypeError): raise HTTPException(400,'Data da oportunidade inválida')
+                        if len(str(obj.get('notes','')))>2000: raise HTTPException(400,'Contexto muito extenso')
+                if kind in ('visit','interaction'):
+                    previous_action = con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s', (kind,entity_id)).fetchone()
+                    # Preserve previously queued historical records; require next step on new manual attendance.
+                    if not previous_action and (kind=='visit' or obj.get('returnDate') or obj.get('next')):
+                        if not str(obj.get('next','')).strip() or not obj.get('returnDate'):
+                            raise HTTPException(400,'Informe próxima ação e data de retorno do atendimento')
+                        try: date.fromisoformat(str(obj['returnDate']))
+                        except (ValueError,TypeError): raise HTTPException(400,'Data de retorno inválida')
+                if kind == 'price':
+                    brand=str(obj.get('brand','')).strip()
+                    table=validate_table(con,obj,brand)
+                    obj['state']=table['state']
+                    obj['tableId']=table_id(obj)
+                    if user not in CATALOG_EDITORS or 'catalog' not in permissions:
+                        raise HTTPException(403, 'Preço restrito à administração')
+                    brand,sku,state = str(obj.get('brand','')).strip(),str(obj.get('sku','')).strip(),('ALL' if obj.get('state')=='ALL' else normalize_uf(obj.get('state')))
+                    try: price=Decimal(str(obj.get('price','')))
+                    except (ValueError,InvalidOperation): raise HTTPException(400,'Preço inválido')
+                    if not brand or not sku or not state or entity_id != price_id(obj) or not price.is_finite() or price <= 0 or price.as_tuple().exponent < -2:
+                        raise HTTPException(400,'Preço ou identificação inválida')
+                    description=str(obj.get('description','')).strip()
+                    if not 1 <= len(description) <= 250: raise HTTPException(400,'Descrição inválida')
+                    obj.update(brand=brand,sku=sku,state=state,price=str(price),description=description)
+                if (kind in ('office_finance','office_budget','office_monthly_close','cash_day','cash_entry','commission_rate','commission_receipt') or (kind == 'office_process' and str(obj.get('Área','')) == 'Financeiro')) and 'finance' not in permissions:
                     raise HTTPException(403, 'Acesso financeiro restrito')
-            if kind in ('cash_day','cash_entry'):
-                from datetime import date as _date
-                from decimal import Decimal as _Decimal
-                try:
-                    _date.fromisoformat(str(obj.get('date','')))
-                except (ValueError, TypeError):
-                    raise HTTPException(400, 'Data do caixa inválida')
-                if kind == 'cash_day':
+                if kind == 'office_finance' and obj.get('Data'):
                     try:
-                        opening = _Decimal(str(obj['opening']))
-                        if not opening.is_finite() or opening < 0 or opening.as_tuple().exponent < -2:
-                            raise ValueError()
+                        date.fromisoformat(str(obj['Data']))
+                        if obj.get('Vencimento'): date.fromisoformat(str(obj['Vencimento']))
+                        if obj.get('Liquidação'): date.fromisoformat(str(obj['Liquidação']))
+                        amount=Decimal(str(obj['Valor']))
+                    except (ValueError, TypeError, KeyError, InvalidOperation):
+                        raise HTTPException(400, 'Data ou valor financeiro inválido')
+                    if not amount.is_finite() or amount<=0 or amount.as_tuple().exponent < -2 or amount>Decimal('10000000000'):
+                        raise HTTPException(400, 'Valor financeiro inválido')
+                    if obj.get('Tipo') not in ('Receita','Despesa') or obj.get('Situação') not in ('Previsto','Pago/Recebido'):
+                        raise HTTPException(400, 'Tipo ou situação financeira inválida')
+                    if not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])',str(obj.get('Competência') or obj['Data'][:7])):
+                        raise HTTPException(400, 'Competência inválida')
+                    if obj['Situação']=='Pago/Recebido' and obj.get('Grupo DRE') and not obj.get('Liquidação'):
+                        raise HTTPException(400, 'Data de liquidação obrigatória')
+                    if obj.get('Grupo DRE') and obj['Grupo DRE'] not in ('Receita operacional','Deduções','Custo direto','Despesa operacional','Resultado financeiro','Tributos sobre o resultado','Não classificado'):
+                        raise HTTPException(400, 'Grupo DRE inválido')
+                    if obj.get('clientId') and not con.execute("SELECT 1 FROM entities WHERE kind='client' AND id=%s",(obj['clientId'],)).fetchone():
+                        raise HTTPException(400, 'Cliente do lançamento não encontrado')
+                    if len(str(obj.get('Centro de custo','')))>120:
+                        raise HTTPException(400, 'Centro de custo muito longo')
+                    if obj.get('sourceOpportunityId'):
+                        source=con.execute("SELECT payload FROM entities WHERE kind='opportunity' AND id=%s",(obj['sourceOpportunityId'],)).fetchone()
+                        if not source or source[0].get('stage') not in ('Ganho','Pedido confirmado') or source[0].get('clientId')!=obj.get('clientId') or obj.get('Tipo')!='Receita':
+                            raise HTTPException(400, 'Vínculo com oportunidade inválido')
+                        duplicates=con.execute("SELECT 1 FROM entities WHERE kind='office_finance' AND id<>%s AND payload->>'sourceOpportunityId'=%s LIMIT 1",(entity_id,obj['sourceOpportunityId'])).fetchone()
+                        if duplicates:
+                            raise HTTPException(409, 'Oportunidade já vinculada a um recebível')
+                if kind in ('commission_rate','commission_receipt'):
+                    brand = str(obj.get('brand','')).strip()
+                    normalized = re.sub(r'[^a-z0-9]+','-',''.join(c for c in unicodedata.normalize('NFD',brand) if not '\u0300' <= c <= '\u036f').lower()).strip('-')
+                    if not normalized or len(brand)>120 or len(normalized)>120:
+                        raise HTTPException(400, 'Indústria inválida')
+                    from decimal import Decimal as _Decimal
+                    try:
+                        value = _Decimal(str(obj['rate' if kind=='commission_rate' else 'received']))
                     except (KeyError, ValueError, InvalidOperation):
-                        raise HTTPException(400, 'Saldo inicial inválido')
-                    if obj.get('status') not in ('Aberto','Fechado'):
-                        raise HTTPException(400, 'Status de caixa inválido')
-                    existing_day = con.execute("SELECT payload FROM entities WHERE kind='cash_day' AND id=%s", (entity_id,)).fetchone()
-                    existing_date = con.execute("SELECT id FROM entities WHERE kind='cash_day' AND payload->>'date'=%s AND id<>%s", (obj['date'],entity_id)).fetchone()
-                    if existing_date or (existing_day and existing_day[0].get('date') != obj['date']):
-                        raise HTTPException(409, 'Caixa da data já existe')
-                    if existing_day and existing_day[0].get('status') == 'Fechado':
-                        raise HTTPException(409, 'Caixa fechado não pode ser alterado')
-                    if existing_day and str(existing_day[0].get('opening')) != str(obj['opening']):
-                        raise HTTPException(409, 'Saldo inicial não pode ser alterado após abertura')
-                    if obj['status'] == 'Fechado':
-                        if not existing_day:
-                            raise HTTPException(409, 'Abra o caixa antes de fechar')
+                        raise HTTPException(400, 'Valor de comissão inválido')
+                    if not value.is_finite() or value<0 or value.as_tuple().exponent < -2 or (kind=='commission_rate' and value>100) or (kind=='commission_receipt' and value>10000000000):
+                        raise HTTPException(400, 'Valor de comissão inválido')
+                    expected_id = normalized if kind=='commission_rate' else str(obj.get('month',''))+'|'+normalized
+                    if kind=='commission_receipt' and not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])',str(obj.get('month',''))):
+                        raise HTTPException(400, 'Mês de comissão inválido')
+                    if entity_id != expected_id:
+                        raise HTTPException(400, 'Identificação de comissão inválida')
+                if kind == 'office_process' and 'finance' not in permissions:
+                    previous_process = con.execute("SELECT payload FROM entities WHERE kind='office_process' AND id=%s",(entity_id,)).fetchone()
+                    if previous_process and str(previous_process[0].get('Área','')) == 'Financeiro':
+                        raise HTTPException(403, 'Acesso financeiro restrito')
+                if kind in ('cash_day','cash_entry'):
+                    from datetime import date as _date
+                    from decimal import Decimal as _Decimal
+                    try:
+                        _date.fromisoformat(str(obj.get('date','')))
+                    except (ValueError, TypeError):
+                        raise HTTPException(400, 'Data do caixa inválida')
+                    if kind == 'cash_day':
                         try:
-                            closing = _Decimal(str(obj['closing']))
-                            if not closing.is_finite() or closing < 0 or closing.as_tuple().exponent < -2:
+                            opening = _Decimal(str(obj['opening']))
+                            if not opening.is_finite() or opening < 0 or opening.as_tuple().exponent < -2:
                                 raise ValueError()
                         except (KeyError, ValueError, InvalidOperation):
-                            raise HTTPException(400, 'Saldo de fechamento inválido')
+                            raise HTTPException(400, 'Saldo inicial inválido')
+                        if obj.get('status') not in ('Aberto','Fechado'):
+                            raise HTTPException(400, 'Status de caixa inválido')
+                        existing_day = con.execute("SELECT payload FROM entities WHERE kind='cash_day' AND id=%s", (entity_id,)).fetchone()
+                        existing_date = con.execute("SELECT id FROM entities WHERE kind='cash_day' AND payload->>'date'=%s AND id<>%s", (obj['date'],entity_id)).fetchone()
+                        if existing_date or (existing_day and existing_day[0].get('date') != obj['date']):
+                            raise HTTPException(409, 'Caixa da data já existe')
+                        if existing_day and existing_day[0].get('status') == 'Fechado':
+                            raise HTTPException(409, 'Caixa fechado não pode ser alterado')
+                        if existing_day and str(existing_day[0].get('opening')) != str(obj['opening']):
+                            raise HTTPException(409, 'Saldo inicial não pode ser alterado após abertura')
+                        if obj['status'] == 'Fechado':
+                            if not existing_day:
+                                raise HTTPException(409, 'Abra o caixa antes de fechar')
+                            try:
+                                closing = _Decimal(str(obj['closing']))
+                                if not closing.is_finite() or closing < 0 or closing.as_tuple().exponent < -2:
+                                    raise ValueError()
+                            except (KeyError, ValueError, InvalidOperation):
+                                raise HTTPException(400, 'Saldo de fechamento inválido')
+                    else:
+                        if obj.get('type') not in ('Entrada','Saída') or not str(obj.get('category','')).strip() or not str(obj.get('description','')).strip():
+                            raise HTTPException(400, 'Movimentação incompleta')
+                        try:
+                            amount = _Decimal(str(obj['amount']))
+                            if not amount.is_finite() or amount <= 0 or amount.as_tuple().exponent < -2:
+                                raise ValueError()
+                        except (KeyError, ValueError, InvalidOperation):
+                            raise HTTPException(400, 'Valor da movimentação inválido')
+                        existing_entry = con.execute("SELECT payload FROM entities WHERE kind='cash_entry' AND id=%s",(entity_id,)).fetchone()
+                        if existing_entry and existing_entry[0].get('date') != obj['date']:
+                            raise HTTPException(409, 'Movimentação não pode mudar de data')
+                        day_record = con.execute("SELECT payload FROM entities WHERE kind='cash_day' AND payload->>'date'=%s",(obj['date'],)).fetchone()
+                        if not day_record or day_record[0].get('status') != 'Aberto':
+                            raise HTTPException(409, 'Caixa não está aberto para esta data')
+                if kind == 'client' and (not isinstance(obj.get('name'),str) or not obj['name'].strip()):
+                    raise HTTPException(400, 'Nome do cliente obrigatório')
+                if kind == 'client':
+                    state = str(obj.get('state','')).strip().upper()
+                    if state and state not in ('PA','PARA','PARÁ','AP','AMAPA','AMAPÁ'):
+                        raise HTTPException(400, 'A carteira aceita somente clientes do Pará e Amapá')
+                if kind == 'client':
+                    if con.execute("SELECT 1 FROM archived_entities WHERE kind='client' AND id=%s",(entity_id,)).fetchone():
+                        raise HTTPException(409, 'Cliente arquivado; não é permitido recriar o mesmo cadastro')
+                    # Cadastros legados continuam editáveis; novos exigem identificação fiscal.
+                    existing = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (entity_id,)).fetchone()
+                    if not existing and not normalize_uf(obj.get('state')):
+                        raise HTTPException(400, 'UF PA ou AP obrigatória para novo cliente')
+                    tax_id = ''.join(ch for ch in str(obj.get('taxId') or '') if ch.isdigit())
+                    registration = str(obj.get('stateRegistration') or '').strip().upper()
+                    # Aceita pontuação comum da IE sem converter palavras inválidas em números.
+                    if registration != 'ISENTO' and re.fullmatch(r'[\d.\-/\s]+', registration):
+                        registration = re.sub(r'\D', '', registration)
+                    if not existing or tax_id or registration:
+                        if not valid_cnpj(tax_id):
+                            raise HTTPException(400, 'CNPJ inválido; informe os 14 dígitos corretos')
+                        if registration != 'ISENTO' and not (registration.isdigit() and 7 <= len(registration) <= 14):
+                            raise HTTPException(400, f"Cliente {obj['name'].strip()} ({entity_id}): informe inscrição estadual numérica de 7 a 14 dígitos ou ISENTO")
+                        obj['taxId'] = tax_id
+                        obj['stateRegistration'] = registration
+                        duplicates = con.execute("SELECT id,payload FROM entities WHERE kind='client' AND id<>%s AND payload->>'taxId' IS NOT NULL", (entity_id,)).fetchall()
+                        if any(''.join(ch for ch in str(row[1].get('taxId') or '') if ch.isdigit()) == tax_id for row in duplicates):
+                            raise HTTPException(409, 'CNPJ já cadastrado em outro cliente')
+                if kind == 'order':
+                    # Uma fila offline antiga não pode desfazer a correção autorizada.
+                    if entity_id == '858c6713-4712-4873-b716-8f5e76425468' and obj.get('date') == '2026-11-30':
+                        obj['date'] = '2026-09-29'
+                        obj['dateCorrection'] = {'original':'2026-11-30','corrected':'2026-09-29','reason':'Correção autorizada preservada na sincronização'}
+                    if not isinstance(obj.get('items'), list) or not obj['items']:
+                        raise HTTPException(400, 'Novo pedido exige itens e tabela de preços por UF; registros antigos permanecem somente para consulta')
+                    if not isinstance(obj.get('brand'), str) or not obj['brand'].strip():
+                        raise HTTPException(400, 'Marca obrigatória')
+                    if not isinstance(obj.get('clientId'), str):
+                        raise HTTPException(400, 'Cliente obrigatório')
+                    customer = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (obj.get('clientId'),)).fetchone()
+                    if not customer:
+                        raise HTTPException(400, 'Cliente não cadastrado')
+                    client_uf = normalize_uf(customer[0].get('state'))
+                    price_table = normalize_uf(obj.get('priceTable'))
+                    if not price_table:
+                        raise HTTPException(400, 'Escolha a tabela de preços PA ou AP')
+                    if not price_table_matches_client(customer[0].get('state'), obj.get('priceTable')):
+                        raise HTTPException(400, 'Cliente do Pará usa PA; cliente do Amapá pode usar PA ou AP')
+                    total = Decimal('0')
+                    brands=set()
+                    for item in obj['items']:
+                        if not isinstance(item, dict) or not isinstance(item.get('sku'), str) or not item['sku'].strip():
+                            raise HTTPException(400, 'SKU inválido')
+                        item_brand=str(item.get('brand') or obj.get('brand') or '').strip()
+                        if not item_brand or item_brand=='Multimarcas': raise HTTPException(400,'Indústria do item obrigatória')
+                        brands.add(item_brand)
+                        table=validate_table(con,{**item,'brand':item_brand,'state':price_table},item_brand,price_table)
+                        item['tableId']=table['id']
+                        price_key = price_id({**item,'brand':item_brand,'sku':item['sku'].strip()})
+                        price_row = con.execute("SELECT payload FROM entities WHERE kind='price' AND id=%s", (price_key,)).fetchone()
+                        if not price_row:
+                            raise HTTPException(400, f"Preço não cadastrado na tabela {price_table}: {item['sku']}")
+                        try:
+                            qty = Decimal(str(item['quantity']))
+                            unit = Decimal(str(price_row[0]['price']))
+                        except (KeyError, TypeError, ValueError, InvalidOperation):
+                            raise HTTPException(400, 'Quantidade ou preço inválido')
+                        if not qty.is_finite() or not unit.is_finite() or qty != qty.to_integral_value() or qty <= 0 or qty > 100000 or unit <= 0:
+                            raise HTTPException(400, 'Quantidade ou preço inválido')
+                        item['unitPrice'] = str(unit)
+                        item['subtotal'] = str((qty * unit).quantize(Decimal('0.01')))
+                        item['brand']=item_brand
+                        total += qty * unit
+                    obj['brand']='Multimarcas' if len(brands)>1 else next(iter(brands))
+                    obj['clientState'] = client_uf
+                    obj['priceTable'] = price_table
+                    obj['state'] = price_table
+                    obj['amount'] = float(total.quantize(Decimal('0.01')))
+                    validate_bella_order(con,obj,client_uf,user)
+                    existing_order = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
+                    attribute_order(con,user,obj,existing_order[0] if existing_order else None)
+                    rate_row=con.execute('SELECT seller_commission_rate FROM app_users WHERE username=%s',(obj['sellerResponsible'],)).fetchone()
+                    apply_seller_commission(obj,rate_row[0] if rate_row else None,existing_order[0] if existing_order else None)
+                    if not existing_order and con.execute("SELECT 1 FROM archived_entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone():
+                        raise HTTPException(409, 'Pedido arquivado não pode ser recriado; restaure o original')
+                    obj['orderNumber'] = existing_order[0].get('orderNumber') if existing_order and existing_order[0].get('orderNumber') else next_order_number(con)
+                if kind == 'order':
+                    try: amount = float(obj.get('amount',0))
+                    except (TypeError, ValueError): raise HTTPException(400,'Valor inválido')
+                    if not 0 <= amount <= 1e10: raise HTTPException(400,'Valor inválido')
+                if kind == 'goal':
+                    try: amount = float(obj.get('amount',0))
+                    except (TypeError, ValueError): raise HTTPException(400,'Meta inválida')
+                    if not re.fullmatch(r'\d{4}-\d{2}',str(obj.get('month',''))) or not 0 <= amount <= 1e10:
+                        raise HTTPException(400,'Meta inválida')
+                if kind == 'route' and 'routes' not in permissions:
+                    raise HTTPException(403,'Roteirização restrita a representantes')
+                if kind == 'delete_route' and 'routes' not in permissions:
+                    raise HTTPException(403,'Roteirização restrita a representantes')
+                if kind == 'client' and 'clients_edit' not in permissions and con.execute('SELECT 1 FROM entities WHERE kind=%s AND id=%s',('client',entity_id)).fetchone():
+                    # A repeated, previously applied change is accepted below.
+                    if not con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s',(change.changeId,)).fetchone():
+                        raise HTTPException(403,'Sem permissão para editar cadastro existente')
+                if con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s',(change.changeId,)).fetchone():
+                    continue
+                if kind == 'delete_route':
+                    con.execute('DELETE FROM entities WHERE kind=%s AND id=%s',('route',entity_id))
                 else:
-                    if obj.get('type') not in ('Entrada','Saída') or not str(obj.get('category','')).strip() or not str(obj.get('description','')).strip():
-                        raise HTTPException(400, 'Movimentação incompleta')
-                    try:
-                        amount = _Decimal(str(obj['amount']))
-                        if not amount.is_finite() or amount <= 0 or amount.as_tuple().exponent < -2:
-                            raise ValueError()
-                    except (KeyError, ValueError, InvalidOperation):
-                        raise HTTPException(400, 'Valor da movimentação inválido')
-                    existing_entry = con.execute("SELECT payload FROM entities WHERE kind='cash_entry' AND id=%s",(entity_id,)).fetchone()
-                    if existing_entry and existing_entry[0].get('date') != obj['date']:
-                        raise HTTPException(409, 'Movimentação não pode mudar de data')
-                    day_record = con.execute("SELECT payload FROM entities WHERE kind='cash_day' AND payload->>'date'=%s",(obj['date'],)).fetchone()
-                    if not day_record or day_record[0].get('status') != 'Aberto':
-                        raise HTTPException(409, 'Caixa não está aberto para esta data')
-            if kind == 'client' and (not isinstance(obj.get('name'),str) or not obj['name'].strip()):
-                raise HTTPException(400, 'Nome do cliente obrigatório')
-            if kind == 'client':
-                state = str(obj.get('state','')).strip().upper()
-                if state and state not in ('PA','PARA','PARÁ','AP','AMAPA','AMAPÁ'):
-                    raise HTTPException(400, 'A carteira aceita somente clientes do Pará e Amapá')
-            if kind == 'client':
-                if con.execute("SELECT 1 FROM archived_entities WHERE kind='client' AND id=%s",(entity_id,)).fetchone():
-                    raise HTTPException(409, 'Cliente arquivado; não é permitido recriar o mesmo cadastro')
-                # Cadastros legados continuam editáveis; novos exigem identificação fiscal.
-                existing = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (entity_id,)).fetchone()
-                if not existing and not normalize_uf(obj.get('state')):
-                    raise HTTPException(400, 'UF PA ou AP obrigatória para novo cliente')
-                tax_id = ''.join(ch for ch in str(obj.get('taxId') or '') if ch.isdigit())
-                registration = str(obj.get('stateRegistration') or '').strip().upper()
-                # Aceita pontuação comum da IE sem converter palavras inválidas em números.
-                if registration != 'ISENTO' and re.fullmatch(r'[\d.\-/\s]+', registration):
-                    registration = re.sub(r'\D', '', registration)
-                if not existing or tax_id or registration:
-                    if not valid_cnpj(tax_id):
-                        raise HTTPException(400, 'CNPJ inválido; informe os 14 dígitos corretos')
-                    if registration != 'ISENTO' and not (registration.isdigit() and 7 <= len(registration) <= 14):
-                        raise HTTPException(400, f"Cliente {obj['name'].strip()} ({entity_id}): informe inscrição estadual numérica de 7 a 14 dígitos ou ISENTO")
-                    obj['taxId'] = tax_id
-                    obj['stateRegistration'] = registration
-                    duplicates = con.execute("SELECT id,payload FROM entities WHERE kind='client' AND id<>%s AND payload->>'taxId' IS NOT NULL", (entity_id,)).fetchall()
-                    if any(''.join(ch for ch in str(row[1].get('taxId') or '') if ch.isdigit()) == tax_id for row in duplicates):
-                        raise HTTPException(409, 'CNPJ já cadastrado em outro cliente')
-            if kind == 'order':
-                # Uma fila offline antiga não pode desfazer a correção autorizada.
-                if entity_id == '858c6713-4712-4873-b716-8f5e76425468' and obj.get('date') == '2026-11-30':
-                    obj['date'] = '2026-09-29'
-                    obj['dateCorrection'] = {'original':'2026-11-30','corrected':'2026-09-29','reason':'Correção autorizada preservada na sincronização'}
-                if not isinstance(obj.get('items'), list) or not obj['items']:
-                    raise HTTPException(400, 'Novo pedido exige itens e tabela de preços por UF; registros antigos permanecem somente para consulta')
-                if not isinstance(obj.get('brand'), str) or not obj['brand'].strip():
-                    raise HTTPException(400, 'Marca obrigatória')
-                if not isinstance(obj.get('clientId'), str):
-                    raise HTTPException(400, 'Cliente obrigatório')
-                customer = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (obj.get('clientId'),)).fetchone()
-                if not customer:
-                    raise HTTPException(400, 'Cliente não cadastrado')
-                client_uf = normalize_uf(customer[0].get('state'))
-                price_table = normalize_uf(obj.get('priceTable'))
-                if not price_table:
-                    raise HTTPException(400, 'Escolha a tabela de preços PA ou AP')
-                if not price_table_matches_client(customer[0].get('state'), obj.get('priceTable')):
-                    raise HTTPException(400, 'Cliente do Pará usa PA; cliente do Amapá pode usar PA ou AP')
-                total = Decimal('0')
-                brands=set()
-                for item in obj['items']:
-                    if not isinstance(item, dict) or not isinstance(item.get('sku'), str) or not item['sku'].strip():
-                        raise HTTPException(400, 'SKU inválido')
-                    item_brand=str(item.get('brand') or obj.get('brand') or '').strip()
-                    if not item_brand or item_brand=='Multimarcas': raise HTTPException(400,'Indústria do item obrigatória')
-                    brands.add(item_brand)
-                    table=validate_table(con,{**item,'brand':item_brand,'state':price_table},item_brand,price_table)
-                    item['tableId']=table['id']
-                    price_key = price_id({**item,'brand':item_brand,'sku':item['sku'].strip()})
-                    price_row = con.execute("SELECT payload FROM entities WHERE kind='price' AND id=%s", (price_key,)).fetchone()
-                    if not price_row:
-                        raise HTTPException(400, f"Preço não cadastrado na tabela {price_table}: {item['sku']}")
-                    try:
-                        qty = Decimal(str(item['quantity']))
-                        unit = Decimal(str(price_row[0]['price']))
-                    except (KeyError, TypeError, ValueError, InvalidOperation):
-                        raise HTTPException(400, 'Quantidade ou preço inválido')
-                    if not qty.is_finite() or not unit.is_finite() or qty != qty.to_integral_value() or qty <= 0 or qty > 100000 or unit <= 0:
-                        raise HTTPException(400, 'Quantidade ou preço inválido')
-                    item['unitPrice'] = str(unit)
-                    item['subtotal'] = str((qty * unit).quantize(Decimal('0.01')))
-                    item['brand']=item_brand
-                    total += qty * unit
-                obj['brand']='Multimarcas' if len(brands)>1 else next(iter(brands))
-                obj['clientState'] = client_uf
-                obj['priceTable'] = price_table
-                obj['state'] = price_table
-                obj['amount'] = float(total.quantize(Decimal('0.01')))
-                validate_bella_order(con,obj,client_uf,user)
-                existing_order = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
-                attribute_order(con,user,obj,existing_order[0] if existing_order else None)
-                rate_row=con.execute('SELECT seller_commission_rate FROM app_users WHERE username=%s',(obj['sellerResponsible'],)).fetchone()
-                apply_seller_commission(obj,rate_row[0] if rate_row else None,existing_order[0] if existing_order else None)
-                if not existing_order and con.execute("SELECT 1 FROM archived_entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone():
-                    raise HTTPException(409, 'Pedido arquivado não pode ser recriado; restaure o original')
-                obj['orderNumber'] = existing_order[0].get('orderNumber') if existing_order and existing_order[0].get('orderNumber') else next_order_number(con)
-            if kind == 'order':
-                try: amount = float(obj.get('amount',0))
-                except (TypeError, ValueError): raise HTTPException(400,'Valor inválido')
-                if not 0 <= amount <= 1e10: raise HTTPException(400,'Valor inválido')
-            if kind == 'goal':
-                try: amount = float(obj.get('amount',0))
-                except (TypeError, ValueError): raise HTTPException(400,'Meta inválida')
-                if not re.fullmatch(r'\d{4}-\d{2}',str(obj.get('month',''))) or not 0 <= amount <= 1e10:
-                    raise HTTPException(400,'Meta inválida')
-            if kind == 'route' and 'routes' not in permissions:
-                raise HTTPException(403,'Roteirização restrita a representantes')
-            if kind == 'delete_route' and 'routes' not in permissions:
-                raise HTTPException(403,'Roteirização restrita a representantes')
-            if kind == 'client' and 'clients_edit' not in permissions and con.execute('SELECT 1 FROM entities WHERE kind=%s AND id=%s',('client',entity_id)).fetchone():
-                # A repeated, previously applied change is accepted below.
-                if not con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s',(change.changeId,)).fetchone():
-                    raise HTTPException(403,'Sem permissão para editar cadastro existente')
-            if con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s',(change.changeId,)).fetchone():
-                continue
-            if kind == 'delete_route':
-                con.execute('DELETE FROM entities WHERE kind=%s AND id=%s',('route',entity_id))
-            else:
-                if kind in ('industry','price_table') and 'finance' not in permissions:
-                    private_previous=con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s',(kind,entity_id)).fetchone()
-                    obj=preserve_industry_commissions(private_previous[0] if private_previous else {},obj)
-                obj['updatedAt'] = datetime.now(TZ).isoformat()
-                obj['updatedBy'] = user
-                obj['updatedAs'] = 'Adm' if user=='Laís' or (account and account[0] in ('Administrativo','Administradora')) else 'Sócio' if user=='Euler' else 'Comercial'
-                con.execute('INSERT INTO entities(kind,id,payload) VALUES(%s,%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,updated_at=now()', (kind,entity_id,Jsonb(obj)))
-                if kind=='client':
-                    con.execute("""INSERT INTO clientes(id,razao_social,nome_fantasia,documento,curva_abc)
-                        VALUES(%s,%s,%s,%s,%s) ON CONFLICT(id) DO UPDATE SET
-                        razao_social=excluded.razao_social,nome_fantasia=excluded.nome_fantasia,
-                        documento=excluded.documento,curva_abc=excluded.curva_abc,updated_at=now()""",
-                        (entity_id,obj['name'],obj.get('tradeName') or None,obj.get('taxId') or None,obj.get('abc') if obj.get('abc') in ('A','B','C') else None))
-                elif kind in ('visit','interaction'): project_attendance(con,kind,entity_id,obj)
-                elif kind=='order': project_order(con,entity_id,obj)
-            con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
-            con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,kind,entity_id,'delete' if kind=='delete_route' else 'upsert'))
-            changed=True
+                    if kind in ('industry','price_table') and 'finance' not in permissions:
+                        private_previous=con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s',(kind,entity_id)).fetchone()
+                        obj=preserve_industry_commissions(private_previous[0] if private_previous else {},obj)
+                    obj['updatedAt'] = datetime.now(TZ).isoformat()
+                    obj['updatedBy'] = user
+                    obj['updatedAs'] = 'Adm' if user=='Laís' or (account and account[0] in ('Administrativo','Administradora')) else 'Sócio' if user=='Euler' else 'Comercial'
+                    con.execute('INSERT INTO entities(kind,id,payload) VALUES(%s,%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,updated_at=now()', (kind,entity_id,Jsonb(obj)))
+                    if kind=='client':
+                        con.execute("""INSERT INTO clientes(id,razao_social,nome_fantasia,documento,curva_abc)
+                            VALUES(%s,%s,%s,%s,%s) ON CONFLICT(id) DO UPDATE SET
+                            razao_social=excluded.razao_social,nome_fantasia=excluded.nome_fantasia,
+                            documento=excluded.documento,curva_abc=excluded.curva_abc,updated_at=now()""",
+                            (entity_id,obj['name'],obj.get('tradeName') or None,obj.get('taxId') or None,obj.get('abc') if obj.get('abc') in ('A','B','C') else None))
+                    elif kind in ('visit','interaction'): project_attendance(con,kind,entity_id,obj)
+                    elif kind=='order': project_order(con,entity_id,obj)
+                con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
+                con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,kind,entity_id,'delete' if kind=='delete_route' else 'upsert'))
+                changed=True
+            except HTTPException as exc:
+                exc.headers = {**(getattr(exc,'headers',None) or {}), 'X-L2-Change-Id': change.changeId, 'X-L2-Change-Type': change.type}
+                logger = globals().get('logging')
+                if logger:
+                    logger.warning('sync_rejected user=%s kind=%s change=%s status=%s reason=%s', user, change.type, change.changeId, exc.status_code, exc.detail)
+                raise
         if changed:
             con.execute("SELECT pg_notify('l2_records_changed', '')")
         result = {'role':account[0] if account else '', 'sectors':sorted(permissions),'team':[row[0] for row in con.execute('SELECT username FROM app_users WHERE active ORDER BY username')],
