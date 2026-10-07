@@ -15,6 +15,11 @@ class DB:
     def execute(self,query,params=()):self.queries.append((query,params));return Cursor()
 
 class LiveRecordTests(unittest.TestCase):
+    def test_live_script_is_served_as_an_allowed_asset(self):
+        response=server.asset('live_records.js')
+        self.assertEqual(response.status_code,200)
+        self.assertTrue(response.path.is_file())
+
     def test_seller_creation_with_complete_profile_and_safe_sectors(self):
         profile=dict(fullName='Vendedora Teste',document='12345678900',email='test@example.com',phone='91999999999',bank='Banco',accountType='Corrente',branch='1',accountNumber='2',pixKey='test@example.com',commissionRate='2,50')
         data=server.TeamMember(user='Vendedora Teste',role='Vendedor',sectors=['commercial','routes'],profile=profile)
