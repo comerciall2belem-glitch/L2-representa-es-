@@ -357,9 +357,25 @@ def initialize():
         # Nunca excluir clientes automaticamente por divergência de UF.
         # O cadastro permanece disponível para correção; pedidos exigem PA/AP.
 
+def restore_bt_pa_table(con):
+    # AP replacement must not disable the independent PA catalog.
+    if not con.execute("INSERT INTO catalog_seeds(name) VALUES('restore-bt-pa-after-ap-replacement-20261007') ON CONFLICT DO NOTHING RETURNING name").fetchone():
+        return
+    restored = con.execute("""UPDATE entities SET payload=jsonb_set(payload,'{active}','true'::jsonb),updated_at=now()
+        WHERE kind='price_table' AND id='Bruna Tavares|PA'
+        AND payload->>'brand'='Bruna Tavares' AND payload->>'state'='PA'
+        AND payload->>'active'='false'
+        AND EXISTS (SELECT 1 FROM entities p WHERE p.kind='price' AND p.payload->>'brand'='Bruna Tavares' AND p.payload->>'state'='PA')
+        RETURNING id""").fetchone()
+    if restored:
+        con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES('Ana Paula','price_table',%s,'restore_pa_after_ap_replacement')",(restored[0],))
+        con.execute("SELECT pg_notify('l2_records_changed','')")
+
 @asynccontextmanager
 async def lifespan(app):
     initialize()
+    with db() as con:
+        restore_bt_pa_table(con)
     initialize_personal(db)
     from homologation_access import recover
     recover(db, password_hash)

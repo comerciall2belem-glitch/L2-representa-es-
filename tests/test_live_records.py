@@ -49,6 +49,18 @@ class LiveRecordTests(unittest.TestCase):
         self.assertEqual(error.exception.headers['X-L2-Change-Id'],'rejected-change')
         self.assertEqual(error.exception.detail,'Alteração inválida')
 
+    def test_bt_pa_restoration_only_changes_table_activation_once(self):
+        class RestoreDB(DB):
+            def execute(self,q,params=()):
+                self.queries.append((q,params))
+                return SimpleNamespace(fetchone=lambda: ('Bruna Tavares|PA',))
+        con=RestoreDB();server.restore_bt_pa_table(con)
+        update=next(q for q,_ in con.queries if 'UPDATE entities' in q)
+        self.assertIn("id='Bruna Tavares|PA'",update)
+        self.assertIn("payload->>'state'='PA'",update)
+        self.assertNotIn("'{price}'",update)
+        empty=DB();server.restore_bt_pa_table(empty);self.assertFalse(any('UPDATE entities' in q for q,_ in empty.queries))
+
     def test_live_script_is_served_as_an_allowed_asset(self):
         response=server.asset('live_records.js')
         self.assertEqual(response.status_code,200)

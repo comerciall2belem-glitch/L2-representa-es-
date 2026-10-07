@@ -1,7 +1,7 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const source=fs.readFileSync('app.js','utf8');
 const code=source.slice(source.indexOf('function auditActionLabel('),source.indexOf('function usageDate('));
-const context={s:{pending:[],priceTables:[],prices:[],orders:[]},esc:x=>String(x),uid:()=> 'fresh-'+Math.random(),pendingOrderSellerIssues:()=>[],pendingClientRegistrationIssues:()=>[],save:()=>{},show:()=>{},alert:()=>{},FormData:class{constructor(form){this.form=form}get(k){return this.form[k]}}};vm.createContext(context);vm.runInContext(code,context);
+const context={s:{pending:[],priceTables:[],prices:[],orders:[]},esc:x=>String(x),uid:()=> 'fresh-'+Math.random(),pendingOrderSellerIssues:()=>[],pendingClientRegistrationIssues:()=>[],sync:()=>{},save:()=>{},show:()=>{},alert:()=>{},FormData:class{constructor(form){this.form=form}get(k){return this.form[k]}}};vm.createContext(context);vm.runInContext(code,context);
 const s=context.s;s.priceTables=[{id:'normal',brand:'BT',state:'AP',active:true},{id:'simple',brand:'BT',state:'AP',active:true},{id:'old',brand:'BT',state:'AP',active:false}];
 s.pending=[{changeId:'one',type:'price',data:{id:'old|sku',brand:'BT',state:'AP',sku:'sku',tableId:'old',price:'12.00'}}];s.prices=[{...s.pending[0].data}];
 assert.equal(context.pendingTableIssues().length,1);
@@ -19,3 +19,5 @@ s.pending[0].data.items[0].tableId='normal';assert.equal(context.syncReadyBatch(
 s.pending=[{changeId:'all',type:'order',data:{id:'o2',brand:'Bella Brazil',priceTable:'PA',items:[{sku:'sku',brand:'Bella Brazil',tableId:'Bella Brazil|VAREJO'}]}}];s.priceTables.push({id:'Bella Brazil|VAREJO',brand:'Bella Brazil',state:'ALL',active:true});assert.equal(context.pendingTableIssues().length,0);
 
 s.pending=[{changeId:'bad-record',type:'visit',data:{id:'bad'}},{changeId:'valid-record',type:'visit',data:{id:'good'}}];s.syncFaults={'bad-record':'Data inválida'};assert.deepEqual(Array.from(context.syncReadyBatch(),x=>x.changeId),['valid-record']);assert(context.syncFaultsHTML().includes('Data inválida'));assert.equal(s.pending.length,2);
+
+s.priceTables=[{id:'Bruna Tavares|PA',brand:'Bruna Tavares',state:'PA',active:false}];s.prices=[{brand:'Bruna Tavares',state:'PA',sku:'BMM10B'}];s.pending=[{changeId:'restored',type:'order',data:{id:'o',brand:'Bruna Tavares',priceTable:'PA',items:[{sku:'BMM10B'}]}}];s.syncFaults={restored:'Selecione uma tabela comercial ativa da indústria'};context.releaseRestoredTableFaults();assert(s.syncFaults.restored);s.priceTables[0].active=true;context.releaseRestoredTableFaults();assert(!s.syncFaults.restored);assert.equal(context.syncReadyBatch().length,1);assert.equal(s.pending.length,1);
