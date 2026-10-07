@@ -43,5 +43,6 @@ assert.match(ctx.sellerCommissionPanel('2026-10'),/Não cadastrado/);
 ctx.financeAllowed=()=>ctx.hasSector('finance');ctx.s.user='Marlene';ctx.s.role='Administrativo';ctx.s.sectors=['finance','office','management','admin'];assert.equal(ctx.financeAllowed(),false);assert.equal(ctx.sectionAllowed('finance'),false);assert.equal(ctx.commissionPanel('2026-10'),'');
 
 ctx.eligibleTables=()=>[{brand:'Bella Brazil',id:'r',title:'Revenda',channel:'REVENDA',commissionRate:8}];
+ctx.client=()=>({});
 vm.runInContext(source.match(/^function orderCommercialTablesHTML\([^\n]+/m)[0],ctx);
 assert.doesNotMatch(ctx.orderCommercialTablesHTML({}),/comissão Varejo|Atacado 5%/);

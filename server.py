@@ -13,6 +13,7 @@ from psycopg.types.json import Jsonb
 from client_cleanup import plan as client_cleanup_plan
 from daily_report import build_pdf, read_data, TZ
 from speedio_integration import lookup_cnpj, SpeedioError
+from cnpj_registry import lookup_registry, RegistryError
 from order_reconciliation import reconcile_invoice, InvoiceError
 from lead_capture import LeadIntake, normalize_intake, ingest_lead, lead_sla
 from login_identity import resolve_identity
@@ -115,6 +116,7 @@ def initialize():
         con.execute('ALTER TABLE entities ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ')
         con.execute('ALTER TABLE entities ALTER COLUMN created_at SET DEFAULT now()')
         con.execute('CREATE TABLE IF NOT EXISTS commercial_drafts (username TEXT NOT NULL, draft_key TEXT NOT NULL, payload JSONB, client_timestamp BIGINT NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(username,draft_key))')
+        con.execute('CREATE TABLE IF NOT EXISTS cnpj_registry_cache (cnpj TEXT PRIMARY KEY, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE TABLE IF NOT EXISTS applied_changes (change_id TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE TABLE IF NOT EXISTS audit_log (id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, kind TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         seed_bella(con, BASE)
@@ -530,6 +532,26 @@ def capture_lead_contacted(lead_id: str, authorization: str | None = Header(defa
 
 class SpeedioQuery(BaseModel):
     cnpj: str = Field(min_length=14, max_length=18)
+
+@app.post('/api/clients/lookup-cnpj')
+def client_registry_lookup(query: SpeedioQuery, authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    require_sector(user,'commercial','office')
+    cnpj = re.sub(r'\D','',query.cnpj)
+    if not valid_cnpj(cnpj):raise HTTPException(400,'Informe um CNPJ válido')
+    with db() as con:
+        existing = con.execute("SELECT id FROM entities WHERE kind='client' AND regexp_replace(coalesce(payload->>'taxId',''),'[^0-9]','','g')=%s LIMIT 1",(cnpj,)).fetchone()
+        if existing:
+            visible = next((x for x in scoped_rows(con,'client',user) if x.get('id')==existing[0]),None)
+            if not visible:raise HTTPException(409,'CNPJ já cadastrado. Solicite acesso à carteira para localizar o cliente.')
+            return {'existingClientId':existing[0],'client':{key:visible.get(key,'') for key in ('name','tradeName','taxId','stateRegistration','state','city','district','address','phone','email','taxRegime')},'source':'Cadastro L2','missing':[]}
+        cached = con.execute("SELECT payload FROM cnpj_registry_cache WHERE cnpj=%s AND updated_at>now()-interval '24 hours'",(cnpj,)).fetchone()
+        if cached:return cached[0]
+    try:result=lookup_registry(cnpj)
+    except RegistryError as exc:raise HTTPException(exc.status,str(exc)) from exc
+    with db() as con:
+        con.execute('INSERT INTO cnpj_registry_cache(cnpj,payload) VALUES(%s,%s) ON CONFLICT(cnpj) DO UPDATE SET payload=excluded.payload,updated_at=now()',(cnpj,Jsonb(result)))
+    return result
 
 @app.post('/api/integrations/speedio/lookup')
 def speedio_lookup(query: SpeedioQuery, authorization: str | None = Header(default=None)):
