@@ -2,7 +2,7 @@
 const WORKSPACE_GROUPS=[
  {id:'inicio',label:'Hoje',sections:[['hoje','Prioridades'],['rota','Rota e visitas'],['registro','Registrar atividade']]},
  {id:'vendas',label:'Vendas',sections:[['pedidos','Pedidos'],['marcas','Marcas e preços'],['whatsapp','Chat e tabelas']]},
- {id:'clientes',label:'Clientes',sections:[['clientes','Carteira e acompanhamento']]},
+ {id:'clientes',label:'Clientes',sections:[['clientes','Carteira e acompanhamento'],['crm','Visão 360°']]},
  {id:'crescimento',label:'Crescimento',sections:[['crescimento','Desempenho'],['gestao','Metas e gestão']]},
  {id:'escritorio',label:'Escritório',sections:[['office','Processos'],['operations','Operações'],['admin','Equipe'],['finance','Financeiro'],['cash','Caixa'],['personal','Pessoal'],['config','Configurações']]}
 ];
@@ -10,8 +10,11 @@ function workspaceGroup(t){return WORKSPACE_GROUPS.find(g=>g.sections.some(x=>x[
 const WORKSPACE_TABS=[['hoje','Hoje'],['clientes','Clientes'],['crm','Visão 360°'],['marcas','Marcas e preços'],['rota','Atuação / Minha rota'],['registro','Registrar'],['pedidos','Pedidos'],['crescimento','Acompanhamento de vendas'],['whatsapp','Chat'],['gestao','Gestão'],['office','Escritório'],['operations','Operações'],['admin','Administração'],['finance','Financeiro'],['personal','Financeiro Pessoal'],['cash','Caixa diário'],['config','Configurações']];
 function workspaceNav(){
  const root=$('tabs'),sub=$('sectionTabs');if(!root)return;
- root.replaceChildren();for(const [id,label] of WORKSPACE_TABS){if(!sectionAllowed(id))continue;const b=document.createElement('button');b.textContent=label;b.dataset.tab=id;b.setAttribute('aria-current',tab===id?'page':'false');b.onclick=()=>{if(id==='crm')window.crmClientId='';show(id)};root.append(b)}
- if(sub){sub.replaceChildren();sub.hidden=true}
+ const group=workspaceGroup(tab);root.replaceChildren();
+ for(const g of WORKSPACE_GROUPS){const sections=g.sections.filter(([id])=>sectionAllowed(id));if(!sections.length)continue;
+ const button=document.createElement('button');button.textContent=g.label;button.dataset.group=g.id;button.setAttribute('aria-current',g===group?'page':'false');button.onclick=()=>show(sections[0][0]);root.append(button)}
+ if(sub){sub.replaceChildren();const sections=group.sections.filter(([id])=>sectionAllowed(id));sub.hidden=sections.length<2;
+ for(const [id,label] of sections){const button=document.createElement('button');button.textContent=label;button.dataset.tab=id;button.setAttribute('aria-current',tab===id?'page':'false');button.onclick=()=>{if(id==='crm')window.crmClientId='';show(id)};sub.append(button)}}
 }
 function salesScope(){return {orders:managementAllowed()?s.orders:s.orders.filter(o=>orderSeller(o)===s.user),tasks:s.tasks.filter(t=>managementAllowed()||t.user===s.user),opportunities:(s.opportunities||[]).filter(o=>managementAllowed()||o.owner===s.user)}}
 function renderSalesHome(){
