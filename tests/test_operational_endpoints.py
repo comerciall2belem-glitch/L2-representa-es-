@@ -39,14 +39,15 @@ class OperationalEndpointTests(unittest.TestCase):
         scope=self.scope()
         class ActivityDB(DB):
             def execute(self,query,params):
+                if 'SELECT kind,id,payload,updated_at' in query:return []
                 self.query=query
                 return [('Euler','visit','v1','update',datetime.now(timezone.utc),{'clientId':'c1','amount':999,'notes':'privado'}),('Ana Paula','visit','v2','update',datetime.now(timezone.utc),{'clientId':'c2'}),('Marlene','whatsapp_media','c1','send',datetime.now(timezone.utc),{'phone':'999'})]
         con=ActivityDB()
-        scope.update(db=lambda:con,is_seller=lambda *_:False,scoped_rows=lambda con,kind,user: {'client':[{'id':'c1','name':'Loja'}],'visit':[{'id':'v1','clientId':'c1'}]}.get(kind,[]))
+        scope.update(auth=lambda _:'Vendedora',db=lambda:con,is_seller=lambda *_:False,scoped_rows=lambda con,kind,user: {'client':[{'id':'c1','name':'Loja'}],'visit':[{'id':'v1','clientId':'c1'}]}.get(kind,[]))
         result=scope['commercial_activity']('auth')
         self.assertEqual(len(result),2)
-        self.assertEqual(result[0]['clientName'],'Loja')
-        self.assertEqual(set(result[0]),{'user','kind','action','at','clientName'})
+        self.assertTrue(all(x['clientName']=='Loja' for x in result))
+        self.assertEqual(set(result[0]),{'entityId','user','kind','action','at','clientName'})
         self.assertIn("IN ('whatsapp_media','whatsapp_document')",con.query)
 
     def test_drafts_are_saved_under_authenticated_user_only(self):

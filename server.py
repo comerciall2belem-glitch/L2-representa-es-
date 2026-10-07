@@ -2039,27 +2039,39 @@ async def preview_price_pdf(file: UploadFile = File(...), authorization: str | N
 def commercial_activity(authorization: str | None = Header(default=None)):
     user = auth(authorization)
     require_sector(user, 'commercial', 'office')
+    monitoring = user in ('Ana Paula', 'Marlene')
     with db() as con:
-        clients = {x['id']: x for x in scoped_rows(con, 'client', user)}
-        permissions=sectors_for(user)
-        kinds = ['client', 'visit', 'interaction', 'task', 'opportunity', 'order', 'route','fulfillment']
-        if 'office' in permissions:kinds+=['office_action','office_commercial','office_administrative']
-        if 'catalog' in permissions:kinds+=['price_table','price','industry']
+        def visible(kind):
+            if monitoring:
+                return [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id', (kind,))]
+            return scoped_rows(con, kind, user)
+        clients = {x['id']: x for x in visible('client')}
+        permissions = sectors_for(user)
+        kinds = ['client', 'visit', 'interaction', 'task', 'opportunity', 'order', 'route', 'fulfillment']
+        if 'office' in permissions: kinds += ['office_action', 'office_commercial', 'office_administrative']
+        if 'catalog' in permissions: kinds += ['price_table', 'price', 'industry']
         allowed = set()
         for kind in kinds:
-            for x in scoped_rows(con, kind, user):
-                if kind.startswith('office_') and 'finance' not in permissions and str(x.get('Área',''))=='Financeiro':continue
-                if kind in ('client','price_table','price','industry','office_action','office_commercial','office_administrative') or x.get('clientId') in clients or (kind == 'task' and not x.get('clientId') and (not is_seller(con,user) or x.get('user')==user)):
-                    allowed.add((kind,x['id']))
-        event_kinds=kinds+['whatsapp_media','whatsapp_document']
-        events=[]
-        for actor,kind,entity_id,action,at,payload in con.execute("SELECT a.username,a.kind,a.entity_id,a.action,a.created_at,e.payload FROM audit_log a JOIN entities e ON e.kind=CASE WHEN a.kind IN ('whatsapp_media','whatsapp_document') THEN 'client' ELSE a.kind END AND e.id=a.entity_id WHERE a.kind=ANY(%s) ORDER BY a.id DESC LIMIT 2000",(event_kinds,)):
-            access_kind='client' if kind in ('whatsapp_media','whatsapp_document') else kind
-            if (access_kind,entity_id) not in allowed: continue
-            cid=entity_id if access_kind=='client' else payload.get('clientId')
-            events.append({'user':actor,'kind':kind,'action':action,'at':at.isoformat(),'clientName':clients.get(cid,{}).get('name','') or str(payload.get('Demanda ou problema') or payload.get('Demanda') or payload.get('title') or payload.get('brand') or '')})
-            if len(events)>=100: break
-    return events
+            for x in visible(kind):
+                if kind.startswith('office_') and 'finance' not in permissions and str(x.get('Área', '')).casefold() == 'financeiro': continue
+                if kind in ('client', 'price_table', 'price', 'industry', 'office_action', 'office_commercial', 'office_administrative') or x.get('clientId') in clients or (kind == 'task' and not x.get('clientId') and (monitoring or not is_seller(con, user) or x.get('user') == user)):
+                    allowed.add((kind, x['id']))
+        event_kinds = kinds + ['whatsapp_media', 'whatsapp_document']
+        events, audited = [], set()
+        query = "SELECT a.username,a.kind,a.entity_id,a.action,a.created_at,e.payload FROM audit_log a JOIN entities e ON e.kind=CASE WHEN a.kind IN ('whatsapp_media','whatsapp_document') THEN 'client' ELSE a.kind END AND e.id=a.entity_id WHERE a.kind=ANY(%s) ORDER BY a.id DESC LIMIT 2000"
+        for actor, kind, entity_id, action, at, payload in con.execute(query, (event_kinds,)):
+            access_kind = 'client' if kind in ('whatsapp_media', 'whatsapp_document') else kind
+            if (access_kind, entity_id) not in allowed: continue
+            audited.add((access_kind, entity_id))
+            cid = entity_id if access_kind == 'client' else payload.get('clientId')
+            events.append({'entityId': entity_id, 'user': actor, 'kind': kind, 'action': action, 'at': at.isoformat(), 'clientName': clients.get(cid, {}).get('name', '') or str(payload.get('Demanda ou problema') or payload.get('Demanda') or payload.get('title') or payload.get('brand') or '')})
+        # Imported and older records may predate the audit feed. Show their actual
+        # persisted update time, explicitly identified as existing records.
+        for kind, entity_id, payload, at in con.execute('SELECT kind,id,payload,updated_at FROM entities WHERE kind=ANY(%s) ORDER BY updated_at DESC LIMIT 2000', (kinds,)):
+            if (kind, entity_id) not in allowed or (kind, entity_id) in audited: continue
+            cid = entity_id if kind == 'client' else payload.get('clientId')
+            events.append({'entityId': entity_id, 'user': payload.get('updatedBy') or payload.get('enteredBy') or payload.get('user') or 'Autoria não informada', 'kind': kind, 'action': 'existing', 'at': at.isoformat(), 'clientName': clients.get(cid, {}).get('name', '') or str(payload.get('Demanda ou problema') or payload.get('Demanda') or payload.get('title') or payload.get('brand') or '')})
+    return sorted(events, key=lambda x: x['at'], reverse=True)[:100]
 
 
 class CommercialDraft(BaseModel):

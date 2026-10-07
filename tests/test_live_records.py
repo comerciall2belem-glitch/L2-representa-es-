@@ -15,6 +15,31 @@ class DB:
     def execute(self,query,params=()):self.queries.append((query,params));return Cursor()
 
 class LiveRecordTests(unittest.TestCase):
+    def test_team_monitor_feed_includes_other_sellers_and_legacy_records(self):
+        from datetime import datetime, timezone
+        at = datetime(2026, 10, 7, 20, tzinfo=timezone.utc)
+        client = {'id':'c','name':'Cliente Euler','owner':'Euler'}
+        order = {'id':'o','clientId':'c','user':'Laís','sellerResponsible':'Euler'}
+        visit = {'id':'v','clientId':'c','user':'Erika'}
+        finance = {'id':'secret','Área':'Financeiro','Demanda':'Restrita'}
+        class FeedDB(DB):
+            def execute(self, q, params=()):
+                if 'SELECT payload FROM entities' in q:
+                    return [(x,) for x in {'client':[client],'order':[order],'visit':[visit],'office_action':[finance]}.get(params[0],[])]
+                if 'FROM audit_log a' in q:
+                    return [('Laís','order','o','upsert',at,order),('Laís','office_action','secret','upsert',at,finance)]
+                if 'SELECT kind,id,payload,updated_at' in q:
+                    return [('order','o',order,at),('visit','v',visit,at),('office_action','secret',finance,at)]
+                return Cursor()
+        for user in ('Ana Paula','Marlene'):
+            with patch.object(server,'auth',return_value=user),patch.object(server,'require_sector'),patch.object(server,'sectors_for',return_value={'commercial','office'}),patch.object(server,'db',return_value=FeedDB()),patch.object(server,'scoped_rows',side_effect=AssertionError('Monitor must see team')):
+                result=server.commercial_activity('test-only')
+            self.assertEqual(len(result),2)
+            self.assertEqual({x['user'] for x in result},{'Laís','Erika'})
+            self.assertTrue(all(x['clientName']=='Cliente Euler' for x in result))
+            self.assertEqual(next(x for x in result if x['kind']=='visit')['action'],'existing')
+            self.assertEqual(sum(x['kind']=='order' for x in result),1)
+
     def test_live_script_is_served_as_an_allowed_asset(self):
         response=server.asset('live_records.js')
         self.assertEqual(response.status_code,200)
