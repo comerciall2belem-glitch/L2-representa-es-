@@ -15,6 +15,28 @@ class DB:
     def execute(self,query,params=()):self.queries.append((query,params));return Cursor()
 
 class LiveRecordTests(unittest.TestCase):
+    def test_commercial_dashboard_reads_team_without_finance_or_portfolio_write_access(self):
+        class SnapshotDB(DB):
+            def execute(self,q,params=()):
+                if q.startswith('SELECT role,sectors FROM app_users'):
+                    return SimpleNamespace(fetchone=lambda: ('Vendedor',['commercial']))
+                if q.startswith('SELECT id,payload FROM entities'):
+                    records = {'order':[('other-order',{'clientId':'other-client','user':'Euler','status':'Confirmado','amount':'100','commissionDue':'secret','items':[{'brand':'BT','subtotal':'100','commissionRate':'secret'}]})],
+                               'client':[('other-client',{'name':'Cliente da equipe','owner':'Euler','phone':'private'})]}
+                    return records.get(params[0],[])
+                if q.startswith('SELECT payload FROM entities'):
+                    return [({'orderId':'other-order','brand':'BT','billed':'50','commissionReceived':'secret'},)]
+                return []
+        with patch.object(server,'auth',return_value='Erika'),patch.object(server,'db',return_value=SnapshotDB()),patch.object(server,'effective_sectors',return_value={'commercial'}),patch.object(server,'scoped_rows',return_value=[]):
+            result=server.sync(server.Sync(changes=[]),'test-only')
+        self.assertEqual(result['orders'],[])
+        self.assertEqual(result['crmTeam']['orders'][0]['id'],'other-order')
+        self.assertNotIn('commissionDue',result['crmTeam']['orders'][0])
+        self.assertNotIn('commissionRate',result['crmTeam']['orders'][0]['items'][0])
+        self.assertNotIn('phone',result['crmTeam']['clients'][0])
+        self.assertNotIn('commissionReceived',result['crmTeam']['billedDocuments'][0])
+        self.assertEqual(result['crmTeam']['billedOrderIds'],['other-order'])
+
     def test_team_monitor_feed_includes_other_sellers_and_legacy_records(self):
         from datetime import datetime, timezone
         at = datetime(2026, 10, 7, 20, tzinfo=timezone.utc)

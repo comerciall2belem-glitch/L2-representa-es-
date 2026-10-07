@@ -1156,6 +1156,29 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                                 try: date.fromisoformat(str(value))
                                 except (ValueError,TypeError): raise HTTPException(400,'Data da oportunidade inválida')
                         if len(str(obj.get('notes','')))>2000: raise HTTPException(400,'Contexto muito extenso')
+                if kind in ('opportunity','order','fulfillment'):
+                    previous = con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s',(kind,entity_id)).fetchone()
+                    old = previous[0] if previous else {}
+                    field = 'status' if kind == 'order' else 'stage'
+                    if kind == 'order':
+                        if old.get('proposalSentAt'):
+                            obj['proposalSentAt'], obj['proposalSentBy'] = old['proposalSentAt'], old.get('proposalSentBy','')
+                        elif obj.get('proposalSentAt'):
+                            obj['proposalSentAt'], obj['proposalSentBy'] = datetime.now(TZ).isoformat(), user
+                    history = list(old.get('stageHistory') or [])
+                    if old.get(field) != obj.get(field):
+                        history.append({'stage':obj.get(field),'at':datetime.now(TZ).isoformat(),'by':user})
+                    obj['stageHistory'] = history
+                    if kind == 'opportunity' and obj.get('orderId'):
+                        linked = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(obj['orderId'],)).fetchone()
+                        if not linked or linked[0].get('clientId') != obj.get('clientId'):
+                            raise HTTPException(400,'Pedido vinculado não corresponde ao cliente da oportunidade')
+                    if kind == 'fulfillment':
+                        if obj.get('postSaleDate'):
+                            try: date.fromisoformat(str(obj['postSaleDate']))
+                            except (ValueError,TypeError): raise HTTPException(400,'Data de pós-venda inválida')
+                        if obj.get('stage') == 'Pós-venda concluído' and not str(obj.get('postSaleResult') or obj.get('notes') or '').strip():
+                            raise HTTPException(400,'Registre o resultado do contato de pós-venda')
                 if kind in ('visit','interaction'):
                     previous_action = con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s', (kind,entity_id)).fetchone()
                     # Preserve previously queued historical records; require next step on new manual attendance.
@@ -1432,6 +1455,31 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 result[name] = [row[0] for row in con.execute("SELECT payload FROM entities WHERE kind=%s AND coalesce(payload->>'Área','')<>'Financeiro' ORDER BY updated_at,id", (kind,))]
             else:
                 result[name] = scoped_rows(con,kind,user)
+        # Shared read-only commercial dashboard. Portfolio write checks remain unchanged.
+        result['crmTeam'] = {}
+        if {'commercial','office','management'} & permissions:
+            fields = {
+                'client': ('name','owner','taxId'),
+                'lead': ('name','owner','createdAt','taxId'),
+                'opportunity': ('clientId','brand','stage','owner','amount','followUp','closeDate','orderId','stageHistory','updatedAt','createdAt','notes'),
+                'order': ('clientId','brand','status','sellerResponsible','user','amount','date','orderNumber','stageHistory','items','proposalSentAt','proposalSentBy'),
+                'route': ('clientId','user','date','status','objective'),
+                'visit': ('clientId','user','date','result','checkIn','checkOut','next','notes','returnDate','brand'),
+                'fulfillment': ('clientId','orderId','stage','owner','due','at','stageHistory','notes','postSaleDate','postSaleResult')
+            }
+            names = {'client':'clients','lead':'leads','opportunity':'opportunities','order':'orders','route':'routes','visit':'visits','fulfillment':'fulfillments'}
+            for kind, keys in fields.items():
+                rows = []
+                for entity_id, payload in con.execute('SELECT id,payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,)):
+                    item = {key: payload[key] for key in keys if key in payload}
+                    item['id'] = entity_id
+                    if kind == 'order':
+                        item['items'] = [{key: line[key] for key in ('brand','subtotal','quantity','unitPrice') if key in line} for line in payload.get('items',[])]
+                    rows.append(item)
+                result['crmTeam'][names[kind]] = rows
+            result['crmTeam']['billedDocuments'] = [{key: payload[key] for key in ('orderId','brand','billed','billedDate') if key in payload} for (payload,) in con.execute("SELECT payload FROM entities WHERE kind='settlement' AND coalesce(payload->>'invoiceNumber','')<>''")]
+            result['crmTeam']['billedOrderIds'] = list({x['orderId'] for x in result['crmTeam']['billedDocuments'] if x.get('orderId')})
+            result['crmTeam']['at'] = datetime.now(TZ).isoformat()
         for kind, name in [('settlement','settlements'),('office_finance','officeFinance'),('office_budget','officeBudget'),('office_monthly_close','officeMonthlyClose'),('cash_day','cashDays'),('cash_entry','cashEntries'),('commission_rate','commissionRates'),('commission_receipt','commissionReceipts')]:
             result[name] = scoped_rows(con,kind,user) if 'finance' in permissions else []
         return result if 'finance' in permissions else hide_industry_commissions(result)
