@@ -27,5 +27,10 @@ const fs=require('fs'),assert=require('assert'),{JSDOM}=require(process.env.L2_J
  w.show('admin');const sellerForm=w.document.getElementById('memberCreateForm');const fields={user:'Nova Vendedora',fullName:'Nome de Teste',document:'12345678900',email:'teste@example.com',phone:'91999999999',bank:'Banco Teste',accountType:'Corrente',branch:'0001',accountNumber:'123',pixKey:'teste@example.com',commissionRate:'2,50'};for(const [name,value]of Object.entries(fields))sellerForm.elements.namedItem(name).value=value;
  sellerForm.querySelector('input[name="sectors"][value="finance"]').checked=true;w.toggleSellerFields(sellerForm);assert(sellerForm.querySelector('input[value="finance"]').disabled);assert(!sellerForm.querySelector('input[value="finance"]').checked);
  await w.createMember({preventDefault(){},target:sellerForm});assert.equal(request.profile.commissionRate,'2.50');assert(request.sectors.includes('commercial'));assert(!request.sectors.includes('finance'));assert(w.eval("testState.sellers.includes('Nova Vendedora')"));
+ for(const user of ['Marlene','Euler']){
+  w.eval("testState.user="+JSON.stringify(user)+";testState.pending=[{changeId:'blocked-order',type:'order',data:{id:'blocked',brand:'BT',priceTable:'AP',items:[{brand:'BT',sku:'missing',tableId:'removed'}]}}];testState.syncFaults={'blocked-order':'Tabela inativa'};");
+  w.show('hoje');await w.sync();assert(w.document.getElementById('app').textContent.includes('Hoje'));assert(!w.document.getElementById('app').textContent.includes('Configuração e sincronização'));assert.equal(w.eval('testState.pending.length'),1);
+  w.show('clientes');assert(w.document.getElementById('clientForm'));w.show('pedidos');assert(w.document.getElementById('orderForm'));w.L2Live.pause();
+ }
  dom.window.close();console.log('Atualização de números, preservação do formulário/foco, feed local, entrega no escritório e criação de vendedor: OK');
 })().catch(error=>{console.error(error);process.exit(1)});
