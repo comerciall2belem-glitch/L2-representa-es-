@@ -939,12 +939,18 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
     with db() as con:
         account=con.execute('SELECT role,sectors FROM app_users WHERE username=%s AND active',(user,)).fetchone()
         permissions=effective_sectors(user,account[0],account[1]) if account else set()
-        for change in data.changes:
+        # Catalog dependencies must exist before prices and orders, even in offline queues.
+        priority={'industry':0,'price_table':1,'client':2,'price':3}
+        for change in sorted(data.changes,key=lambda c:priority.get(c.type,4)):
             kind, obj = change.type, dict(change.data)
             entity_id = obj.get('id')
             deletable = {'delete_industry':'industry','delete_price_table':'price_table','delete_fulfillment':'fulfillment','delete_settlement':'settlement','delete_opportunity':'opportunity','delete_lead':'lead','delete_interaction':'interaction','delete_whatsapp_template':'whatsapp_template','delete_client':'client','delete_visit':'visit','delete_task':'task','delete_goal':'goal','delete_route':'route','delete_order':'order','delete_price':'price','delete_cash_entry':'cash_entry','delete_commission_rate':'commission_rate','delete_commission_receipt':'commission_receipt','delete_office_process':'office_process','delete_office_action':'office_action','delete_office_commercial':'office_commercial','delete_office_administrative':'office_administrative','delete_office_ritual':'office_ritual','delete_office_role':'office_role','delete_office_finance':'office_finance','delete_office_budget':'office_budget','delete_office_monthly_close':'office_monthly_close'}
             if kind not in ('industry','price_table','fulfillment','settlement','opportunity','interaction','lead','whatsapp_template','client','visit','order','task','route','goal','price','commission_rate','commission_receipt','office_action','office_commercial','office_administrative','office_ritual','office_role','office_finance','office_budget','office_monthly_close','office_process','cash_day','cash_entry',*deletable) or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
                 raise HTTPException(400, 'Alteração inválida')
+            # Replays were already validated and committed; catalog changes must not
+            # invalidate their acknowledgements or create duplicate audit entries.
+            if con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s',(change.changeId,)).fetchone():
+                continue
             target_kind=deletable.get(kind,kind)
             if target_kind=='client':
                 previous_client=con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s",(entity_id,)).fetchone()

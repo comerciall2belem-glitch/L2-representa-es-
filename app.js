@@ -80,7 +80,7 @@ if(tab==='office'||tab==='finance'){
  const collection=sectionMap[group][section];
  if(collection)h+=renderRecordEditor(collection);
 }
-if(tab==='config'){h=`<h2>Configuração e sincronização</h2><div class="box"><p><b>Modo atual:</b> ${s.token?'Conectado como '+esc(s.user):(s.server?'Servidor configurado':'Local neste aparelho')}.</p>${s.token?`<div class="card"><b>✓ Acesso salvo neste aparelho</b><p class="muted">O L2 ONE continuará conectado automaticamente. A senha não fica exposta nem gravada em texto.</p><p><button onclick="sync()">Sincronizar agora</button> <button class="secondary" onclick="logout()">Sair / trocar usuário</button></p></div>`:`<label>Usuário ativo<input id="who" autocomplete="username" value="${esc(s.user)}" required></label><label>URL do servidor (HTTPS)<input id="server" placeholder="https://seu-servidor.exemplo.com" value="${esc(s.server)}"></label><label>Senha individual<input id="password" type="password" autocomplete="current-password"></label><p><button onclick="connect()">Entrar e manter acesso</button></p><p class="muted">Após o primeiro login, este aparelho permanecerá conectado automaticamente. Use somente em aparelho pessoal ou da equipe.</p>`}${s.token&&s.user==='Ana Paula'?`<details class="box"><summary>Redefinir minha senha neste aparelho conectado</summary><p class="muted">Use esta opção se você ainda estiver conectada neste aparelho. A troca encerra as sessões e mantém os dados locais pendentes.</p><form id="adminPasswordReset"><label>Nova senha pessoal (12 caracteres ou mais)<input type="password" name="newPassword" minlength="12" autocomplete="new-password" required></label><label>Confirmar nova senha<input type="password" name="confirmation" minlength="12" autocomplete="new-password" required></label><p id="adminResetError" role="alert"></p><button type="submit">Redefinir minha senha</button></form></details>`:''}${s.token&&s.user==='Ana Paula'?`<details class="box"><summary>Primeiro acesso da equipe</summary><p class="muted">Gere uma senha provisória individual para quem não consegue entrar. A senha anterior será invalidada; a pessoa criará sua própria senha no primeiro acesso.</p><button type="button" onclick="loadTeamAccess()">Consultar equipe</button><div id="teamAccessPanel" aria-live="polite"></div></details>`:''}<p>Alterações pendentes: ${s.pending.length} · Última sincronização: ${esc(s.syncAt||'Nunca')}</p>${pendingClientRepairsHTML()}${pendingOrderRepairsHTML()}<p class="muted">Alterações ficam salvas neste aparelho até você tocar em Sincronizar. Use o botão antes de trocar de aparelho.</p>${s.token&&s.user==='Ana Paula'?'<button class="secondary" onclick="previewClientCleanup()">Conferir clientes fora de PA/AP e duplicados</button> <div id="cleanupPreview"></div>':''}<button class="secondary" onclick="exportData()">Exportar backup JSON</button> <label>Restaurar backup JSON<input type="file" accept=".json" onchange="importData(this.files[0])"></label></div>`}
+if(tab==='config'){h=`<h2>Configuração e sincronização</h2><div class="box"><p><b>Modo atual:</b> ${s.token?'Conectado como '+esc(s.user):(s.server?'Servidor configurado':'Local neste aparelho')}.</p>${s.token?`<div class="card"><b>✓ Acesso salvo neste aparelho</b><p class="muted">O L2 ONE continuará conectado automaticamente. A senha não fica exposta nem gravada em texto.</p><p><button onclick="sync()">Sincronizar agora</button> <button class="secondary" onclick="logout()">Sair / trocar usuário</button></p></div>`:`<label>Usuário ativo<input id="who" autocomplete="username" value="${esc(s.user)}" required></label><label>URL do servidor (HTTPS)<input id="server" placeholder="https://seu-servidor.exemplo.com" value="${esc(s.server)}"></label><label>Senha individual<input id="password" type="password" autocomplete="current-password"></label><p><button onclick="connect()">Entrar e manter acesso</button></p><p class="muted">Após o primeiro login, este aparelho permanecerá conectado automaticamente. Use somente em aparelho pessoal ou da equipe.</p>`}${s.token&&s.user==='Ana Paula'?`<details class="box"><summary>Redefinir minha senha neste aparelho conectado</summary><p class="muted">Use esta opção se você ainda estiver conectada neste aparelho. A troca encerra as sessões e mantém os dados locais pendentes.</p><form id="adminPasswordReset"><label>Nova senha pessoal (12 caracteres ou mais)<input type="password" name="newPassword" minlength="12" autocomplete="new-password" required></label><label>Confirmar nova senha<input type="password" name="confirmation" minlength="12" autocomplete="new-password" required></label><p id="adminResetError" role="alert"></p><button type="submit">Redefinir minha senha</button></form></details>`:''}${s.token&&s.user==='Ana Paula'?`<details class="box"><summary>Primeiro acesso da equipe</summary><p class="muted">Gere uma senha provisória individual para quem não consegue entrar. A senha anterior será invalidada; a pessoa criará sua própria senha no primeiro acesso.</p><button type="button" onclick="loadTeamAccess()">Consultar equipe</button><div id="teamAccessPanel" aria-live="polite"></div></details>`:''}<p>Alterações pendentes: ${s.pending.length} · Última sincronização: ${esc(s.syncAt||'Nunca')}</p>${pendingClientRepairsHTML()}${pendingOrderRepairsHTML()}${pendingTableRepairsHTML()}<p class="muted">Alterações ficam salvas neste aparelho até você tocar em Sincronizar. Use o botão antes de trocar de aparelho.</p>${s.token&&s.user==='Ana Paula'?'<button class="secondary" onclick="previewClientCleanup()">Conferir clientes fora de PA/AP e duplicados</button> <div id="cleanupPreview"></div>':''}<button class="secondary" onclick="exportData()">Exportar backup JSON</button> <label>Restaurar backup JSON<input type="file" accept=".json" onchange="importData(this.files[0])"></label></div>`}
 if(tab==='gestao')h=renderCommercialDashboard()+h;if(tab==='marcas')h+=pdfPriceImportHTML();if(tab==='pedidos')h+=CommercialDrafts.list();$('app').innerHTML=h;bindWorkspace();CommercialDrafts.bind();let f=$('clientForm');if(f)f.onsubmit=saveClient;f=$('visitForm');if(f)f.onsubmit=saveVisit;f=$('taskForm');if(f)f.onsubmit=saveTask;f=$('goalForm');if(f)f.onsubmit=saveGoal;f=$('orderForm');if(f)f.onsubmit=saveOrder;f=$('priceImportForm');if(f)f.onsubmit=importPrices;f=$('whatsappTemplateForm');if(f)f.onsubmit=saveWhatsappTemplate;f=$('recordForm');if(f)f.onsubmit=saveRecord;f=$('adminPasswordReset');if(f)f.onsubmit=adminResetPassword;if(tab==='cash'&&window.cashBind)window.cashBind();if(tab==='admin'){setTimeout(()=>loadAdminTeam(true),0);setTimeout(loadAdminUsage,0)}if(tab==='crm'){if(window.crmClientId)setTimeout(()=>loadClientRepository(window.crmClientId),0)}if(tab==='whatsapp'){window.whatsappMediaReady=false;setTimeout(loadWhatsappCapabilities,0)}network()}
 
 
@@ -313,6 +313,42 @@ async function loadErikaPortfolio(){
 function filterErikaPortfolio(query){const panel=$('erikaPortfolioList');if(!panel)return;const rows=(window.erikaPortfolioRows||[]).filter(c=>norm([c.name,c.city,c.district].join(' ')).includes(norm(query)));panel.innerHTML=`<table><tr><th>Cliente</th><th>Localidade</th><th>Erika</th></tr>${rows.slice(0,100).map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(c.city)} · ${esc(c.district)}</td><td>${s.user==='Marlene'?`<button type="button" class="${c.approved?'secondary':''}" onclick="authorizeErikaClient('${esc(c.id)}',${!c.approved})">${c.approved?'Retirar autorização':'Autorizar'}</button>`:c.approved?'Autorizado':'Aguardando Marlene'}</td></tr>`).join('')}</table><p class="muted">Exibindo ${Math.min(rows.length,100)} de ${rows.length} resultados.</p>`}
 async function authorizeErikaClient(clientId,approved){if(s.user!=='Marlene')return;const panel=$('erikaPortfolioPanel');try{const r=await fetch(s.server+'/api/portfolio/erika/pa/'+encodeURIComponent(clientId),{method:'PUT',headers:{Authorization:'Bearer '+s.token,'Content-Type':'application/json'},body:JSON.stringify({approved})}),data=await r.json();if(!r.ok)throw Error(data.detail||'Autorização recusada');const row=window.erikaPortfolioRows?.find(c=>c.id===clientId);if(row)row.approved=approved;const query=$('erikaPortfolioSearch')?.value||'';filterErikaPortfolio(query);const count=window.erikaPortfolioRows.filter(c=>c.approved).length;panel.querySelector('p').textContent=window.erikaPortfolioRows.length+' clientes do Pará · '+count+' autorizados para Erika'}catch(error){alert(error.message)}}
 
+function auditActionLabel(x){
+ const names={price_table:'Tabela de preços',price:'Produto / preço',industry:'Indústria',visit:'Atendimento',task:'Tarefa',route:'Rota',client:'Cadastro de cliente',order:'Pedido',interaction:'Contato',opportunity:'Oportunidade',goal:'Meta',login:'Acesso',office_action:'Ação de escritório',office_process:'Processo de escritório'};
+ return (names[x.kind]||'Registro')+' · '+(x.action==='delete'?'Exclusão registrada':x.action==='upsert'?'Salvamento registrado':'Ação registrada');
+}
+function pendingTableIssues(){
+ const issues=[];
+ for(const change of s.pending){
+  const items=change.type==='price'?[change.data]:change.type==='order'?change.data.items||[]:[];
+  items.forEach((item,index)=>{const brand=item.brand||change.data.brand,uf=item.state||change.data.priceTable,id=item.tableId||brand+'|'+uf;
+   if(!s.priceTables.some(t=>t.id===id&&t.active&&t.brand===brand&&(!uf||t.state===uf||t.state==='ALL')))issues.push({change,item,index,brand,uf});
+  });
+ }
+ return issues;
+}
+function pendingTableRepairsHTML(){
+ const issues=pendingTableIssues();if(!issues.length)return '';
+ return '<div id="pendingTableRepairs" class="box"><h3>Tabelas das alterações pendentes</h3><p>Escolha a tabela correta de cada produto ou pedido. Os dados continuam salvos neste aparelho. Nenhuma tabela será substituída automaticamente.</p>'+issues.map(x=>`<form onsubmit="repairPendingTable(event,'${esc(x.change.changeId)}',${x.index})"><label>`+esc(x.brand)+' · '+esc(x.item.sku||'Produto')+' · '+(x.change.type==='order'?'Pedido':'Preço')+'<select name="tableId" required><option value="">Selecione a tabela</option>'+s.priceTables.filter(t=>t.active&&t.brand===x.brand&&(!x.uf||t.state===x.uf||t.state==='ALL')).map(t=>'<option value="'+esc(t.id)+'">'+esc(t.title||t.id)+'</option>').join('')+'</select></label><button>Corrigir vínculo</button></form>').join('')+'</div>';
+}
+function repairPendingTable(event,changeId,index){
+ event.preventDefault();const change=s.pending.find(x=>x.changeId===changeId);if(!change)return;
+ const item=change.type==='price'?change.data:change.data.items[index],table=s.priceTables.find(t=>t.id===new FormData(event.target).get('tableId')&&t.active);
+ if(!item||!table||table.brand!==(item.brand||change.data.brand))return;
+ if(change.type==='price'){
+  const oldId=item.id,newId=table.id+'|'+item.sku;
+  if(newId!==oldId&&(s.prices.some(p=>p.id===newId)||s.pending.some(x=>x.type==='price'&&x.data.id===newId)))return alert('Este produto já existe na tabela escolhida. Revise o preço em Marcas e preços antes de substituir.');
+  for(const x of s.pending.filter(x=>x.type==='price'&&x.data.id===oldId)){x.data.tableId=table.id;x.data.state=table.state;x.data.id=newId;}
+  const local=s.prices.find(p=>p.id===oldId);if(local){local.tableId=table.id;local.state=table.state;local.id=newId;}
+ }else{
+  if(!s.prices.some(p=>(p.tableId||p.brand+'|'+p.state)===table.id&&p.sku===item.sku))return alert('Produto não cadastrado nessa tabela. Cadastre ou selecione o produto correto antes de sincronizar.');
+  const previousTable=item.tableId;
+  for(const x of s.pending.filter(x=>x.type==='order'&&x.data.id===change.data.id))for(const i of x.data.items||[])if(i.sku===item.sku&&(i.brand||x.data.brand)===table.brand&&i.tableId===previousTable)i.tableId=table.id;
+  const local=s.orders.find(o=>o.id===change.data.id);if(local)for(const i of local.items||[])if(i.sku===item.sku&&(i.brand||local.brand)===table.brand)i.tableId=table.id;
+ }
+ save();show('config');
+}
+
 function usageDate(value){if(!value)return 'Sem registro';const date=new Date(value);return Number.isNaN(date.getTime())?'Sem registro':date.toLocaleString('pt-BR')}
 async function loadAdminUsage(){
  const panel=$('adminUsagePanel');if(!panel||!sectionAllowed('admin'))return;
@@ -323,7 +359,7 @@ async function loadAdminUsage(){
   panel.innerHTML=`<div class="cards"><div class="card">Acessos ativos<strong>${totals.active}</strong></div><div class="card">Ações em 7 dias<strong>${totals.actions}</strong></div><div class="card">Tarefas vencidas<strong>${totals.tasks}</strong></div><div class="card">Etapas vencidas<strong>${totals.operations}</strong></div></div>
   <div class="scroll"><table><tr><th>Integrante</th><th>Último acesso</th><th>Última ação</th><th>Ações 7/30 dias</th><th>Visitas / pedidos 30 dias</th><th>Oportunidades / interações</th><th>Tarefas abertas / vencidas</th><th>Operações abertas / vencidas</th><th>Acesso</th></tr>
   ${rows.map(x=>`<tr><td><b>${esc(x.user)}</b><br>${esc(x.role||'—')}</td><td>${esc(usageDate(x.lastLogin))}</td><td>${esc(usageDate(x.lastAction))}</td><td>${x.actions7d} / ${x.actions30d}</td><td>${x.visits30d} / ${x.orders30d}</td><td>${x.opportunities30d} / ${x.interactions30d}</td><td>${x.openTasks} / ${x.overdueTasks}</td><td>${x.openOperations} / ${x.overdueOperations}</td><td>${x.active?(x.firstAccessPending?'Primeiro acesso pendente':x.activeSessions+' sessão(ões) ativa(s)'):'Inativo'}</td></tr>`).join('')}</table></div>
-  <p class="muted">${esc(data.note||'')}</p><h4>Últimas ações registradas</h4>${(data.recent||[]).slice(0,20).map(x=>`<p>${esc(usageDate(x.at))} · <b>${esc(x.user)}</b> · ${esc(x.kind)} · ${esc(x.action)}</p>`).join('')||'<p>Sem registros recentes.</p>'}`;
+  <p class="muted">${esc(data.note||'')}</p><h4>Últimas ações registradas</h4>${(data.recent||[]).slice(0,20).map(x=>`<p>${esc(usageDate(x.at))} · <b>${esc(x.user)}</b> · ${esc(auditActionLabel(x))}</p>`).join('')||'<p>Sem registros recentes.</p>'}`;
  }catch(err){panel.textContent='Não foi possível consultar o uso da equipe: '+err.message}
 }
 
@@ -792,6 +828,20 @@ async function sync(){
   document.querySelector('#pendingClientRepairs')?.scrollIntoView({behavior:'smooth',block:'center'});
   return;
  }
+ if(pendingTableIssues().length){
+  syncing=true;network();
+  try{
+   const response=await fetch(s.server+'/api/sync',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+s.token},body:JSON.stringify({changes:[]})});
+   if(!response.ok)throw Error('Não foi possível consultar as tabelas atuais. As alterações continuam salvas.');
+   const catalog=await response.json();
+   if(Array.isArray(catalog.priceTables)){
+    s.priceTables=catalog.priceTables;
+    for(const x of s.pending)if(x.type==='price_table'){s.priceTables=s.priceTables.filter(t=>t.id!==x.data.id);s.priceTables.push(x.data);}else if(x.type==='delete_price_table')s.priceTables=s.priceTables.filter(t=>t.id!==x.data.id);
+    save();
+   }
+  }catch(error){window.lastSyncError=error.message;show('config');return;}finally{syncing=false;network();}
+ }
+ if(pendingTableIssues().length){window.lastSyncError='Corrija o vínculo das tabelas nas alterações pendentes.';show('config');document.querySelector('#pendingTableRepairs')?.scrollIntoView({block:'center'});return;}
  syncing=true;network();
  const batch=s.pending.slice(0,500), user=s.user, server=s.server, token=s.token;
  try{
