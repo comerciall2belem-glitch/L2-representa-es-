@@ -58,6 +58,7 @@ function show(t){if(!sectionAllowed(t)){alert('Acesso restrito para este setor.'
 function render(preview=false){window.liveRenderOnly=preview;if(preview&&(tab==='personal'||s.mustChangePassword))return "";if(tab==='pedidos')CommercialDrafts.restoreOrder();if(!preview){setTimeout(checkTaskReminders,0);workspaceNav();}document.querySelectorAll('[data-finance]').forEach(el=>el.hidden=!financeAllowed());document.querySelectorAll('[data-management]').forEach(el=>el.hidden=!managementAllowed());if(!sectionAllowed(tab))tab='hoje';if(s.mustChangePassword){window.personalFinanceClear?.();renderPasswordChange();return}if(tab==='personal'){window.renderPersonalFinance?.();return}if(!preview)window.personalFinanceClear?.();let h='';if(tab==='hoje')h=renderSalesHome()+dailyGoalAlertHTML()+operationsOverviewHTML()+teamActivityHTML();
 if(tab==='crescimento')h=renderCommercialDashboard();
 if(tab==='clientes')h=renderClientWorkspace();
+if(tab==='bella')h=renderBellaBase();
 if(tab==='crm')h=window.crmClientId?renderClientDrawer():renderCRM();
  if(tab==='operations')h=renderOperations();
  if(tab==='admin')h=renderAdmin();
