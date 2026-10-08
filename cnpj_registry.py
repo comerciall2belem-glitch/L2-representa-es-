@@ -15,6 +15,8 @@ def normalize_company(raw,cnpj):
     registrations=list(dict.fromkeys(x for x in registrations if re.fullmatch(r'\d{7,14}',x)))
     simples=(raw.get('simples') or {}).get('simples')
     data={'name':str(raw.get('razao_social') or ''),'tradeName':str(est.get('nome_fantasia') or ''),'taxId':cnpj,'state':uf,'city':str((est.get('cidade') or {}).get('nome') or ''),'district':str(est.get('bairro') or ''),'address':' '.join(str(est.get(k) or '') for k in ('tipo_logradouro','logradouro','numero','complemento')).strip(),'phone':str(est.get('ddd1') or '')+str(est.get('telefone1') or ''),'email':str(est.get('email') or ''),'stateRegistration':registrations[0] if len(registrations)==1 else '', 'taxRegime':'SIMPLES' if simples in ('Sim','SIM','sim',True) else 'NORMAL' if simples in ('Não','NAO','Nao','não',False) else '', 'postalCode':str(est.get('cep') or '')}
+    data['cnae']=re.sub(r'\D','',str((est.get('atividade_principal') or {}).get('id') or ''))
+    data['size']=str((raw.get('porte') or {}).get('descricao') or '')
     missing=[k for k in ('name','city','state','stateRegistration') if not data[k]]
     return {'client':data,'source':'CNPJ.ws · Receita Federal / cadastros estaduais','registryUpdatedAt':est.get('atualizado_em') or raw.get('atualizado_em'),'missing':missing,'registrations':registrations}
 

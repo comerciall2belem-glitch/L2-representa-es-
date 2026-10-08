@@ -30,6 +30,7 @@ from financial_visibility import hide_industry_commissions, preserve_industry_co
 
 import zara
 import webchat
+import strategic_crm
 
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
@@ -122,6 +123,7 @@ def initialize():
         con.execute('CREATE TABLE IF NOT EXISTS cnpj_registry_cache (cnpj TEXT PRIMARY KEY, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE TABLE IF NOT EXISTS applied_changes (change_id TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE TABLE IF NOT EXISTS audit_log (id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, kind TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
+        strategic_crm.setup(con)
         seed_bella(con, BASE)
         seed_senscience(con, BASE)
         seed_davines(con, BASE)
@@ -393,11 +395,19 @@ async def lifespan(app):
     with db() as con:
         provisional = con.execute('SELECT count(*) FROM app_users WHERE active AND must_change_password').fetchone()[0]
     logging.getLogger('uvicorn.error').info('homologation_checks provisional_accounts=%s whatsapp_documents_configured=%s', provisional, bool(provider_config()))
-    yield
+    strategic_crm.configure(db=db, auth=auth, require_sector=require_sector, valid_cnpj=valid_cnpj, check_client_scope=check_client_scope, scoped_rows=scoped_rows, project_attendance=project_attendance, is_seller=is_seller)
+    strategic_worker = asyncio.create_task(strategic_crm.worker())
+    try:
+        yield
+    finally:
+        strategic_worker.cancel()
+        try: await strategic_worker
+        except asyncio.CancelledError: pass
 
 app = FastAPI(title='L2 ONE API', lifespan=lifespan, docs_url=None, redoc_url=None)
 app.include_router(zara.router)
 app.include_router(webchat.router)
+app.include_router(strategic_crm.router)
 
 def sectors_for(user):
     with db() as con:
@@ -485,7 +495,9 @@ def capture_lead_webhook(data: LeadIntake, x_l2_webhook_key: str | None = Header
         raise HTTPException(401,'Credencial de captação inválida')
     item=normalize_intake(data,valid_cnpj)
     with db() as con:
+        con.execute('SELECT pg_advisory_xact_lock(%s)',(8239020,))
         result=ingest_lead(con,item)
+        result=strategic_crm.intake_tdc(con,item,result)
     return result
 
 @app.post('/api/leads/intake', status_code=201)
@@ -494,7 +506,9 @@ def capture_lead_internal(data: LeadIntake, authorization: str | None = Header(d
     require_sector(user,'commercial','office')
     item=normalize_intake(data,valid_cnpj)
     with db() as con:
-        return ingest_lead(con,item,source='backoffice:'+user)
+        con.execute('SELECT pg_advisory_xact_lock(%s)',(8239020,))
+        result=ingest_lead(con,item,source='backoffice:'+user)
+        return strategic_crm.intake_tdc(con,item,result)
 
 @app.get('/api/leads/inbox')
 def capture_lead_inbox(authorization: str | None = Header(default=None)):
@@ -983,6 +997,7 @@ def prices_for_client(client_id: str, authorization: str | None = Header(default
 def sync(data: Sync, authorization: str | None = Header(default=None)):
     user = auth(authorization)
     with db() as con:
+        con.execute('SELECT pg_advisory_xact_lock(%s)',(8239020,))
         account=con.execute('SELECT role,sectors FROM app_users WHERE username=%s AND active',(user,)).fetchone()
         permissions=effective_sectors(user,account[0],account[1]) if account else set()
         # Catalog dependencies must exist before prices and orders, even in offline queues.
@@ -1008,6 +1023,9 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         raise HTTPException(403,'Novo cliente deve pertencer ao seu usuário')
                     if obj.get('owner') and not valid_client_responsible(con,obj['owner']) and obj['owner']!='Ana Paula' and not (previous_client and obj['owner']==previous_client[0].get('owner')):
                         raise HTTPException(400,'Responsável precisa ser vendedor ou administrador ativo')
+                    for derived in ('tdc','mcr','mcrConsent'):
+                        obj.pop(derived,None)
+                        if previous_client and derived in previous_client[0]: obj[derived]=previous_client[0][derived]
                     if previous_client: check_client_scope(con,user,entity_id)
                 elif target_kind in ('order','visit','task','route','opportunity','interaction','fulfillment','lead','settlement','office_finance'):
                     previous_entity=con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s',(target_kind,entity_id)).fetchone()
@@ -1068,6 +1086,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     elif target=='client':
                         con.execute('DELETE FROM clientes WHERE id=%s',(entity_id,))
                     con.execute('DELETE FROM entities WHERE kind=%s AND id=%s',(target,entity_id))
+                    if target in ('order','visit','interaction') and previous_entity and previous_entity[0].get('clientId'):
+                        strategic_crm.refresh_client(con,previous_entity[0]['clientId'])
                     con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
                     con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,target,entity_id,'delete'))
                     continue
@@ -1456,6 +1476,9 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                             (entity_id,obj['name'],obj.get('tradeName') or None,obj.get('taxId') or None,obj.get('abc') if obj.get('abc') in ('A','B','C') else None))
                     elif kind in ('visit','interaction'): project_attendance(con,kind,entity_id,obj)
                     elif kind=='order': project_order(con,entity_id,obj)
+                    strategic_crm.event(con,kind,obj)
+                    if kind in ('order','visit','interaction') and previous_entity and previous_entity[0].get('clientId') and previous_entity[0]['clientId']!=obj.get('clientId'):
+                        strategic_crm.refresh_client(con,previous_entity[0]['clientId'])
                 con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
                 con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,kind,entity_id,'delete' if kind=='delete_route' else 'upsert'))
                 changed=True
@@ -1548,6 +1571,8 @@ def restore_archived_order(order_id: str, authorization: str | None = Header(def
         if con.execute("SELECT 1 FROM entities WHERE kind='order' AND id=%s",(order_id,)).fetchone():
             raise HTTPException(409, 'Pedido já está ativo')
         con.execute("INSERT INTO entities(kind,id,payload) VALUES('order',%s,%s)",(order_id,Jsonb(row[0])))
+        strategic_crm.event(con,'order',row[0])
+        strategic_crm.changed(con)
         con.execute("DELETE FROM archived_entities WHERE kind='order' AND id=%s",(order_id,))
         con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'order',%s,'restore')",(actor,order_id))
     return {'id':order_id,'restored':True}
@@ -2029,7 +2054,7 @@ def zara_page():
 
 @app.get('/{filename}')
 def asset(filename: str):
-    if filename not in ('app.js','live_records.js','crm_operations.js','goals_dashboard.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
+    if filename not in ('strategic_crm.js','app.js','live_records.js','crm_operations.js','goals_dashboard.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
         raise HTTPException(404)
     if filename in ('logo-l2-light.jpg','logo-l2-dark.jpg'):
         source={'logo-l2-light.jpg':'logo-light.jpg.b64','logo-l2-dark.jpg':'logo-dark.jpg.b64'}[filename]

@@ -3,6 +3,7 @@ import ast
 from datetime import datetime, timezone
 from pathlib import Path
 import unittest
+from types import SimpleNamespace
 from financial_visibility import hide_industry_commissions
 
 source=ast.parse(Path(__file__).resolve().parents[1].joinpath('server.py').read_text())
@@ -36,7 +37,7 @@ class FakeDB:
     def __enter__(self):return self.con
     def __exit__(self,*args):return False
 
-namespace={'hide_industry_commissions':hide_industry_commissions,'HTTPException':HTTPException,'Header':Header,'Jsonb':lambda x:x,'Sync':object,'FINANCE_USERS':{'Ana Paula','Euler','Laís'},'admin_access':lambda user:user in ('Ana Paula','Marlene')}
+namespace={'strategic_crm':SimpleNamespace(event=lambda *a:None,refresh_client=lambda *a:None,changed=lambda *a:None),'hide_industry_commissions':hide_industry_commissions,'HTTPException':HTTPException,'Header':Header,'Jsonb':lambda x:x,'Sync':object,'FINANCE_USERS':{'Ana Paula','Euler','Laís'},'admin_access':lambda user:user in ('Ana Paula','Marlene')}
 exec(compile(ast.Module(body=[function,sync_function],type_ignores=[]),'<archive>','exec'),namespace)
 
 class ArchiveCon(FakeCon):
