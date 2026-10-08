@@ -5,6 +5,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 import re
 import unittest
+from types import SimpleNamespace
 from access_policy import effective_sectors, attribute_order
 from seller_commission import apply_seller_commission
 from financial_visibility import hide_industry_commissions
@@ -50,7 +51,7 @@ class FakeDB:
     def __enter__(self):return self.con
     def __exit__(self,*args):return False
 
-namespace={'datetime':datetime,'TZ':timezone.utc,'hide_industry_commissions':hide_industry_commissions,'apply_seller_commission':apply_seller_commission,'effective_sectors':effective_sectors,'attribute_order':attribute_order,'Sync':object,'Header':lambda *args,**kwargs:None,'HTTPException':HTTPException,
+namespace={'strategic_crm':SimpleNamespace(event=lambda *a:None,refresh_client=lambda *a:None,changed=lambda *a:None),'datetime':datetime,'TZ':timezone.utc,'hide_industry_commissions':hide_industry_commissions,'apply_seller_commission':apply_seller_commission,'effective_sectors':effective_sectors,'attribute_order':attribute_order,'Sync':object,'Header':lambda *args,**kwargs:None,'HTTPException':HTTPException,
            'FINANCE_USERS':{'Ana Paula'},'Decimal':Decimal,'InvalidOperation':InvalidOperation,
            'normalize_uf':lambda value:value,'price_table_matches_client':lambda a,b:a==b or (a=='AP' and b=='PA'),
            'Jsonb':lambda value:value,'re':re,'project_order':lambda con,identifier,obj:None,

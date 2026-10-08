@@ -1,0 +1,19 @@
+const fs=require('fs'),assert=require('node:assert/strict'),{JSDOM}=require(process.env.L2_JSDOM||'jsdom');
+(async()=>{for(const user of ['Ana Paula','Euler','Laís','Marlene','Erika']){
+ const dom=new JSDOM(fs.readFileSync('index.html','utf8').replace(/<script[\s\S]*?<\/script>/g,''),{url:'https://l2.test',runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window;
+ w.structuredClone=structuredClone;w.matchMedia=()=>({matches:false});w.alert=()=>{};w.confirm=()=>true;w.setInterval=()=>0;w.fetch=async()=>({ok:true,json:async()=>[]});
+ w.localStorage.setItem('l2one_state_v2',JSON.stringify({user,role:user==='Erika'?'Vendedor':'Administrativo',token:'mock-token',server:'https://l2.test',sectors:['commercial','routes','office','management','finance','catalog','admin'],sellers:['Ana Paula','Erika'],clients:[{id:'c1',owner:user,name:'Loja <teste>',city:'Belém',state:'PA'}],pending:[]}));
+ w.eval(['commercial_drafts.js','crm_operations.js','goals_dashboard.js','workspace.js','strategic_crm.js','app.js'].map(f=>fs.readFileSync(f,'utf8')).join('\n')+'\nwindow.strategyState=s;');
+ w.show('clientes');assert(w.document.querySelector('form[onsubmit="L2Strategy.qualify(event)"]'));assert(w.document.querySelector('form[onsubmit="L2Strategy.discover(event)"]'));
+ w.show('rota');assert(w.document.querySelector('form[onsubmit="L2Strategy.route(event)"]'));assert(w.document.querySelector('form[onsubmit="L2Strategy.location(event)"]'));
+ w.show('hoje');assert(w.document.querySelector('#strategyConsentForm'));assert.equal(!!w.document.querySelector('#strategySettingsForm'),['Ana Paula','Euler'].includes(user));
+ const calls=[];w.sync=async()=>{};
+ w.fetch=async(url,opts)=>{calls.push({url,opts});return {ok:true,json:async()=>({clients:[{id:'c1',name:'<img src=x onerror=alert(1)>',mcr:{status:'Em risco',nextContact:'2026-10-10',cycleDays:30,cycleSource:'Padrão'}}],searchSuggestions:['Maquiagem']})}};
+ await w.L2Strategy.overview();assert(w.document.querySelector('#strategyOverview'));assert.equal(w.document.querySelector('#strategyOverview img'),null);assert.equal(calls.at(-1).opts.method,'GET');
+ w.show('clientes');const form=w.document.querySelector('form[onsubmit="L2Strategy.qualify(event)"]');
+ const values={taxId:'11222333000181',name:'Loja',city:'Belém',cnae:'4772500',segment:'Maquiagem',estimatedMonthlyValue:'3000',urgencyDays:'7',demandEvidence:'Solicitação de reposição recebida.'};for(const [k,v] of Object.entries(values))form.elements[k].value=v;
+ w.fetch=async(url,opts)=>{calls.push({url,opts});return {ok:true,json:async()=>({qualification:{tag:'TDC qualificado',score:100},clientId:'c1'})}};
+ await w.L2Strategy.qualify({preventDefault(){},target:form});const payload=JSON.parse(calls.at(-1).opts.body);assert.equal(payload.latitude,null);assert.equal(payload.urgencyDays,7);assert(w.document.querySelector('#strategyNotice').textContent.includes('Incluído na carteira'));
+ w.strategyState.pending.push({type:'client',data:{id:'c1'}});const before=calls.length;await w.L2Strategy.qualify({preventDefault(){},target:form});assert.equal(calls.length,before);assert(w.document.querySelector('#strategyNotice').textContent.includes('Sincronize'));
+ dom.window.close();
+ }console.log('TDC/SRI/MCR: 5 profiles, forms, escaping, API payload and pending-queue protection passed');})().catch(e=>{console.error(e);process.exit(1)});
