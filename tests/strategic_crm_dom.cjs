@@ -6,7 +6,14 @@ const fs=require('fs'),assert=require('node:assert/strict'),{JSDOM}=require(proc
  w.eval(['commercial_drafts.js','crm_operations.js','goals_dashboard.js','workspace.js','strategic_crm.js','app.js'].map(f=>fs.readFileSync(f,'utf8')).join('\n')+'\nwindow.strategyState=s;');
  w.show('clientes');assert(w.document.querySelector('form[onsubmit="L2Strategy.qualify(event)"]'));assert(w.document.querySelector('form[onsubmit="L2Strategy.discover(event)"]'));
  w.show('rota');assert(w.document.querySelector('form[onsubmit="L2Strategy.route(event)"]'));assert(w.document.querySelector('form[onsubmit="L2Strategy.location(event)"]'));
+ const routeForm=w.document.querySelector('form[onsubmit="L2Strategy.route(event)"]');
+ for(const [k,v] of Object.entries({city:'Belém',originLatitude:'-1.4',originLongitude:'-48.4'}))routeForm.elements[k].value=v;
+ let planned=null;w.fetch=async(url,opts)=>{planned=JSON.parse(opts.body);return {ok:true,json:async()=>({temporaryId:'t1',stops:[{clientId:'c1',order:1,latitude:-1.4,longitude:-48.4,arrival:'09:00',departure:'09:40',openingStatus:'Dentro do horário cadastrado',reason:'Prospecção',links:{maps:'https://www.google.com/maps/dir/?api=1&destination=-1.4,-48.4'}}],omitted:[],distanceKm:2,estimatedExpense:0,method:'Estimativa geográfica'})}};
+ await w.L2Strategy.route({preventDefault(){},target:routeForm});assert.equal(planned.commit,false);assert.equal(planned.temporary,true);assert.equal(planned.roadRouting,false);assert(w.document.querySelector('#publishStrategyRoute'));assert(w.document.querySelector('#strategyMap'));assert.equal(w.document.querySelector('#strategyRouteResult img'),null);
+ assert(w.L2Strategy.shortcuts({name:'A',phone:'(91)99999-9999',latitude:-1.4,longitude:-48.4}).includes('tel:+5591999999999'));
  w.show('hoje');assert(w.document.querySelector('#strategyConsentForm'));assert.equal(!!w.document.querySelector('#strategySettingsForm'),['Ana Paula','Euler'].includes(user));
+ assert(w.document.querySelector('form[onsubmit="L2Strategy.fieldSettings(event)"]')===null||['Ana Paula','Euler'].includes(user));
+ assert(w.document.body.textContent.includes('Preposto Virtual'));
  const calls=[];w.sync=async()=>{};
  w.fetch=async(url,opts)=>{calls.push({url,opts});return {ok:true,json:async()=>({clients:[{id:'c1',name:'<img src=x onerror=alert(1)>',mcr:{status:'Em risco',nextContact:'2026-10-10',cycleDays:30,cycleSource:'Padrão'}}],searchSuggestions:['Maquiagem']})}};
  await w.L2Strategy.overview();assert(w.document.querySelector('#strategyOverview'));assert.equal(w.document.querySelector('#strategyOverview img'),null);assert.equal(calls.at(-1).opts.method,'GET');
@@ -16,4 +23,4 @@ const fs=require('fs'),assert=require('node:assert/strict'),{JSDOM}=require(proc
  await w.L2Strategy.qualify({preventDefault(){},target:form});const payload=JSON.parse(calls.at(-1).opts.body);assert.equal(payload.latitude,null);assert.equal(payload.urgencyDays,7);assert(w.document.querySelector('#strategyNotice').textContent.includes('Incluído na carteira'));
  w.strategyState.pending.push({type:'client',data:{id:'c1'}});const before=calls.length;await w.L2Strategy.qualify({preventDefault(){},target:form});assert.equal(calls.length,before);assert(w.document.querySelector('#strategyNotice').textContent.includes('Sincronize'));
  dom.window.close();
- }console.log('TDC/SRI/MCR: 5 profiles, forms, escaping, API payload and pending-queue protection passed');})().catch(e=>{console.error(e);process.exit(1)});
+ }console.log('TDC/SRI/MCR/Preposto: 5 profiles, forms, escaping, API payload and pending-queue protection passed');})().catch(e=>{console.error(e);process.exit(1)});

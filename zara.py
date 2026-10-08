@@ -1,4 +1,5 @@
 """Zara: inbound WhatsApp Cloud API support with explicit human handoff."""
+import field_assistant
 import hashlib
 import hmac
 import os
@@ -334,6 +335,9 @@ async def receive_webhook(request: Request, x_hub_signature_256: str | None = He
                             return None
                         mode = con.execute('SELECT mode FROM zara_conversations WHERE phone=%s FOR UPDATE', (phone,)).fetchone()[0]
                         first = con.execute("SELECT count(*) FROM zara_messages WHERE phone=%s AND direction='in'", (phone,)).fetchone()[0] == 1
+                        field_reply = field_assistant.handle_message(con,phone,mid,body)
+                        if field_reply is not None:
+                            return 'bot', field_reply
                         rule, handoff = response_rule(body, name, first)
                         if not body or body == '[Mensagem não textual recebida]':
                             rule, handoff = HANDOFF, True

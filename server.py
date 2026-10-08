@@ -31,6 +31,7 @@ from financial_visibility import hide_industry_commissions, preserve_industry_co
 import zara
 import webchat
 import strategic_crm
+import field_assistant
 
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
@@ -124,6 +125,7 @@ def initialize():
         con.execute('CREATE TABLE IF NOT EXISTS applied_changes (change_id TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE TABLE IF NOT EXISTS audit_log (id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, kind TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         strategic_crm.setup(con)
+        field_assistant.setup(con)
         seed_bella(con, BASE)
         seed_senscience(con, BASE)
         seed_davines(con, BASE)
@@ -408,6 +410,7 @@ app = FastAPI(title='L2 ONE API', lifespan=lifespan, docs_url=None, redoc_url=No
 app.include_router(zara.router)
 app.include_router(webchat.router)
 app.include_router(strategic_crm.router)
+app.include_router(field_assistant.router)
 
 def sectors_for(user):
     with db() as con:
@@ -1023,7 +1026,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         raise HTTPException(403,'Novo cliente deve pertencer ao seu usuário')
                     if obj.get('owner') and not valid_client_responsible(con,obj['owner']) and obj['owner']!='Ana Paula' and not (previous_client and obj['owner']==previous_client[0].get('owner')):
                         raise HTTPException(400,'Responsável precisa ser vendedor ou administrador ativo')
-                    for derived in ('tdc','mcr','mcrConsent'):
+                    for derived in ('tdc','mcr','mcrConsent','fieldTemperature'):
                         obj.pop(derived,None)
                         if previous_client and derived in previous_client[0]: obj[derived]=previous_client[0][derived]
                     if previous_client: check_client_scope(con,user,entity_id)
@@ -1086,6 +1089,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     elif target=='client':
                         con.execute('DELETE FROM clientes WHERE id=%s',(entity_id,))
                     con.execute('DELETE FROM entities WHERE kind=%s AND id=%s',(target,entity_id))
+                    if target=='order':con.execute("DELETE FROM entities WHERE kind='tdc_signal' AND id=%s",('order-'+entity_id,))
                     if target in ('order','visit','interaction') and previous_entity and previous_entity[0].get('clientId'):
                         strategic_crm.refresh_client(con,previous_entity[0]['clientId'])
                     con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
@@ -2037,9 +2041,9 @@ async def security_headers(request, call_next):
     response = await call_next(request)
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'DENY'
-    response.headers['Referrer-Policy'] = 'same-origin'
-    response.headers['Permissions-Policy'] = 'camera=(self), microphone=(), geolocation=()'
-    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:; img-src 'self' data:; frame-ancestors 'none'"
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Permissions-Policy'] = 'camera=(self), microphone=(), geolocation=(self)'
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:; img-src 'self' data: https://tile.openstreetmap.org; frame-ancestors 'none'"
     if request.url.path.startswith('/api/'):
         response.headers['Cache-Control'] = 'no-store'
     return response
@@ -2054,7 +2058,7 @@ def zara_page():
 
 @app.get('/{filename}')
 def asset(filename: str):
-    if filename not in ('strategic_crm.js','app.js','live_records.js','crm_operations.js','goals_dashboard.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
+    if filename not in ('leaflet.js','leaflet.css','strategic_crm.js','app.js','live_records.js','crm_operations.js','goals_dashboard.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
         raise HTTPException(404)
     if filename in ('logo-l2-light.jpg','logo-l2-dark.jpg'):
         source={'logo-l2-light.jpg':'logo-light.jpg.b64','logo-l2-dark.jpg':'logo-dark.jpg.b64'}[filename]
