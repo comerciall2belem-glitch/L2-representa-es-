@@ -31,9 +31,14 @@
   if(basis==='invoices')for(const d of docs){if(!validDay(d.billedDate)){invalidDates++;continue}records.push({date:d.billedDate,brand:d.brand||'Indústria não informada',amount:cents(d.billed)})}
   else for(const o of orders.filter(basis==='billed'?billed:accepted)){if(!validDay(o.date)){invalidDates++;continue}for(const [brand,amount] of orderAmounts(o))records.push({date:o.date,brand,amount})}
   for(const row of records){if(!row.date.startsWith(month)||row.date>asOf)continue;addIndustry(row.brand);const industry=industries.get(key(row.brand));industry.month+=row.amount;if(row.date===asOf)industry.day+=row.amount;if(row.date>=weekStart&&row.date<=weekEnd)industry.week+=row.amount}
+  for(const industry of industries.values()){
+   const clients=new Set();for(const order of orders){if(!order.clientId||!accepted(order)||!validDay(order.date)||!order.date.startsWith(month)||order.date>asOf)continue;if([...orderAmounts(order)].some(([brand,amount])=>key(brand)===key(industry.brand)&&amount>0))clients.add(order.clientId)}
+   industry.positiveClients=clients.size;
+  }
   let targeted=0;for(const industry of industries.values()){
    const assigned=[...latest.values()].filter(g=>key(g.brand)===key(industry.brand)),team=assigned.find(g=>key(g.user)==='equipe');
    if(team){industry.target=cents(team.amount);industry.source='Meta da equipe'}else if(assigned.length){industry.target=assigned.reduce((n,g)=>n+cents(g.amount),0);industry.source='Soma das metas individuais'}
+   industry.clientTarget=team&&team.clientTarget!==undefined&&team.clientTarget!==''?Number(team.clientTarget):null;industry.clientsRemaining=industry.clientTarget===null?null:Math.max(0,industry.clientTarget-industry.positiveClients);
    if(industry.target!==null)targeted++;
    industry.daily=industry.target===null?null:Math.round(industry.target/days.length);industry.weekly=industry.target===null?null:Math.round(industry.target*weekDays.length/days.length);
    industry.pct=industry.target>0?100*industry.month/industry.target:null;industry.remaining=industry.target===null?null:Math.max(0,industry.target-industry.month);industry.remainingPct=industry.target>0?100*industry.remaining/industry.target:null;

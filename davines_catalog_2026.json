@@ -1,0 +1,1556 @@
+[
+  {
+    "sku": "71978",
+    "description": "AUTHENTIC CLEASING NECTAR 280ML",
+    "price": "173.00",
+    "ean": "8004608226697",
+    "unit": "UND"
+  },
+  {
+    "sku": "62235",
+    "description": "AUTHENTIC CLEASING NECTAR 280ML",
+    "price": "173.00",
+    "ean": "8004608282006",
+    "unit": "UND"
+  },
+  {
+    "sku": "45977",
+    "description": "AUTHENTIC MOISTURIZING BALM 150ML",
+    "price": "179.00",
+    "ean": "8004608226703",
+    "unit": "UND"
+  },
+  {
+    "sku": "45985",
+    "description": "AUTHENTIC NOURISHING OIL 140ML",
+    "price": "330.00",
+    "ean": "8004608226710",
+    "unit": "UND"
+  },
+  {
+    "sku": "84190",
+    "description": "AUTHENTIC REPLENISHING BUTTER 230ML",
+    "price": "261.00",
+    "ean": "8004608286028",
+    "unit": "UND"
+  },
+  {
+    "sku": "49255",
+    "description": "DAVINES ACTIVATOR 10VOL 900ML",
+    "price": "139.00",
+    "ean": "8004608251835",
+    "unit": "UND"
+  },
+  {
+    "sku": "49263",
+    "description": "DAVINES ACTIVATOR 20VOL 900ML",
+    "price": "139.00",
+    "ean": "8004608251842",
+    "unit": "UND"
+  },
+  {
+    "sku": "48089",
+    "description": "DAVINES ACTIVATOR 30VOL 900ML",
+    "price": "139.00",
+    "ean": "8004608251859",
+    "unit": "UND"
+  },
+  {
+    "sku": "48097",
+    "description": "DAVINES ACTIVATOR 40VOL 900ML",
+    "price": "139.00",
+    "ean": "8004608251866",
+    "unit": "UND"
+  },
+  {
+    "sku": "49271",
+    "description": "DAVINES ACTIVATOR 5VOL 900ML",
+    "price": "139.00",
+    "ean": "8004608253730",
+    "unit": "UND"
+  },
+  {
+    "sku": "54844",
+    "description": "DAVINES MASK 0,00 100GR",
+    "price": "86.00",
+    "ean": "8004608251828",
+    "unit": "UND"
+  },
+  {
+    "sku": "71943",
+    "description": "DAVINES MASK 0,18 100GR",
+    "price": "86.00",
+    "ean": "8004608260868",
+    "unit": "UND"
+  },
+  {
+    "sku": "71951",
+    "description": "DAVINES MASK 0,25 100GR",
+    "price": "86.00",
+    "ean": "8004608247531",
+    "unit": "UND"
+  },
+  {
+    "sku": "49050",
+    "description": "DAVINES MASK 1,0 100GR",
+    "price": "86.00",
+    "ean": "8004608251026",
+    "unit": "UND"
+  },
+  {
+    "sku": "54852",
+    "description": "DAVINES MASK 10,01 100GR",
+    "price": "86.00",
+    "ean": "8004608251309",
+    "unit": "UND"
+  },
+  {
+    "sku": "53368",
+    "description": "DAVINES MASK 10,12 100GR",
+    "price": "86.00",
+    "ean": "8004608251347",
+    "unit": "UND"
+  },
+  {
+    "sku": "53384",
+    "description": "DAVINES MASK 10,21 100GR",
+    "price": "86.00",
+    "ean": "8004608260592",
+    "unit": "UND"
+  },
+  {
+    "sku": "54879",
+    "description": "DAVINES MASK 12,01 100GR",
+    "price": "86.00",
+    "ean": "8004608251774",
+    "unit": "UND"
+  },
+  {
+    "sku": "53449",
+    "description": "DAVINES MASK 12,11 100GR",
+    "price": "86.00",
+    "ean": "8004608251781",
+    "unit": "UND"
+  },
+  {
+    "sku": "53457",
+    "description": "DAVINES MASK 12,21 100GR",
+    "price": "86.00",
+    "ean": "8004608251798",
+    "unit": "UND"
+  },
+  {
+    "sku": "55158",
+    "description": "DAVINES MASK 2,0 100GR",
+    "price": "86.00",
+    "ean": "8004608251033",
+    "unit": "UND"
+  },
+  {
+    "sku": "54887",
+    "description": "DAVINES MASK 2,11 100GR",
+    "price": "86.00",
+    "ean": "8004608251316",
+    "unit": "UND"
+  },
+  {
+    "sku": "49077",
+    "description": "DAVINES MASK 3,0 100GR",
+    "price": "86.00",
+    "ean": "8004608251040",
+    "unit": "UND"
+  },
+  {
+    "sku": "54895",
+    "description": "DAVINES MASK 33,0 100GR",
+    "price": "86.00",
+    "ean": "8004608251125",
+    "unit": "UND"
+  },
+  {
+    "sku": "49298",
+    "description": "DAVINES MASK 3,81 100GR",
+    "price": "86.00",
+    "ean": "8004608256618",
+    "unit": "UND"
+  },
+  {
+    "sku": "49085",
+    "description": "DAVINES MASK 4,0 100GR",
+    "price": "86.00",
+    "ean": "8004608251057",
+    "unit": "UND"
+  },
+  {
+    "sku": "54909",
+    "description": "DAVINES MASK 4,18 100GR",
+    "price": "86.00",
+    "ean": "8004608256595",
+    "unit": "UND"
+  },
+  {
+    "sku": "49131",
+    "description": "DAVINES MASK 44,0 100GR",
+    "price": "86.00",
+    "ean": "8004608251132",
+    "unit": "UND"
+  },
+  {
+    "sku": "71960",
+    "description": "DAVINES MASK 44,1 100GR",
+    "price": "86.00",
+    "ean": "8004608274759",
+    "unit": "UND"
+  },
+  {
+    "sku": "54917",
+    "description": "DAVINES MASK 5 100GR",
+    "price": "86.00",
+    "ean": "8004608251200",
+    "unit": "UND"
+  },
+  {
+    "sku": "49093",
+    "description": "DAVINES MASK 5,0 100GR",
+    "price": "86.00",
+    "ean": "8004608251064",
+    "unit": "UND"
+  },
+  {
+    "sku": "49190",
+    "description": "DAVINES MASK 5,1 100GR",
+    "price": "86.00",
+    "ean": "8004608251255",
+    "unit": "UND"
+  },
+  {
+    "sku": "54925",
+    "description": "DAVINES MASK 5,14 100GR",
+    "price": "86.00",
+    "ean": "8004608251361",
+    "unit": "UND"
+  },
+  {
+    "sku": "54933",
+    "description": "DAVINES MASK 5,34 100GR",
+    "price": "86.00",
+    "ean": "8004608251521",
+    "unit": "UND"
+  },
+  {
+    "sku": "54941",
+    "description": "DAVINES MASK 5,35 100GR",
+    "price": "86.00",
+    "ean": "8004608258490",
+    "unit": "UND"
+  },
+  {
+    "sku": "54950",
+    "description": "DAVINES MASK 5,4 100GR",
+    "price": "86.00",
+    "ean": "8004608251569",
+    "unit": "UND"
+  },
+  {
+    "sku": "49140",
+    "description": "DAVINES MASK 55,0 100GR",
+    "price": "86.00",
+    "ean": "8004608251149",
+    "unit": "UND"
+  },
+  {
+    "sku": "54968",
+    "description": "DAVINES MASK 6 100GR",
+    "price": "86.00",
+    "ean": "8004608251217",
+    "unit": "UND"
+  },
+  {
+    "sku": "49107",
+    "description": "DAVINES MASK 6,0 100GR",
+    "price": "86.00",
+    "ean": "8004608251071",
+    "unit": "UND"
+  },
+  {
+    "sku": "49204",
+    "description": "DAVINES MASK 6,1 100GR",
+    "price": "86.00",
+    "ean": "8004608251262",
+    "unit": "UND"
+  },
+  {
+    "sku": "53414",
+    "description": "DAVINES MASK 6,14 100GR",
+    "price": "86.00",
+    "ean": "8004608251378",
+    "unit": "UND"
+  },
+  {
+    "sku": "55166",
+    "description": "DAVINES MASK 6,18 100GR",
+    "price": "86.00",
+    "ean": "8004608256601",
+    "unit": "UND"
+  },
+  {
+    "sku": "54976",
+    "description": "DAVINES MASK 6,21 100GR",
+    "price": "86.00",
+    "ean": "8004608274667",
+    "unit": "UND"
+  },
+  {
+    "sku": "54984",
+    "description": "DAVINES MASK 6,3 100GR",
+    "price": "86.00",
+    "ean": "8004608251453",
+    "unit": "UND"
+  },
+  {
+    "sku": "54992",
+    "description": "DAVINES MASK 6,34 100GR",
+    "price": "86.00",
+    "ean": "8004608251538",
+    "unit": "UND"
+  },
+  {
+    "sku": "55000",
+    "description": "DAVINES MASK 6,35 100GR",
+    "price": "86.00",
+    "ean": "8004608251552",
+    "unit": "UND"
+  },
+  {
+    "sku": "55018",
+    "description": "DAVINES MASK 6,44 100GR",
+    "price": "86.00",
+    "ean": "8004608258506",
+    "unit": "UND"
+  },
+  {
+    "sku": "49158",
+    "description": "DAVINES MASK 66,0 100GR",
+    "price": "86.00",
+    "ean": "8004608251156",
+    "unit": "UND"
+  },
+  {
+    "sku": "55034",
+    "description": "DAVINES MASK 66,1 100GR",
+    "price": "86.00",
+    "ean": "8004608274766",
+    "unit": "UND"
+  },
+  {
+    "sku": "53473",
+    "description": "DAVINES MASK 6,66 100GR",
+    "price": "86.00",
+    "ean": "8004608251705",
+    "unit": "UND"
+  },
+  {
+    "sku": "55026",
+    "description": "DAVINES MASK 6,71 100GR",
+    "price": "86.00",
+    "ean": "8004608251729",
+    "unit": "UND"
+  },
+  {
+    "sku": "53430",
+    "description": "DAVINES MASK 7 100GR",
+    "price": "86.00",
+    "ean": "8004608251224",
+    "unit": "UND"
+  },
+  {
+    "sku": "49115",
+    "description": "DAVINES MASK 7,0 100GR",
+    "price": "86.00",
+    "ean": "8004608251088",
+    "unit": "UND"
+  },
+  {
+    "sku": "49212",
+    "description": "DAVINES MASK 7,1 100GR",
+    "price": "86.00",
+    "ean": "8004608251279",
+    "unit": "UND"
+  },
+  {
+    "sku": "49239",
+    "description": "DAVINES MASK 7,11 100GR",
+    "price": "86.00",
+    "ean": "8004608251330",
+    "unit": "UND"
+  },
+  {
+    "sku": "55140",
+    "description": "DAVINES MASK 7,18 100GR",
+    "price": "86.00",
+    "ean": "8004608266266",
+    "unit": "UND"
+  },
+  {
+    "sku": "55042",
+    "description": "DAVINES MASK 7,3 100GR",
+    "price": "86.00",
+    "ean": "8004608251460",
+    "unit": "UND"
+  },
+  {
+    "sku": "55050",
+    "description": "DAVINES MASK 7,31 100GR",
+    "price": "86.00",
+    "ean": "8004608260622",
+    "unit": "UND"
+  },
+  {
+    "sku": "55069",
+    "description": "DAVINES MASK 7,32 100GR",
+    "price": "86.00",
+    "ean": "8004608251507",
+    "unit": "UND"
+  },
+  {
+    "sku": "52647",
+    "description": "DAVINES MASK 7,34 100GR",
+    "price": "86.00",
+    "ean": "8004608251545",
+    "unit": "UND"
+  },
+  {
+    "sku": "49247",
+    "description": "DAVINES MASK 7,4 100GR",
+    "price": "86.00",
+    "ean": "8004608251576",
+    "unit": "UND"
+  },
+  {
+    "sku": "53465",
+    "description": "DAVINES MASK 7,51 100GR",
+    "price": "86.00",
+    "ean": "8004608251644",
+    "unit": "UND"
+  },
+  {
+    "sku": "49166",
+    "description": "DAVINES MASK 77,0 100GR",
+    "price": "86.00",
+    "ean": "8004608251163",
+    "unit": "UND"
+  },
+  {
+    "sku": "55077",
+    "description": "DAVINES MASK 8 100GR",
+    "price": "86.00",
+    "ean": "8004608251231",
+    "unit": "UND"
+  },
+  {
+    "sku": "53422",
+    "description": "DAVINES MASK 8,0 100GR",
+    "price": "86.00",
+    "ean": "8004608251095",
+    "unit": "UND"
+  },
+  {
+    "sku": "49220",
+    "description": "DAVINES MASK 8,1 100GR",
+    "price": "86.00",
+    "ean": "8004608251286",
+    "unit": "UND"
+  },
+  {
+    "sku": "53392",
+    "description": "DAVINES MASK 8,21 100GR",
+    "price": "86.00",
+    "ean": "8004608266273",
+    "unit": "UND"
+  },
+  {
+    "sku": "55085",
+    "description": "DAVINES MASK 8,3 100GR",
+    "price": "86.00",
+    "ean": "8004608251477",
+    "unit": "UND"
+  },
+  {
+    "sku": "55093",
+    "description": "DAVINES MASK 8,33 100GR",
+    "price": "86.00",
+    "ean": "8004608251514",
+    "unit": "UND"
+  },
+  {
+    "sku": "55174",
+    "description": "DAVINES MASK 8,43 100GR",
+    "price": "86.00",
+    "ean": "8004608265139",
+    "unit": "UND"
+  },
+  {
+    "sku": "52418",
+    "description": "DAVINES MASK 8,44 100GR",
+    "price": "86.00",
+    "ean": "8004608251583",
+    "unit": "UND"
+  },
+  {
+    "sku": "49174",
+    "description": "DAVINES MASK 88,0 100GR",
+    "price": "86.00",
+    "ean": "8004608251170",
+    "unit": "UND"
+  },
+  {
+    "sku": "49123",
+    "description": "DAVINES MASK 9,0 100GR",
+    "price": "86.00",
+    "ean": "8004608251101",
+    "unit": "UND"
+  },
+  {
+    "sku": "55107",
+    "description": "DAVINES MASK 9,04 100GR",
+    "price": "86.00",
+    "ean": "8004608251590",
+    "unit": "UND"
+  },
+  {
+    "sku": "54780",
+    "description": "DAVINES MASK 9,1 100GR",
+    "price": "86.00",
+    "ean": "8004608251293",
+    "unit": "UND"
+  },
+  {
+    "sku": "53376",
+    "description": "DAVINES MASK 9,11 100GR",
+    "price": "86.00",
+    "ean": "8004608256625",
+    "unit": "UND"
+  },
+  {
+    "sku": "55115",
+    "description": "DAVINES MASK 9,3 100GR",
+    "price": "86.00",
+    "ean": "8004608251484",
+    "unit": "UND"
+  },
+  {
+    "sku": "55123",
+    "description": "DAVINES MASK 9,31 100GR",
+    "price": "86.00",
+    "ean": "8004608251491",
+    "unit": "UND"
+  },
+  {
+    "sku": "55131",
+    "description": "DAVINES MASK 9,32 100GR",
+    "price": "86.00",
+    "ean": "8004608266297",
+    "unit": "UND"
+  },
+  {
+    "sku": "49182",
+    "description": "DAVINES MASK 99,0 100GR",
+    "price": "86.00",
+    "ean": "8004608251187",
+    "unit": "UND"
+  },
+  {
+    "sku": "72133",
+    "description": "DAVINES TCL LIBERTY 450GR",
+    "price": "459.00",
+    "ean": "8004608276654",
+    "unit": "UND"
+  },
+  {
+    "sku": "48100",
+    "description": "DAVINES TCL PROGRESS 800GR",
+    "price": "481.00",
+    "ean": "8004608276647",
+    "unit": "UND"
+  },
+  {
+    "sku": "59293",
+    "description": "EHC DEDE COND 1000ML",
+    "price": "499.00",
+    "ean": "8004608262435",
+    "unit": "UND"
+  },
+  {
+    "sku": "49409",
+    "description": "EHC DEDE COND 250ML",
+    "price": "172.00",
+    "ean": "8004608276937",
+    "unit": "UND"
+  },
+  {
+    "sku": "46027",
+    "description": "EHC DEDE HAIR MIST 250ML",
+    "price": "273.00",
+    "ean": "8004608242215",
+    "unit": "UND"
+  },
+  {
+    "sku": "46019",
+    "description": "EHC DEDE SH 1000ML",
+    "price": "441.00",
+    "ean": "8004608242192",
+    "unit": "UND"
+  },
+  {
+    "sku": "53600",
+    "description": "EHC LOVE CURL CLEANSING CREAM SH 500ML",
+    "price": "250.00",
+    "ean": "8004608257172",
+    "unit": "UND"
+  },
+  {
+    "sku": "46108",
+    "description": "EHC LOVE CURL CONTROLLER 150ML",
+    "price": "264.00",
+    "ean": "8004608257202",
+    "unit": "UND"
+  },
+  {
+    "sku": "46116",
+    "description": "EHC LOVE CURL CREAM 150ML",
+    "price": "264.00",
+    "ean": "8004608257271",
+    "unit": "UND"
+  },
+  {
+    "sku": "49387",
+    "description": "EHC LOVE CURL HAIR COND 250ML",
+    "price": "194.00",
+    "ean": "8004608275893",
+    "unit": "UND"
+  },
+  {
+    "sku": "46094",
+    "description": "EHC LOVE CURL PRIMER 150ML",
+    "price": "251.00",
+    "ean": "8004608257189",
+    "unit": "UND"
+  },
+  {
+    "sku": "53619",
+    "description": "EHC LOVE CURL REVITALIZER 250ML",
+    "price": "252.00",
+    "ean": "8004608257196",
+    "unit": "UND"
+  },
+  {
+    "sku": "46043",
+    "description": "EHC LOVE CURL SH 250ML",
+    "price": "165.00",
+    "ean": "8004608257097",
+    "unit": "UND"
+  },
+  {
+    "sku": "46167",
+    "description": "EHC LOVE HAIR SMOOTHER 150ML",
+    "price": "219.00",
+    "ean": "8004608275039",
+    "unit": "UND"
+  },
+  {
+    "sku": "46175",
+    "description": "EHC MELU COND 1000ML",
+    "price": "499.00",
+    "ean": "8004608242482",
+    "unit": "UND"
+  },
+  {
+    "sku": "49395",
+    "description": "EHC MELU COND 250ML",
+    "price": "194.00",
+    "ean": "8004608276722",
+    "unit": "UND"
+  },
+  {
+    "sku": "46183",
+    "description": "EHC MELU HAIR SHIELD 250ML",
+    "price": "274.00",
+    "ean": "8004608242505",
+    "unit": "UND"
+  },
+  {
+    "sku": "46191",
+    "description": "EHC MELU SH 250ML",
+    "price": "165.00",
+    "ean": "8004608246206",
+    "unit": "UND"
+  },
+  {
+    "sku": "47597",
+    "description": "EHC MINU COND 1000ML",
+    "price": "560.00",
+    "ean": "8004608242604",
+    "unit": "UND"
+  },
+  {
+    "sku": "49360",
+    "description": "EHC MINU COND 250ML",
+    "price": "194.00",
+    "ean": "8004608275879",
+    "unit": "UND"
+  },
+  {
+    "sku": "47600",
+    "description": "EHC MINU HAIR MASK 1000ML",
+    "price": "771.00",
+    "ean": "8004608266457",
+    "unit": "UND"
+  },
+  {
+    "sku": "49425",
+    "description": "EHC MINU HAIR MASK 250ML",
+    "price": "270.00",
+    "ean": "8004608276753",
+    "unit": "UND"
+  },
+  {
+    "sku": "46230",
+    "description": "EHC MINU HAIR SERUM 150ML",
+    "price": "264.00",
+    "ean": "8004608242666",
+    "unit": "UND"
+  },
+  {
+    "sku": "72060",
+    "description": "EHC MINU REFIL SH 500ML",
+    "price": "230.00",
+    "ean": "8004608283584",
+    "unit": "UND"
+  },
+  {
+    "sku": "46221",
+    "description": "EHC MINU SH 1000ML",
+    "price": "441.00",
+    "ean": "8004608242567",
+    "unit": "UND"
+  },
+  {
+    "sku": "46213",
+    "description": "EHC MINU SH 250ML",
+    "price": "165.00",
+    "ean": "8004608242550",
+    "unit": "UND"
+  },
+  {
+    "sku": "46299",
+    "description": "EHC MOMO COND 1000ML",
+    "price": "560.00",
+    "ean": "8004608242154",
+    "unit": "UND"
+  },
+  {
+    "sku": "46280",
+    "description": "EHC MOMO COND 250ML",
+    "price": "194.00",
+    "ean": "8004608276715",
+    "unit": "UND"
+  },
+  {
+    "sku": "46302",
+    "description": "EHC MOMO HAIR POTION 150ML",
+    "price": "264.00",
+    "ean": "8004608262466",
+    "unit": "UND"
+  },
+  {
+    "sku": "84239",
+    "description": "EHC MOMO KIT SH/COND 250ML OI MILK 135ML",
+    "price": "439.00",
+    "ean": "7898671795249",
+    "unit": "UND"
+  },
+  {
+    "sku": "72052",
+    "description": "EHC MOMO REFIL SH 500ML",
+    "price": "230.00",
+    "ean": "8004608283591",
+    "unit": "UND"
+  },
+  {
+    "sku": "46272",
+    "description": "EHC MOMO SH 1000ML",
+    "price": "441.00",
+    "ean": "8004608281931",
+    "unit": "UND"
+  },
+  {
+    "sku": "57738",
+    "description": "EHC MOMO SH 250ML",
+    "price": "165.00",
+    "ean": "8004608280460",
+    "unit": "UND"
+  },
+  {
+    "sku": "46337",
+    "description": "EHC NOUNOU COND 1000ML",
+    "price": "560.00",
+    "ean": "8004608242048",
+    "unit": "UND"
+  },
+  {
+    "sku": "49379",
+    "description": "EHC NOUNOU COND 250ML",
+    "price": "194.00",
+    "ean": "8004608275886",
+    "unit": "UND"
+  },
+  {
+    "sku": "49069",
+    "description": "EHC NOUNOU COND 75ML",
+    "price": "100.00",
+    "ean": "8004608253419",
+    "unit": "UND"
+  },
+  {
+    "sku": "46345",
+    "description": "EHC NOUNOU HAIR MASK 1000ML",
+    "price": "771.00",
+    "ean": "8004608242086",
+    "unit": "UND"
+  },
+  {
+    "sku": "49417",
+    "description": "EHC NOUNOU HAIR MASK 250ML",
+    "price": "270.00",
+    "ean": "8004608276746",
+    "unit": "UND"
+  },
+  {
+    "sku": "84247",
+    "description": "EHC NOUNOU KIT SH/COND/MILK 135ML 3X1",
+    "price": "439.00",
+    "ean": "7898671795232",
+    "unit": "UND"
+  },
+  {
+    "sku": "72044",
+    "description": "EHC NOUNOU REFIL SH 500ML",
+    "price": "230.00",
+    "ean": "8004608283959",
+    "unit": "UND"
+  },
+  {
+    "sku": "46329",
+    "description": "EHC NOUNOU SH 1000ML",
+    "price": "441.00",
+    "ean": "8004608242000",
+    "unit": "UND"
+  },
+  {
+    "sku": "46310",
+    "description": "EHC NOUNOU SH 250ML",
+    "price": "165.00",
+    "ean": "8004608241997",
+    "unit": "UND"
+  },
+  {
+    "sku": "48968",
+    "description": "EHC NOUNOU SH 75ML",
+    "price": "100.00",
+    "ean": "8004608242932",
+    "unit": "UND"
+  },
+  {
+    "sku": "46388",
+    "description": "EHC SOLU SH 1000ML",
+    "price": "441.00",
+    "ean": "8004608282280",
+    "unit": "UND"
+  },
+  {
+    "sku": "62227",
+    "description": "EHC SOLU SH 250ML",
+    "price": "165.00",
+    "ean": "8004608280477",
+    "unit": "UND"
+  },
+  {
+    "sku": "46418",
+    "description": "EHC VOLU HAIR MIST 250ML",
+    "price": "274.00",
+    "ean": "8004608242543",
+    "unit": "UND"
+  },
+  {
+    "sku": "48992",
+    "description": "EHC VOLU SH BARRA 100ML",
+    "price": "147.00",
+    "ean": "8004608273141",
+    "unit": "UND"
+  },
+  {
+    "sku": "46400",
+    "description": "EHC VOLU SH 1000ML",
+    "price": "441.00",
+    "ean": "8004608242529",
+    "unit": "UND"
+  },
+  {
+    "sku": "59536",
+    "description": "HOG INSTANT BONDING GLOW 300ML",
+    "price": "349.00",
+    "ean": "8004608282822",
+    "unit": "UND"
+  },
+  {
+    "sku": "46442",
+    "description": "HOG INTENSE TREAT 150ML",
+    "price": "287.00",
+    "ean": "8004608271727",
+    "unit": "UND"
+  },
+  {
+    "sku": "46485",
+    "description": "HOG INTENSE TREAT 750ML",
+    "price": "589.00",
+    "ean": "8004608271734",
+    "unit": "UND"
+  },
+  {
+    "sku": "94110",
+    "description": "HOG RICH COND 1000ML",
+    "price": "674.00",
+    "ean": "8004608301882",
+    "unit": "UND"
+  },
+  {
+    "sku": "46434",
+    "description": "HOG RICH COND 250ML",
+    "price": "243.00",
+    "ean": "8004608271697",
+    "unit": "UND"
+  },
+  {
+    "sku": "89613",
+    "description": "HOG SHEER GLAZE 150ML",
+    "price": "264.00",
+    "ean": "8004608301578",
+    "unit": "UND"
+  },
+  {
+    "sku": "46450",
+    "description": "HOG SHEER GLAZE 150ML",
+    "price": "264.00",
+    "ean": "8004608271741",
+    "unit": "UND"
+  },
+  {
+    "sku": "46469",
+    "description": "HOG SILKENING SH 1000ML",
+    "price": "505.00",
+    "ean": "8004608271673",
+    "unit": "UND"
+  },
+  {
+    "sku": "46426",
+    "description": "HOG SILKENING SH 250ML",
+    "price": "186.00",
+    "ean": "8004608271666",
+    "unit": "UND"
+  },
+  {
+    "sku": "65684",
+    "description": "MI CURL BUILDING SERUM 250ML",
+    "price": "200.00",
+    "ean": "8004608237488",
+    "unit": "UND"
+  },
+  {
+    "sku": "46922",
+    "description": "MI CURL BUILDING SERUM 250ML",
+    "price": "200.00",
+    "ean": "8004608284390",
+    "unit": "UND"
+  },
+  {
+    "sku": "48151",
+    "description": "MI CURL MOUSSE 250ML",
+    "price": "200.00",
+    "ean": "8004608247203",
+    "unit": "UND"
+  },
+  {
+    "sku": "48070",
+    "description": "MI MEDIUM HAIRSPRAY 400ML",
+    "price": "214.00",
+    "ean": "8004608252122",
+    "unit": "UND"
+  },
+  {
+    "sku": "46949",
+    "description": "MI OIL NON OIL 250ML",
+    "price": "190.00",
+    "ean": "8004608258865",
+    "unit": "UND"
+  },
+  {
+    "sku": "48160",
+    "description": "MI SHIMMERING MIST 200ML",
+    "price": "190.00",
+    "ean": "8004608252153",
+    "unit": "UND"
+  },
+  {
+    "sku": "58599",
+    "description": "MI STRONG HOLD FIXADOR 400ML",
+    "price": "214.00",
+    "ean": "8004608252139",
+    "unit": "UND"
+  },
+  {
+    "sku": "46930",
+    "description": "MI THIS IS A RELAXING MOISTURIZING 125ML",
+    "price": "169.00",
+    "ean": "8004608284420",
+    "unit": "UND"
+  },
+  {
+    "sku": "48062",
+    "description": "MI VOLUME BOOSTING MOUSSE 250ML",
+    "price": "200.00",
+    "ean": "8004608247197",
+    "unit": "UND"
+  },
+  {
+    "sku": "46507",
+    "description": "NT CALMING SH 1000ML",
+    "price": "441.00",
+    "ean": "8004608256649",
+    "unit": "UND"
+  },
+  {
+    "sku": "46493",
+    "description": "NT CALMING SH 250ML",
+    "price": "170.00",
+    "ean": "8004608256519",
+    "unit": "UND"
+  },
+  {
+    "sku": "48186",
+    "description": "NT CALMING SUPERACTIVE 100ML",
+    "price": "369.00",
+    "ean": "8004608244509",
+    "unit": "UND"
+  },
+  {
+    "sku": "49026",
+    "description": "NT DETOX SCRUB SH 1000ML",
+    "price": "441.00",
+    "ean": "8004608256663",
+    "unit": "UND"
+  },
+  {
+    "sku": "46515",
+    "description": "NT DETOX SCRUB SH 250ML",
+    "price": "170.00",
+    "ean": "8004608256533",
+    "unit": "UND"
+  },
+  {
+    "sku": "49328",
+    "description": "NT ELEVATING CLAY MASK 120GR",
+    "price": "785.00",
+    "ean": "8004608275336",
+    "unit": "UND"
+  },
+  {
+    "sku": "49336",
+    "description": "NT ELEVATING OLEO DE MASSAGEM 100ML",
+    "price": "440.00",
+    "ean": "8004608275367",
+    "unit": "UND"
+  },
+  {
+    "sku": "49310",
+    "description": "NT ELEVATING SCALP RECOVERY TREAT 100ML",
+    "price": "440.00",
+    "ean": "8004608275329",
+    "unit": "UND"
+  },
+  {
+    "sku": "48127",
+    "description": "NT ENERGIZING GEL 150ML",
+    "price": "232.00",
+    "ean": "8004608255550",
+    "unit": "UND"
+  },
+  {
+    "sku": "50504",
+    "description": "NT ENERGIZING SEASONAL SUPER SERUM 100ML",
+    "price": "602.00",
+    "ean": "8004608275381",
+    "unit": "UND"
+  },
+  {
+    "sku": "46531",
+    "description": "NT ENERGIZING SH 1000ML",
+    "price": "441.00",
+    "ean": "8004608255512",
+    "unit": "UND"
+  },
+  {
+    "sku": "46523",
+    "description": "NT ENERGIZING SH 250ML",
+    "price": "170.00",
+    "ean": "8004608255505",
+    "unit": "UND"
+  },
+  {
+    "sku": "48216",
+    "description": "NT ENERGIZING SUPERACTIVE 100ML",
+    "price": "602.00",
+    "ean": "8004608275374",
+    "unit": "UND"
+  },
+  {
+    "sku": "48208",
+    "description": "NT ENERGIZING THICKENING TONICO 100ML",
+    "price": "390.00",
+    "ean": "8004608275404",
+    "unit": "UND"
+  },
+  {
+    "sku": "46590",
+    "description": "NT NOURISHING BOOSTER SUPERACTIVE 100ML",
+    "price": "535.00",
+    "ean": "8004608269182",
+    "unit": "UND"
+  },
+  {
+    "sku": "46604",
+    "description": "NT NOURISHING HAIR BUILDING PAK 250ML",
+    "price": "305.00",
+    "ean": "8004608269199",
+    "unit": "UND"
+  },
+  {
+    "sku": "46612",
+    "description": "NT NOURISHING KERATIN SEALER 100ML",
+    "price": "255.00",
+    "ean": "8004608269229",
+    "unit": "UND"
+  },
+  {
+    "sku": "49301",
+    "description": "NT NOURISHING KERATIN WOND SUPER 1000ML",
+    "price": "841.00",
+    "ean": "8004608269236",
+    "unit": "UND"
+  },
+  {
+    "sku": "46540",
+    "description": "NT NOURISHING ROYAL JELLY SUPERACTIV 8ML",
+    "price": "110.00",
+    "ean": "8004608230830",
+    "unit": "UND"
+  },
+  {
+    "sku": "46558",
+    "description": "NT NOURISHING SH 1000ML",
+    "price": "441.00",
+    "ean": "8004608269106",
+    "unit": "UND"
+  },
+  {
+    "sku": "46566",
+    "description": "NT NOURISHING SH 250ML",
+    "price": "170.00",
+    "ean": "8004608269113",
+    "unit": "UND"
+  },
+  {
+    "sku": "46620",
+    "description": "NT NOURISHING VEG MIRACLE COND 1000ML",
+    "price": "674.00",
+    "ean": "8004608269243",
+    "unit": "UND"
+  },
+  {
+    "sku": "46639",
+    "description": "NT NOURISHING VEG MIRACLE COND 250ML",
+    "price": "224.00",
+    "ean": "8004608269250",
+    "unit": "UND"
+  },
+  {
+    "sku": "46574",
+    "description": "NT NOURISHING VEG MIRACLE MASK 1000ML",
+    "price": "795.00",
+    "ean": "8004608269144",
+    "unit": "UND"
+  },
+  {
+    "sku": "46582",
+    "description": "NT NOURISHING VEG MIRACLE MASK 250ML",
+    "price": "306.00",
+    "ean": "8004608269151",
+    "unit": "UND"
+  },
+  {
+    "sku": "46663",
+    "description": "NT PURIFIYNG SH 1000ML",
+    "price": "441.00",
+    "ean": "8004608236603",
+    "unit": "UND"
+  },
+  {
+    "sku": "46655",
+    "description": "NT PURIFIYNG SH 250ML",
+    "price": "170.00",
+    "ean": "8004608236580",
+    "unit": "UND"
+  },
+  {
+    "sku": "79316",
+    "description": "NT PURIFYING GEL 150ML",
+    "price": "232.00",
+    "ean": "8004608288480",
+    "unit": "UND"
+  },
+  {
+    "sku": "59226",
+    "description": "NT REBALANCING CLEAN TREAT 1000ML",
+    "price": "589.00",
+    "ean": "8004608275343",
+    "unit": "UND"
+  },
+  {
+    "sku": "59234",
+    "description": "NT REBALANCING CLEAN TREAT 250ML",
+    "price": "200.00",
+    "ean": "8004608275350",
+    "unit": "UND"
+  },
+  {
+    "sku": "50490",
+    "description": "NT REBALANCING SH 1000ML",
+    "price": "441.00",
+    "ean": "8004608279358",
+    "unit": "UND"
+  },
+  {
+    "sku": "46671",
+    "description": "NT REBALANCING SH 250ML",
+    "price": "170.00",
+    "ean": "8004608279327",
+    "unit": "UND"
+  },
+  {
+    "sku": "72125",
+    "description": "NT REBALANCING SH 250ML",
+    "price": "170.00",
+    "ean": "8004608256540",
+    "unit": "UND"
+  },
+  {
+    "sku": "46736",
+    "description": "NT RENEWING CONDITIONING TREAT 1000ML",
+    "price": "590.00",
+    "ean": "8004608255123",
+    "unit": "UND"
+  },
+  {
+    "sku": "46728",
+    "description": "NT RENEWING CONDITIONING TREAT 250ML",
+    "price": "224.00",
+    "ean": "8004608255116",
+    "unit": "UND"
+  },
+  {
+    "sku": "46710",
+    "description": "NT RENEWING SH 1000ML",
+    "price": "441.00",
+    "ean": "8004608255109",
+    "unit": "UND"
+  },
+  {
+    "sku": "46701",
+    "description": "NT RENEWING SH 250ML",
+    "price": "170.00",
+    "ean": "8004608255093",
+    "unit": "UND"
+  },
+  {
+    "sku": "46760",
+    "description": "NT REPLUMPING COND 1000ML",
+    "price": "590.00",
+    "ean": "8004608240426",
+    "unit": "UND"
+  },
+  {
+    "sku": "46752",
+    "description": "NT REPLUMPING COND 150ML",
+    "price": "158.00",
+    "ean": "8004608240419",
+    "unit": "UND"
+  },
+  {
+    "sku": "53481",
+    "description": "NT REPLUMPING SERUM 100ML",
+    "price": "276.00",
+    "ean": "8004608275411",
+    "unit": "UND"
+  },
+  {
+    "sku": "46787",
+    "description": "NT REPLUMPING SH 1000ML",
+    "price": "441.00",
+    "ean": "8004608256687",
+    "unit": "UND"
+  },
+  {
+    "sku": "46779",
+    "description": "NT REPLUMPING SH 250ML",
+    "price": "170.00",
+    "ean": "8004608256557",
+    "unit": "UND"
+  },
+  {
+    "sku": "66958",
+    "description": "OI ALL IN ONE MILK 135ML",
+    "price": "245.00",
+    "ean": "8004608285199",
+    "unit": "UND"
+  },
+  {
+    "sku": "72117",
+    "description": "OI ALL IN ONE MILK 50ML",
+    "price": "141.00",
+    "ean": "8004608285205",
+    "unit": "UND"
+  },
+  {
+    "sku": "46884",
+    "description": "OI COND 1000ML",
+    "price": "622.00",
+    "ean": "8004608266501",
+    "unit": "UND"
+  },
+  {
+    "sku": "46876",
+    "description": "OI COND 250ML",
+    "price": "212.00",
+    "ean": "8004608266495",
+    "unit": "UND"
+  },
+  {
+    "sku": "46914",
+    "description": "OI COND 75ML",
+    "price": "111.00",
+    "ean": "8004608266518",
+    "unit": "UND"
+  },
+  {
+    "sku": "46850",
+    "description": "OI HAIR BUTTER MASK 1000ML",
+    "price": "771.00",
+    "ean": "8004608264583",
+    "unit": "UND"
+  },
+  {
+    "sku": "46868",
+    "description": "OI HAIR BUTTER MASK 250ML",
+    "price": "276.00",
+    "ean": "8004608264590",
+    "unit": "UND"
+  },
+  {
+    "sku": "53635",
+    "description": "OI LIQUID LUSTER TRATAMENTO 300ML",
+    "price": "336.00",
+    "ean": "8004608278450",
+    "unit": "UND"
+  },
+  {
+    "sku": "48135",
+    "description": "OI OIL 135ML",
+    "price": "367.00",
+    "ean": "8004608247593",
+    "unit": "UND"
+  },
+  {
+    "sku": "48143",
+    "description": "OI OIL 50ML",
+    "price": "224.00",
+    "ean": "8004608247609",
+    "unit": "UND"
+  },
+  {
+    "sku": "83747",
+    "description": "OI SH REFILL 500ML",
+    "price": "296.00",
+    "ean": "8004608294566",
+    "unit": "UND"
+  },
+  {
+    "sku": "46833",
+    "description": "OI SH 1000ML",
+    "price": "489.00",
+    "ean": "8004608247647",
+    "unit": "UND"
+  },
+  {
+    "sku": "46825",
+    "description": "OI SH 280ML",
+    "price": "186.00",
+    "ean": "8004608247630",
+    "unit": "UND"
+  },
+  {
+    "sku": "46892",
+    "description": "OI SH 90ML",
+    "price": "111.00",
+    "ean": "8004608247654",
+    "unit": "UND"
+  },
+  {
+    "sku": "83739",
+    "description": "OI SOUFFLE 125ML",
+    "price": "234.00",
+    "ean": "8004608291541",
+    "unit": "UND"
+  },
+  {
+    "sku": "72028",
+    "description": "SU HAIR MILK 50ML",
+    "price": "111.00",
+    "ean": "8004608261797",
+    "unit": "UND"
+  },
+  {
+    "sku": "59650",
+    "description": "SU LEAVE-IN 135ML",
+    "price": "219.00",
+    "ean": "8004608261780",
+    "unit": "UND"
+  },
+  {
+    "sku": "59641",
+    "description": "SU MASK 150ML",
+    "price": "216.00",
+    "ean": "8004608270591",
+    "unit": "UND"
+  },
+  {
+    "sku": "59633",
+    "description": "SU SH 250ML",
+    "price": "153.00",
+    "ean": "8004608261803",
+    "unit": "UND"
+  },
+  {
+    "sku": "62243",
+    "description": "SU SH 75ML",
+    "price": "111.00",
+    "ean": "8004608261810",
+    "unit": "UND"
+  },
+  {
+    "sku": "65315",
+    "description": "TAILORING BASE 1 VOLUME 500ML",
+    "price": "641.00",
+    "ean": "8004608283829",
+    "unit": "UND"
+  },
+  {
+    "sku": "65498",
+    "description": "TAILORING BASE 2 MOISTURE 480ML",
+    "price": "641.00",
+    "ean": "8004608289111",
+    "unit": "UND"
+  },
+  {
+    "sku": "65501",
+    "description": "TAILORING BASE 3 RADIANCE 480ML",
+    "price": "641.00",
+    "ean": "8004608289098",
+    "unit": "UND"
+  },
+  {
+    "sku": "72036",
+    "description": "TAILORING BASE 4 STRENGHT 500ML",
+    "price": "641.00",
+    "ean": "8004608289128",
+    "unit": "UND"
+  },
+  {
+    "sku": "65323",
+    "description": "TAILORING BOOSTER 1 VOLUME 150ML",
+    "price": "578.00",
+    "ean": "8004608283867",
+    "unit": "UND"
+  },
+  {
+    "sku": "65285",
+    "description": "TAILORING BOOSTER 2 HYDRATING 150ML",
+    "price": "578.00",
+    "ean": "8004608283850",
+    "unit": "UND"
+  },
+  {
+    "sku": "65293",
+    "description": "TAILORING BOOSTER 3 ILLUMINATING 150ML",
+    "price": "578.00",
+    "ean": "8004608283874",
+    "unit": "UND"
+  },
+  {
+    "sku": "65277",
+    "description": "TAILORING BOOSTER 4 FORTYFYING 150ML",
+    "price": "578.00",
+    "ean": "8004608283881",
+    "unit": "UND"
+  },
+  {
+    "sku": "65269",
+    "description": "TAILORING BOOSTER 5 CONTROLLING 150ML",
+    "price": "578.00",
+    "ean": "8004608283898",
+    "unit": "UND"
+  },
+  {
+    "sku": "65250",
+    "description": "TAILORING BOOSTER 6 BLONDE BRIGHT 150ML",
+    "price": "578.00",
+    "ean": "8004608283904",
+    "unit": "UND"
+  },
+  {
+    "sku": "83704",
+    "description": "TMA BEAUT RESTORING LEAVE-IN MASK 150ML",
+    "price": "295.00",
+    "ean": "8004608293781",
+    "unit": "UND"
+  },
+  {
+    "sku": "83690",
+    "description": "TMA BEAUTIFUL THINGS CHELATING SH 1000ML",
+    "price": "457.00",
+    "ean": "8004608293767",
+    "unit": "UND"
+  },
+  {
+    "sku": "83712",
+    "description": "TMA BEAUTIFUL THINGS MASK 90ML",
+    "price": "175.00",
+    "ean": "8004608293774",
+    "unit": "UND"
+  },
+  {
+    "sku": "83720",
+    "description": "TMA BEAUTIFUL THINGS TREAT 300ML",
+    "price": "355.00",
+    "ean": "8004608293798",
+    "unit": "UND"
+  }
+]

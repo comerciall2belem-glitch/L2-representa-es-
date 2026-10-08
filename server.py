@@ -15,6 +15,7 @@ from daily_report import build_pdf, read_data, TZ
 from speedio_integration import lookup_cnpj, SpeedioError
 from cnpj_registry import lookup_registry, RegistryError
 from senscience_seed import seed_senscience
+from davines_seed import seed_davines
 from order_reconciliation import reconcile_invoice, InvoiceError
 from lead_capture import LeadIntake, normalize_intake, ingest_lead, lead_sla
 from login_identity import resolve_identity
@@ -122,6 +123,7 @@ def initialize():
         con.execute('CREATE TABLE IF NOT EXISTS audit_log (id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, kind TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         seed_bella(con, BASE)
         seed_senscience(con, BASE)
+        seed_davines(con, BASE)
         # Cadastro inicial idempotente; preserva alterações feitas pela equipe no sistema.
         bth = {'id':'Brotherhood BTH','name':'Brotherhood BTH','active':True,
                'contact':'','notes':'Tabela BTH Varejo - Brotherhood 2026. Mesmos preços para PA e AP.',
@@ -1417,6 +1419,9 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     except (TypeError, ValueError): raise HTTPException(400,'Valor inválido')
                     if not 0 <= amount <= 1e10: raise HTTPException(400,'Valor inválido')
                 if kind == 'goal':
+                    if obj.get('clientTarget') is not None:
+                        value=obj['clientTarget']
+                        if isinstance(value,bool) or not isinstance(value,(int,float)) or value!=int(value) or not 0<=value<=1000000: raise HTTPException(400,'Meta de clientes inválida')
                     try: amount = float(obj.get('amount',0))
                     except (TypeError, ValueError): raise HTTPException(400,'Meta inválida')
                     if not re.fullmatch(r'\d{4}-\d{2}',str(obj.get('month',''))) or not 0 <= amount <= 1e10:
