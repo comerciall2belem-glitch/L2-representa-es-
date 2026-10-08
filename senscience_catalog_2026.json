@@ -1,0 +1,274 @@
+[
+  {
+    "sku": "L2-SNC-BAL-SH-280",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Balance Shampoo 280 ml",
+    "presentation": "280 ml",
+    "price": "96.43",
+    "sourcePage": 6
+  },
+  {
+    "sku": "L2-SNC-BAL-SH-1000",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Balance Shampoo 1000 ml",
+    "presentation": "1000 ml",
+    "price": "204.59",
+    "sourcePage": 6
+  },
+  {
+    "sku": "L2-SNC-BAL-CO-240",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Balance Condicionador 240 ml",
+    "presentation": "240 ml",
+    "price": "98.58",
+    "sourcePage": 6
+  },
+  {
+    "sku": "L2-SNC-BAL-CO-1000",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Balance Condicionador 1000 ml",
+    "presentation": "1000 ml",
+    "price": "241.33",
+    "sourcePage": 6
+  },
+  {
+    "sku": "L2-SNC-SLK-SH-280",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Silk Moisture Shampoo 280 ml",
+    "presentation": "280 ml",
+    "price": "96.43",
+    "sourcePage": 6
+  },
+  {
+    "sku": "L2-SNC-SLK-SH-1000",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Silk Moisture Shampoo 1000 ml",
+    "presentation": "1000 ml",
+    "price": "204.59",
+    "sourcePage": 6
+  },
+  {
+    "sku": "L2-SNC-SLK-CO-240",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Silk Moisture Condicionador 240 ml",
+    "presentation": "240 ml",
+    "price": "98.58",
+    "sourcePage": 6
+  },
+  {
+    "sku": "L2-SNC-SLK-CO-1000",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Silk Moisture Condicionador 1000 ml",
+    "presentation": "1000 ml",
+    "price": "241.33",
+    "sourcePage": 6
+  },
+  {
+    "sku": "L2-SNC-SMO-SH-280",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Smooth Shampoo 280 ml",
+    "presentation": "280 ml",
+    "price": "96.43",
+    "sourcePage": 8
+  },
+  {
+    "sku": "L2-SNC-SMO-SH-1000",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Smooth Shampoo 1000 ml",
+    "presentation": "1000 ml",
+    "price": "204.59",
+    "sourcePage": 8
+  },
+  {
+    "sku": "L2-SNC-SMO-CO-240",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Smooth Condicionador 240 ml",
+    "presentation": "240 ml",
+    "price": "98.58",
+    "sourcePage": 8
+  },
+  {
+    "sku": "L2-SNC-SMO-CO-1000",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Smooth Condicionador 1000 ml",
+    "presentation": "1000 ml",
+    "price": "241.33",
+    "sourcePage": 8
+  },
+  {
+    "sku": "L2-SNC-TH-SH-280",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "True Hue Shampoo 280 ml",
+    "presentation": "280 ml",
+    "price": "102.89",
+    "sourcePage": 10
+  },
+  {
+    "sku": "L2-SNC-TH-SH-1000",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "True Hue Shampoo 1000 ml",
+    "presentation": "1000 ml",
+    "price": "204.59",
+    "sourcePage": 10
+  },
+  {
+    "sku": "L2-SNC-TH-CO-240",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "True Hue Condicionador 240 ml",
+    "presentation": "240 ml",
+    "price": "103.37",
+    "sourcePage": 10
+  },
+  {
+    "sku": "L2-SNC-TH-CO-1000",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "True Hue Condicionador 1000 ml",
+    "presentation": "1000 ml",
+    "price": "241.33",
+    "sourcePage": 10
+  },
+  {
+    "sku": "L2-SNC-THV-SH-280",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "True Hue Violet Shampoo 280 ml",
+    "presentation": "280 ml",
+    "price": "102.89",
+    "sourcePage": 10
+  },
+  {
+    "sku": "L2-SNC-THV-SH-1000",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "True Hue Violet Shampoo 1000 ml",
+    "presentation": "1000 ml",
+    "price": "204.59",
+    "sourcePage": 10
+  },
+  {
+    "sku": "L2-SNC-THV-CO-240",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "True Hue Violet Condicionador 240 ml",
+    "presentation": "240 ml",
+    "price": "98.58",
+    "sourcePage": 10
+  },
+  {
+    "sku": "L2-SNC-THV-CO-1000",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "True Hue Violet Condicionador 1000 ml",
+    "presentation": "1000 ml",
+    "price": "241.33",
+    "sourcePage": 10
+  },
+  {
+    "sku": "L2-SNC-SP-SH-280",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Specialty Shampoo 280 ml",
+    "presentation": "280 ml",
+    "price": "96.43",
+    "sourcePage": 12
+  },
+  {
+    "sku": "L2-SNC-PU-SH-1000",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Purify Shampoo 1000 ml",
+    "presentation": "1000 ml",
+    "price": "204.59",
+    "sourcePage": 12
+  },
+  {
+    "sku": "L2-SNC-IR-MA-50",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Inner Restore Máscara 50 ml",
+    "presentation": "50 ml",
+    "price": "62.49",
+    "sourcePage": 16
+  },
+  {
+    "sku": "L2-SNC-IR-MA-200",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Inner Restore Máscara 200 ml",
+    "presentation": "200 ml",
+    "price": "126.60",
+    "sourcePage": 16
+  },
+  {
+    "sku": "L2-SNC-IR-MA-500",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Inner Restore Máscara 500 ml",
+    "presentation": "500 ml",
+    "price": "261.27",
+    "sourcePage": 16
+  },
+  {
+    "sku": "L2-SNC-IRI-MA-50",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Inner Restore Intensif Máscara 50 ml — Preço impresso no catálogo; conferir com a indústria",
+    "presentation": "50 ml",
+    "price": "261.27",
+    "sourcePage": 16
+  },
+  {
+    "sku": "L2-SNC-IRI-MA-150",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Inner Restore Intensif Máscara 150 ml",
+    "presentation": "150 ml",
+    "price": "186.93",
+    "sourcePage": 16
+  },
+  {
+    "sku": "L2-SNC-IRI-MA-500",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Inner Restore Intensif Máscara 500 ml",
+    "presentation": "500 ml",
+    "price": "333.99",
+    "sourcePage": 16
+  },
+  {
+    "sku": "L2-SNC-ML-150",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Moisture Lock Creme de Pentear 150 ml",
+    "presentation": "150 ml",
+    "price": "209.98",
+    "sourcePage": 20
+  },
+  {
+    "sku": "L2-SNC-CP-55",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "True Hue Color Protect Sérum 55 ml",
+    "presentation": "55 ml",
+    "price": "121.64",
+    "sourcePage": 20
+  },
+  {
+    "sku": "L2-SNC-DE-200",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "Detangler 200 ml",
+    "presentation": "200 ml",
+    "price": "166.99",
+    "sourcePage": 21
+  },
+  {
+    "sku": "L2-SNC-CPR-1-1000",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "CPR System Step 1 1000 ml",
+    "presentation": "1000 ml",
+    "price": "613.57",
+    "sourcePage": 23
+  },
+  {
+    "sku": "L2-SNC-CPR-2-1000",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "CPR System Step 2 1000 ml",
+    "presentation": "1000 ml",
+    "price": "613.57",
+    "sourcePage": 23
+  },
+  {
+    "sku": "L2-SNC-CPR-3-1000",
+    "skuOrigin": "L2 interno; código do fabricante não informado no catálogo",
+    "description": "CPR System Step 3 1000 ml",
+    "presentation": "1000 ml",
+    "price": "262.88",
+    "sourcePage": 23
+  }
+]

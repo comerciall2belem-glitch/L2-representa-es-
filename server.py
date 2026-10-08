@@ -14,6 +14,7 @@ from client_cleanup import plan as client_cleanup_plan
 from daily_report import build_pdf, read_data, TZ
 from speedio_integration import lookup_cnpj, SpeedioError
 from cnpj_registry import lookup_registry, RegistryError
+from senscience_seed import seed_senscience
 from order_reconciliation import reconcile_invoice, InvoiceError
 from lead_capture import LeadIntake, normalize_intake, ingest_lead, lead_sla
 from login_identity import resolve_identity
@@ -120,6 +121,7 @@ def initialize():
         con.execute('CREATE TABLE IF NOT EXISTS applied_changes (change_id TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE TABLE IF NOT EXISTS audit_log (id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, kind TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         seed_bella(con, BASE)
+        seed_senscience(con, BASE)
         # Cadastro inicial idempotente; preserva alterações feitas pela equipe no sistema.
         bth = {'id':'Brotherhood BTH','name':'Brotherhood BTH','active':True,
                'contact':'','notes':'Tabela BTH Varejo - Brotherhood 2026. Mesmos preços para PA e AP.',
