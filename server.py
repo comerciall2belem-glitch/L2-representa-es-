@@ -32,6 +32,7 @@ import zara
 import webchat
 import strategic_crm
 import field_assistant
+import geo_prospecting
 
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
@@ -411,6 +412,7 @@ app.include_router(zara.router)
 app.include_router(webchat.router)
 app.include_router(strategic_crm.router)
 app.include_router(field_assistant.router)
+app.include_router(geo_prospecting.router)
 
 def sectors_for(user):
     with db() as con:
