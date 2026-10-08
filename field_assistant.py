@@ -364,3 +364,23 @@ def conversation(authorization:str|None=Header(default=None)):
         row=con.execute('SELECT phone FROM field_operators WHERE username=%s AND enabled',(user,)).fetchone()
         rows=con.execute('SELECT direction,body,created_at FROM zara_messages WHERE phone=%s ORDER BY created_at DESC,message_id DESC LIMIT 50',(row[0],)).fetchall() if row else []
     return {'messages':[{'direction':d,'body':b,'at':at.isoformat()} for d,b,at in reversed(rows)],'audioReady':field_audio.ready(),'whatsappReady':all(zara.configured_value(k) for k in ('WA_ACCESS_TOKEN','WA_PHONE_NUMBER_ID','WA_APP_SECRET','WA_GRAPH_VERSION'))}
+
+
+def validate_agenda_task(con,actor,item,previous=None):
+    previous=previous or {}
+    seller=crm._services['is_seller'](con,actor)
+    if seller and (item.get('user')!=actor or (previous and previous.get('user')!=actor)):
+        raise HTTPException(403,'A agenda do vendedor só aceita compromissos próprios')
+    if item.get('source')!='field_agenda' and previous.get('source')!='field_agenda':return
+    text=item.get('text','')
+    if not isinstance(text,str) or not 3<=len(text.strip())<=240:raise HTTPException(422,'Descreva o compromisso em 3 a 240 caracteres')
+    if not isinstance(item.get('date'),str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}',item['date']):raise HTTPException(422,'Data do compromisso inválida')
+    try:date.fromisoformat(item['date'])
+    except (ValueError,TypeError,KeyError):raise HTTPException(422,'Data do compromisso inválida')
+    if not isinstance(item.get('time'),str) or not re.fullmatch(r'([01]\d|2[0-3]):[0-5]\d',item['time']):raise HTTPException(422,'Informe um horário válido')
+    if item.get('status') not in ('Aberta','Concluída'):raise HTTPException(422,'Situação do compromisso inválida')
+    if item.get('type') not in ('Visita','Ligação','Reunião','WhatsApp','Retorno','Lembrete'):raise HTTPException(422,'Tipo de compromisso inválido')
+    row=con.execute('SELECT role,sectors FROM app_users WHERE username=%s AND active',(item.get('user'),)).fetchone()
+    if not row or not ({'commercial','office'} & set(row[1] or [])):raise HTTPException(422,'Responsável precisa ser um usuário ativo comercial ou administrativo')
+    if item.get('clientId') and crm._services['is_seller'](con,item['user']):crm._services['check_client_scope'](con,item['user'],item['clientId'])
+    item['dueAt']=item['date']+'T'+item['time']+':00-03:00'

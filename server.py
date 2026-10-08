@@ -1035,6 +1035,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     if previous_entity and previous_entity[0].get('clientId'):
                         check_client_scope(con,user,previous_entity[0]['clientId'])
                     if obj.get('clientId'): check_client_scope(con,user,obj['clientId'])
+                    if kind=='task':field_assistant.validate_agenda_task(con,user,obj,previous_entity[0] if previous_entity else None)
                 if kind.startswith('delete_') and kind not in ('delete_industry','delete_price_table','delete_price','delete_client','delete_order'):
                     base=kind[7:]
                     required='finance' if base in ('settlement','cash_entry','commission_rate','commission_receipt','office_finance','office_budget','office_monthly_close') else 'routes' if base=='route' else 'office' if base.startswith('office_') or base=='fulfillment' else 'commercial'
