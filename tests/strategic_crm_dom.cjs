@@ -14,6 +14,10 @@ const fs=require('fs'),assert=require('node:assert/strict'),{JSDOM}=require(proc
  w.show('hoje');assert(w.document.querySelector('#strategyConsentForm'));assert.equal(!!w.document.querySelector('#strategySettingsForm'),['Ana Paula','Euler'].includes(user));
  assert(w.document.querySelector('form[onsubmit="L2Strategy.fieldSettings(event)"]')===null||['Ana Paula','Euler'].includes(user));
  assert(w.document.body.textContent.includes('Preposto Virtual'));
+ const productivityForm=w.document.querySelector('form[onsubmit="L2Strategy.productivity(event)"]');assert(productivityForm);assert(w.document.querySelector('#strategyAgendaDay'));
+ w.fetch=async(url,opts)=>({ok:true,json:async()=>url.includes('/field/agenda')?[{id:'t1',kind:'task',time:'09:30',clientName:'<img src=x onerror=alert(1)>',text:'Ligar',status:'Aberta',links:{call:'tel:+5591999999999'}}]:{fieldVisits:2,withOrder:1,withoutImmediateOrder:1,absent:1,orderVisitRate:50,actualSubmittedExpense:183,expenseRecords:1,observedVisitMinutes:null,routePointsWithEstimate:0,interpretation:'Sem perda presumida.'}});
+ await w.L2Strategy.agenda();assert.equal(w.document.querySelector('#strategyAgenda img'),null);assert(w.document.querySelector('#strategyAgenda').textContent.includes('09:30'));
+ await w.L2Strategy.productivity({preventDefault(){},target:productivityForm});assert(w.document.querySelector('#strategyProductivity').textContent.includes('183'));assert(w.document.querySelector('#strategyProductivity').textContent.includes('Sem medição'));
  const calls=[];w.sync=async()=>{};
  w.fetch=async(url,opts)=>{calls.push({url,opts});return {ok:true,json:async()=>({clients:[{id:'c1',name:'<img src=x onerror=alert(1)>',mcr:{status:'Em risco',nextContact:'2026-10-10',cycleDays:30,cycleSource:'Padrão'}}],searchSuggestions:['Maquiagem']})}};
  await w.L2Strategy.overview();assert(w.document.querySelector('#strategyOverview'));assert.equal(w.document.querySelector('#strategyOverview img'),null);assert.equal(calls.at(-1).opts.method,'GET');

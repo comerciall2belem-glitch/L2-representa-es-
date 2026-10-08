@@ -447,7 +447,7 @@ def scoped_rows(con, kind, user):
         return [row[1] for row in con.execute("SELECT id,payload FROM entities WHERE kind='client' ORDER BY updated_at,id") if row[0] in allowed or row[1].get('owner')==user]
     if kind in ('visit','order','task','opportunity','interaction','fulfillment','lead','settlement'):
         client_ids={row[0] for row in con.execute("SELECT id FROM entities WHERE kind='client' AND payload->>'owner'=%s",(user,))}|allowed
-        return [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,)) if row[0].get('clientId') in client_ids]
+        return [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,)) if row[0].get('clientId') in client_ids or (kind=='task' and not row[0].get('clientId') and row[0].get('user')==user)]
     if kind=='route':
         client_ids={row[0] for row in con.execute("SELECT id FROM entities WHERE kind='client' AND payload->>'owner'=%s",(user,))}|allowed
         return [row[0] for row in con.execute("SELECT payload FROM entities WHERE kind='route' ORDER BY updated_at,id") if row[0].get('clientId') in client_ids and row[0].get('user')==user]

@@ -19,7 +19,7 @@ flowchart TD
   W --> C
 ```
 
-`server.py` mantém autenticação, autorização e sincronização. `strategic_crm.py` implementa TDC/SRI/MCR; `routing_engine.py` adapta a malha rodoviária OSRM; `field_assistant.py` implementa identidade e conversação do Preposto. `zara.py` recebe os webhooks assinados, deduplica mensagens e encaminha os números vinculados ao Preposto. `strategic_crm.js` acrescenta formulários e mapas às telas existentes; Leaflet 1.9.4 está versionado localmente, com licença.
+`server.py` mantém autenticação, autorização e sincronização. `strategic_crm.py` implementa TDC/SRI/MCR; `routing_engine.py` adapta a malha rodoviária OSRM; `field_assistant.py` implementa identidade e conversação do Preposto; `field_operations.py` acrescenta localização, despesas, lembretes com horário e indicadores de campo. `zara.py` recebe os webhooks assinados, deduplica mensagens e encaminha os números vinculados ao Preposto. `strategic_crm.js` acrescenta formulários e mapas às telas existentes; Leaflet 1.9.4 está versionado localmente, com licença.
 
 As gravações de pedidos, visitas e contatos recalculam o MCR na própria transação. Uma compra elegível reinicia a cadência; rotas futuras preservam os compromissos e recebem a prioridade atualizada. O pedido também cria um sinal TDC com praça e perfil semelhante, vinculado ao pedido original. Cancelamento, arquivamento e restauração recalculam a carteira; sinais derivados de pedidos cancelados/arquivados são removidos. Alteração de cliente atualiza as duas carteiras afetadas.
 
@@ -137,7 +137,7 @@ Usar o repositório e serviço já existentes. Variáveis sensíveis ficam exclu
 ```bash
 python -m pip install -r requirements-dev.txt
 python scripts/strategy_deploy.py check
-python -m py_compile server.py strategic_crm.py routing_engine.py field_assistant.py
+python -m py_compile server.py strategic_crm.py routing_engine.py field_assistant.py field_operations.py
 python -m unittest discover -s tests -p 'test_*.py' -v
 node --check app.js
 node --check strategic_crm.js
@@ -170,7 +170,7 @@ Conferir `/health`, assets `strategic_crm.js`, `leaflet.js`, `leaflet.css`, e re
 
 TDC: qualificar lead real com evidência e confirmar ausência de duplicação. SRI: atualizar localização, criar prévia, revisar horários e publicar em dia sem roteiro prévio. MCR: registrar contato e pedido real autorizado, conferir próximo contato, prioridade e perfil derivado. Preposto: vincular um número de teste da equipe, enviar mensagem assinada pela Meta, conferir cliente, confirmar visita e verificar carteira/histórico/rota. “Pedido realizado” não deve gerar faturamento fictício.
 
-A suíte atual cobre 183 testes Python, além de testes JavaScript comerciais e simulação DOM para cinco perfis. Protocolos WhatsApp e malha rodoviária são testados com provedores simulados; entrega em aparelho e percurso real precisam de homologação externa.
+A suíte atual cobre 193 testes Python, além de testes JavaScript comerciais e simulação DOM para cinco perfis. Protocolos WhatsApp e malha rodoviária são testados com provedores simulados; entrega em aparelho e percurso real precisam de homologação externa.
 
 ### 5. Habilitar integrações externas
 
@@ -198,3 +198,38 @@ Rollback: reverter o commit de aplicação e publicar novamente. Tabelas e regis
 - [Leaflet 1.9.4](https://leafletjs.com/reference.html).
 - [Política de tiles OpenStreetMap](https://operations.osmfoundation.org/policies/tiles/).
 - [WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api/).
+
+
+## Ampliação logística — localização, combustível e Agenda
+
+### Receber posição e encontrar clientes próximos
+
+O webhook assinado aceita mensagens WhatsApp `type=location`, valida coordenadas finitas e limites geográficos e encaminha apenas operadores vinculados. A posição é salva como `field_location` por usuário, com data/hora, e fica válida para consulta por quatro horas. Não muda automaticamente coordenadas de clientes.
+
+`perto` ou `perto cosméticos` lista até dez clientes autorizados no PA/AP, com coordenadas e até 50 km em linha reta. O segmento corresponde ao canal ou segmento já registrado no TDC; a proximidade não comprova demanda e não cria prospect externo. Para planejamento rodoviário, usar SRI/OSRM. `localizar NOME ou CNPJ` prepara a atualização do cadastro pela posição atual, resolve homônimos, exige `CONFIRMAR` e confere novamente a carteira. Prévia com posição antiga exige recálculo ao publicar.
+
+### Registrar despesa pelo WhatsApp
+
+`despesa combustível R$ 183,00` ou `despesa transporte 183.00` prepara valor e descrição; `CONFIRMAR` grava `route_expense` e `office_action` para Marlene. Valor deve ser positivo, finito, até R$ 100.000 e com até duas casas decimais. Uma única rota própria no dia permite vínculo automático; com múltiplos pontos, a despesa fica como despesa geral de campo, sem atribuição arbitrária a um cliente. A mensagem repetida não duplica a despesa. O lançamento fica para conferência operacional e não vira pagamento de caixa.
+
+### Criar e entregar lembretes com horário
+
+- `lembrete em 30 min: ligar para cliente Alfa`.
+- `lembrete amanhã 09:00: ligar para cliente Alfa`.
+- `lembrete 2026-10-09 09:00: conferir combustível`.
+
+O servidor interpreta no fuso `America/Belem`, limita a um ano futuro, resolve o cliente quando há ligação e exige confirmação. Cria uma tarefa real com `date`, `time`, `dueAt`, responsável, texto e status. Tarefas gerais sem cliente são visíveis ao próprio vendedor. A tela CRM e a Agenda de campo exibem o horário; concluir, editar ou excluir usa a sincronização existente. Visitas publicadas e tarefas aparecem juntas em `GET /api/strategy/field/agenda?day=AAAA-MM-DD` e no comando `agenda hoje`.
+
+Com integração e notificações habilitadas, o worker reserva dois avisos por tarefa: até 30 minutos antes e no horário. Lembretes com horário são avaliados todos os dias, inclusive fora da janela da agenda diária. O ciclo tem resolução de um minuto e processa até quatro notificações por rodada; entrega exata depende do servidor ativo, da fila e da Meta. Aviso do horário atrasado em mais de 15 minutos não é disparado como pontual. Tarefa concluída deixa de gerar reservas. Alterar data, hora ou texto gera uma chave nova; tarefas editadas no CRM usam os campos atuais, sem depender de um `dueAt` antigo. Uma tentativa ambígua exige conferência e não é repetida.
+
+Agenda/resumo diários continuam na janela de dias úteis. Modelos aprovados e credenciais permanecem obrigatórios. Nenhum envio é ativado apenas pela implantação do código.
+
+### Medir visitas sem pedido e custos com dados reais
+
+`GET /api/strategy/field/productivity?start=AAAA-MM-DD&end=AAAA-MM-DD` aceita período até hoje, limitado a 93 dias. O painel **Eficiência em campo** apresenta visitas presenciais com/sem pedido imediato, cliente ausente, percentual de visitas com pedido, despesas submetidas e cobertura de dados. Contato remoto fica fora do denominador de visitas de campo. Vendedores usam atendimentos próprios e despesas próprias; consultas administrativas respeitam as permissões comerciais existentes.
+
+Tempo observado só aparece quando `checkIn` e `checkOut` válidos existem. Deslocamento e quilômetros dos pontos são planejamento, sem retorno da rota incluído nessa soma. Despesas são valores informados, não necessariamente pagamentos aprovados. Não se multiplica visita sem pedido por um custo arbitrário, não se inventa venda perdida, não se promete economia comprovada e não se trata toda visita sem pedido como desperdício: relacionamento, negociação e pós-venda podem justificá-la. As cifras das referências são exemplos conceituais, não dados da L2.
+
+### Validação e implantação desta ampliação
+
+A migração anterior já fornece as tabelas de conversação; `field_location`, despesas e tarefas usam a persistência existente. Nenhuma tabela adicional, fornecedor pago ou credencial é criada. Executar os mesmos comandos de `strategy_deploy.py check`, CI e publicação em `main`. A suíte acrescenta moeda brasileira, datas relativas, confirmação de despesas, autorização de geolocalização, deduplicação, duas fases de lembretes, cancelamento, reagendamento, indicadores sem perda fictícia e localização recebida por webhook assinado. Áudio não é transcrito automaticamente nesta versão; o operador usa texto ou localização do WhatsApp.
