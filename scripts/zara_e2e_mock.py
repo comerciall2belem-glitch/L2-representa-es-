@@ -23,6 +23,7 @@ class SQLStore:
         self.con = sqlite3.connect(':memory:', check_same_thread=False)
         self.con.create_function('zara_now',0,lambda:datetime.now().isoformat())
         self.con.executescript('''
+        CREATE TABLE field_operators(phone TEXT PRIMARY KEY,username TEXT,enabled BOOLEAN);
         CREATE TABLE zara_conversations(phone TEXT PRIMARY KEY,name TEXT,mode TEXT DEFAULT 'bot',
             created_at TEXT DEFAULT (zara_now()),updated_at TEXT DEFAULT (zara_now()));
         CREATE TABLE zara_messages(message_id TEXT PRIMARY KEY,phone TEXT,direction TEXT,body TEXT,

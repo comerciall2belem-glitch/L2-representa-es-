@@ -126,6 +126,40 @@ class EndpointTests(unittest.TestCase):
         self.assertEqual(r.status_code,200);self.assertIsNone(r.json()['clientId'])
         self.assertEqual(sum(k=='client' for k,i in self.con.entities),0)
 
+    def test_temporary_publish_is_idempotent_and_preserves_agenda(self):
+        from datetime import datetime,timedelta
+        from strategic_crm import TZ
+        day=datetime.now(TZ).date()+timedelta(days=1)
+        self.con.entities[('client','c')]={'id':'c','owner':'Erika','name':'Loja','city':'Belém','state':'PA','latitude':-1.4,'longitude':-48.4,'closedDays':[]}
+        data={'date':day.isoformat(),'state':'PA','city':'Belém','originLatitude':-1.4,'originLongitude':-48.4,'temporary':True}
+        r=self.api.post('/api/strategy/sri/plan',json=data,headers=self.headers)
+        self.assertEqual(r.status_code,200,r.text);identifier=r.json()['temporaryId']
+        self.assertFalse(any(k=='route' for k,i in self.con.entities))
+        for _ in range(2):
+            r=self.api.post('/api/strategy/sri/temporary/'+identifier+'/publish',headers=self.headers)
+            self.assertEqual(r.status_code,200,r.text)
+        self.assertEqual(sum(k=='route' for k,i in self.con.entities),1)
+        self.assertTrue(('field_notice',identifier) in self.con.entities)
+        self.assertEqual(sum(k=='task' for k,i in self.con.entities),1)
+    def test_publication_rejects_changed_location(self):
+        from datetime import datetime,timedelta
+        from strategic_crm import TZ
+        day=datetime.now(TZ).date()+timedelta(days=1)
+        self.con.entities[('client','c')]={'id':'c','owner':'Erika','name':'Loja','city':'Belém','state':'PA','latitude':-1.4,'longitude':-48.4,'closedDays':[]}
+        r=self.api.post('/api/strategy/sri/plan',json={'date':day.isoformat(),'state':'PA','city':'Belém','originLatitude':-1.4,'originLongitude':-48.4,'temporary':True},headers=self.headers)
+        identifier=r.json()['temporaryId'];self.con.entities[('client','c')]['latitude']=-2
+        r=self.api.post('/api/strategy/sri/temporary/'+identifier+'/publish',headers=self.headers)
+        self.assertEqual(r.status_code,409)
+    def test_expense_scope_and_review_workflow(self):
+        self.con.entities[('client','c')]={'id':'c','owner':'Erika'}
+        self.con.entities[('route','r')]={'id':'r','user':'Erika','clientId':'c'}
+        r=self.api.post('/api/strategy/sri/expenses',headers=self.headers,json={'routeId':'r','amount':35,'description':'Combustível'})
+        self.assertEqual(r.status_code,200,r.text)
+        self.assertEqual(sum(k=='route_expense' for k,i in self.con.entities),1)
+        self.assertEqual(sum(k=='office_action' for k,i in self.con.entities),1)
+        self.con.entities[('route','r')]['user']='Euler'
+        self.assertEqual(self.api.post('/api/strategy/sri/expenses',headers=self.headers,json={'routeId':'r','amount':35,'description':'Combustível'}).status_code,403)
+
 class WorkerTests(unittest.TestCase):
     def setUp(self):
         from datetime import datetime

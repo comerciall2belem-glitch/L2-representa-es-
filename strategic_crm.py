@@ -2,6 +2,7 @@
 import math
 import re
 import uuid
+import routing_engine
 from datetime import date, datetime, timedelta
 from statistics import median
 from zoneinfo import ZoneInfo
@@ -49,6 +50,7 @@ class Qualification(StrictModel):
     city: str = Field(min_length=2, max_length=120)
     channel: str = Field(min_length=2, max_length=40)
     cnae: str = Field(pattern=r'^\d{7}$')
+    tags: list[str] = Field(default_factory=list,max_length=10)
     size: str = Field(pattern='^(MEI|Micro|Pequena|Média|Grande)$')
     segment: str = Field(min_length=2, max_length=120)
     demandEvidence: str = Field(min_length=10, max_length=1000)
@@ -65,6 +67,7 @@ class Qualification(StrictModel):
 
 def qualify(data, today=None):
     today = today or datetime.now(TZ).date()
+    if any(not isinstance(x,str) or not 1<=len(x.strip())<=40 for x in data.tags):raise HTTPException(422,'Tags devem ter 1–40 caracteres')
     age = (today - data.evidenceDate).days
     if not 0 <= age <= 30:
         raise HTTPException(422, 'Evidência de demanda deve ter até 30 dias e não pode ser futura')
@@ -83,7 +86,7 @@ def qualify(data, today=None):
             'tag': 'TDC qualificado' if compatible and score >= 70 else 'TDC em análise',
             'evidence': data.demandEvidence.strip(), 'evidenceDate': data.evidenceDate.isoformat(),
             'segment': data.segment.strip(), 'channel': data.channel, 'cnae': data.cnae,
-            'size': data.size, 'urgencyDays': data.urgencyDays,
+            'size': data.size, 'tags':list(dict.fromkeys(x.strip() for x in data.tags)), 'urgencyDays': data.urgencyDays,
             'estimatedMonthlyValue': data.estimatedMonthlyValue, 'verifiedAt': today.isoformat()}
 
 def valid_demand(info, today):
@@ -105,6 +108,11 @@ def cadence(client, orders, visits=(), today=None):
     last = purchases[-1] if purchases else None
     age = (today-last).days if last else None
     status = 'Sem histórico' if age is None else 'Inativo' if age >= 60 else 'Em risco' if age >= 15 or age > cycle else 'Ativo'
+    revenue_orders=[o for o in orders if o.get('clientId')==client['id'] and o.get('status') in BUYING and (d:=local_date(o.get('date'))) and 0<=(today-d).days<90]
+    recent=sum(safe_amount(o.get('amount')) for o in revenue_orders if (today-local_date(o['date'])).days<30)
+    baseline=[o for o in revenue_orders if 30<=(today-local_date(o['date'])).days<90]
+    baseline_monthly=sum(safe_amount(o.get('amount')) for o in baseline)/2
+    volume_drop=len(baseline)>=2 and baseline_monthly>0 and recent<baseline_monthly*0.5
     last_contact = max(contacts) if contacts else None
     next_contact = last_contact + timedelta(days=7) if last_contact else today
     # A purchase resets contact cadence even when there is no recorded visit.
@@ -112,10 +120,10 @@ def cadence(client, orders, visits=(), today=None):
         next_contact = last + timedelta(days=7)
     return {'status': status, 'lastPurchase': last.isoformat() if last else None,
             'daysSincePurchase': age, 'cycleDays': cycle, 'cycleSource': 'Histórico' if len(intervals)>=2 else 'Padrão',
-            'purchaseCount': len(purchases),
+            'purchaseCount': len(purchases), 'last30Revenue':round(recent,2), 'baselineMonthlyRevenue':round(baseline_monthly,2) if len(baseline)>=2 else None, 'volumeDrop':volume_drop,
             'recordedRevenue': round(sum(safe_amount(o.get('amount')) for o in orders if o.get('clientId')==client['id'] and o.get('status') in BUYING and (d:=local_date(o.get('date'))) and d<=today),2),
             'nextContact': next_contact.isoformat(), 'overdueCycle': age is not None and age > cycle,
-            'priority': (40 if status=='Inativo' else 25 if status=='Em risco' else 10 if status=='Sem histórico' else 0) + (min(40, safe_amount(client.get('tdc', {}).get('score', 0))*0.4) if valid_demand(client.get('tdc',{}),today) else 0),
+            'priority': (20 if client.get('fieldTemperature')=='Quente' else 0) + (15 if volume_drop else 0) + (40 if status=='Inativo' else 25 if status=='Em risco' else 10 if status=='Sem histórico' else 0) + (min(40, safe_amount(client.get('tdc', {}).get('score', 0))*0.4) if valid_demand(client.get('tdc',{}),today) else 0),
             'evaluatedDate': today.isoformat(), 'updatedAt': datetime.now(TZ).isoformat()}
 
 def refresh_client(con, client_id):
@@ -145,6 +153,17 @@ def refresh_client(con, client_id):
 def event(con, kind, item):
     if kind in ('order','visit','interaction') and item.get('clientId'):
         refresh_client(con, item['clientId'])
+        if kind=='order' and item.get('status') in BUYING and local_date(item.get('date')) and local_date(item['date'])<=datetime.now(TZ).date():
+            client=record(con,'client',item['clientId'])
+            put(con,'tdc_signal',{'id':'order-'+item['id'],'clientId':client['id'],'sourceOrderId':item['id'],
+                                'state':client.get('state'),'city':client.get('city'),'district':client.get('district'),
+                                'channel':client.get('tdc',{}).get('channel') or client.get('channel'),
+                                'cnae':client.get('tdc',{}).get('cnae'),'size':client.get('tdc',{}).get('size'),
+                                'tags':client.get('tdc',{}).get('tags',[]),'segment':client.get('tdc',{}).get('segment'),
+                                'brands':sorted({i.get('brand') or item.get('brand') for i in (item.get('items') or [{}])}-{None,''}),
+                                'status':'Pesquisar empresas semelhantes; confirmar demanda antes de qualificar','at':datetime.now(TZ).isoformat()})
+        elif kind=='order':
+            con.execute("DELETE FROM entities WHERE kind='tdc_signal' AND id=%s",('order-'+item['id'],))
 
 def minutes(value):
     h,m = map(int,value.split(':'))
@@ -173,12 +192,15 @@ class RouteRequest(StrictModel):
     originLatitude: float = Field(ge=-90, le=90, allow_inf_nan=False)
     originLongitude: float = Field(ge=-180, le=180, allow_inf_nan=False)
     costPerKm: float = Field(default=0, ge=0, le=100, allow_inf_nan=False)
+    roadRouting: bool = False
+    temporary: bool = False
     commit: bool = False
 
-def plan_route(clients, data):
+def plan_route(clients, data, travel_fn=None):
+    travel_fn=travel_fn or travel
     if data.start >= data.end:
         raise HTTPException(422, 'Hora final deve ser posterior à inicial')
-    current = {'latitude':data.originLatitude,'longitude':data.originLongitude}
+    current = {'latitude':data.originLatitude,'longitude':data.originLongitude,'_node':'origin'}
     clock, end = minutes(data.start),minutes(data.end)
     candidates = [c for c in clients if c.get('state')==data.state and str(c.get('city','')).strip().casefold()==data.city.strip().casefold()]
     omitted = [{'clientId':c['id'],'reason':'Sem coordenadas; geocodificar endereço'} for c in candidates if not coords(c)]
@@ -188,11 +210,13 @@ def plan_route(clients, data):
     while remaining and len(stops)<data.limit:
         feasible = []
         for c in remaining:
-            t = travel(current,c)
+            t = travel_fn(current,c)
+            if t is None:continue
             try: opening,closing = minutes(c.get('opens') or '09:00'), minutes(c.get('closes') or '18:00')
             except (ValueError,TypeError): continue
             arrival = max(clock+t['minutes'], opening)
-            back = travel(c,{'latitude':data.originLatitude,'longitude':data.originLongitude})
+            back = travel_fn(c,{'latitude':data.originLatitude,'longitude':data.originLongitude,'_node':'origin'})
+            if back is None:continue
             if arrival+data.visitMinutes+back['minutes'] > end or arrival+data.visitMinutes > closing: continue
             priority = float(c.get('mcr',{}).get('priority',0))
             feasible.append((priority-t['minutes']*0.5, c['id'],c,t,arrival))
@@ -201,9 +225,10 @@ def plan_route(clients, data):
         clock = arrival+data.visitMinutes
         stops.append({'clientId':c['id'],'order':len(stops)+1,'arrival':f'{arrival//60:02}:{arrival%60:02}',
                       'departure':f'{clock//60:02}:{clock%60:02}', 'travelMinutes':t['minutes'], 'distanceKm':t['km'],
-                      'priority':c.get('mcr',{}).get('priority',0),'reason':c.get('mcr',{}).get('status','Prospecção TDC')})
+                      'latitude':c['latitude'],'longitude':c['longitude'],'openingStatus':'Dentro do horário cadastrado',
+                      'links':__import__('field_assistant').links(c),'priority':c.get('mcr',{}).get('priority',0),'reason':c.get('mcr',{}).get('status','Prospecção TDC')})
         total += t['km']; current = c; remaining.remove(c)
-    back = travel(current,{'latitude':data.originLatitude,'longitude':data.originLongitude}) if stops else {'km':0,'minutes':0}
+    back = travel_fn(current,{'latitude':data.originLatitude,'longitude':data.originLongitude,'_node':'origin'}) if stops else {'km':0,'minutes':0}
     total += back['km']
     omitted += [{'clientId':c['id'],'reason':'Limite de visitas ou janela insuficiente'} for c in remaining]
     return {'stops':stops,'omitted':omitted,'distanceKm':round(total,2),'returnMinutes':back['minutes'],
@@ -266,6 +291,7 @@ def overview(authorization: str | None = Header(default=None)):
 @router.post('/sri/plan')
 def sri_plan(data: RouteRequest, authorization: str | None = Header(default=None)):
     user = access(authorization,'routes')
+    if data.commit and data.temporary:raise HTTPException(422,'Escolha prévia temporária ou publicação direta')
     if data.date < datetime.now(TZ).date(): raise HTTPException(422,'Escolha hoje ou uma data futura')
     with _services['db']() as con:
         con.execute('SELECT pg_advisory_xact_lock(%s)', (8239019,))
@@ -273,15 +299,41 @@ def sri_plan(data: RouteRequest, authorization: str | None = Header(default=None
         orders = _services['scoped_rows'](con,'order',user)
         visits = _services['scoped_rows'](con,'visit',user)+_services['scoped_rows'](con,'interaction',user)
         for c in clients: c['mcr'] = cadence(c,orders,visits,today=data.date)
-        result = plan_route(clients,data)
+        regional=[c for c in clients if c.get('state')==data.state and str(c.get('city','')).strip().casefold()==data.city.strip().casefold()]
+        for c in regional:c['_node']=c['id']
+        origin={'latitude':data.originLatitude,'longitude':data.originLongitude,'_node':'origin'}
+        travel_fn=None
+        limited=[]
+        if data.roadRouting:
+            candidates=sorted([c for c in regional if coords(c)],key=lambda c:c.get('mcr',{}).get('priority',0),reverse=True)[:40]
+            if candidates:
+                try:travel_fn=routing_engine.matrix([origin,*candidates])
+                except routing_engine.RoutingError as exc:raise HTTPException(503,str(exc)) from exc
+                allowed={c['id'] for c in candidates}
+                limited=[{'clientId':c['id'],'reason':'Fora dos 40 candidatos de maior prioridade; refine cidade/UF'} for c in regional if c['id'] not in allowed and coords(c)]
+                regional=[c for c in regional if c['id'] in allowed or not coords(c)]
+        result = plan_route(regional,data,travel_fn)
+        result['omitted'].extend(limited)
+        result['geometry']=None
+        if travel_fn:
+            result['estimate']=False;result['method']='Malha rodoviária OSRM; duração prevista sem trânsito em tempo real'
+            if result['stops']:
+                points=[origin,*[next(c for c in regional if c['id']==s['clientId']) for s in result['stops']],origin]
+                try:result['geometry']=routing_engine.geometry(points)
+                except routing_engine.RoutingError:result['geometryWarning']='Roteiro calculado; desenho do percurso indisponível'
+        result['date']=data.date.isoformat()
+        result['user']=user
+        if data.temporary:
+            identifier=str(uuid.uuid4())
+            put(con,'temporary_route',{'id':identifier,'user':user,'request':data.model_dump(mode='json'),'plan':result,'expiresAt':(datetime.now(TZ)+timedelta(hours=24)).isoformat()})
+            result['temporaryId']=identifier
         if data.commit:
             existing = con.execute("SELECT 1 FROM entities WHERE kind='route' AND payload->>'user'=%s AND payload->>'date'=%s LIMIT 1", (user,data.date.isoformat())).fetchone()
             if existing: raise HTTPException(409,'Já existe rota nesse dia; revise a agenda antes de substituir')
             for stop in result['stops']:
                 identifier = str(uuid.uuid4())
                 put(con,'route',{'id':identifier,'user':user,'date':data.date.isoformat(),'source':'SRI','status':'Planejado',**stop})
-                put(con,'task',{'id':'sri-'+identifier,'clientId':stop['clientId'],'user':user,'date':data.date.isoformat(),
-                                'text':'Visita SRI às '+stop['arrival'],'status':'Aberta','source':'SRI','routeId':identifier})
+                con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,'route',identifier,'sri_publish'))
             # Forecast only: an estimated route is never booked as an actual expense.
             put(con,'task',{'id':'sri-expense-'+user+'-'+data.date.isoformat(),'user':user,'date':data.date.isoformat(),
                            'text':'Conferir despesas da rota SRI','status':'Aberta','estimatedExpense':result['estimatedExpense'],'source':'SRI'})
@@ -392,16 +444,21 @@ async def worker():
     import asyncio
     import logging
     while True:
-        try: await asyncio.to_thread(tick)
+        try:
+            await asyncio.to_thread(tick)
+            from field_assistant import notification_tick
+            await asyncio.to_thread(notification_tick)
         except asyncio.CancelledError: raise
         except Exception:
             logging.getLogger(__name__).error('MCR tick failed; next scheduled tick will retry reminders')
         await asyncio.sleep(60)
 
 @router.get('/tdc/discover')
-def discover(state: str = '', segment: str = '', channel: str = '', urgency: int = 90, authorization: str | None = Header(default=None)):
+def discover(state: str = '', segment: str = '', channel: str = '', urgency: int = 90, size: str = '', tag: str = '', authorization: str | None = Header(default=None)):
     user = access(authorization)
     if state and state not in ('PA','AP'): raise HTTPException(422,'UF deve ser PA ou AP')
+    if size and size not in ('MEI','Micro','Pequena','Média','Grande'):raise HTTPException(422,'Porte inválido')
+    if len(tag)>40:raise HTTPException(422,'Tag inválida')
     if not 0<=urgency<=90 or len(segment)>120 or (channel and channel not in CHANNELS):raise HTTPException(422,'Filtros inválidos')
     with _services['db']() as con:
         all_users = not _services['is_seller'](con,user)
@@ -411,6 +468,7 @@ def discover(state: str = '', segment: str = '', channel: str = '', urgency: int
     for lead in leads:
         info=lead.get('tdc',{})
         if not info or (state and lead.get('state')!=state) or (channel and info.get('channel')!=channel) or segment.casefold() not in info.get('segment','').casefold() or info.get('urgencyDays',91)>urgency: continue
+        if (size and info.get('size')!=size) or (tag and tag.casefold() not in [str(x).casefold() for x in info.get('tags',[])]):continue
         evidence=local_date(info.get('evidenceDate'))
         item={k:lead.get(k) for k in ('id','clientId','name','state','city','owner','status','tdc')}
         item['evidenceExpired']=not evidence or not 0<=(today-evidence).days<=30
@@ -426,7 +484,7 @@ def intake_tdc(con, item, result):
     if not all(k in fields for k in required) or not result.get('owner'):
         return {**result,'tdcStatus':'Aguardando dados de qualificação ou responsável'}
     try:
-        data=Qualification(name=item.get('company') or item['name'],taxId=item.get('taxId') or '',state=item.get('state') or '',city=item.get('city') or '',phone=item.get('phone') or '',**{k:fields[k] for k in required})
+        data=Qualification(name=item.get('company') or item['name'],taxId=item.get('taxId') or '',state=item.get('state') or '',city=item.get('city') or '',phone=item.get('phone') or '',**{k:fields[k] for k in (*required,'tags','latitude','longitude','opens','closes','address','district') if k in fields})
     except ValidationError as exc:
         raise HTTPException(422,'Revise os campos de qualificação TDC do lead') from exc
     info=qualify(data)
@@ -435,7 +493,7 @@ def intake_tdc(con, item, result):
     con.execute('SELECT pg_advisory_xact_lock(%s)',(8239020,))
     matches=con.execute("SELECT payload FROM entities WHERE kind='client' AND regexp_replace(payload->>'taxId','[^0-9]','','g')=%s",(tax,)).fetchall()
     if len(matches)>1:raise HTTPException(409,'CNPJ duplicado na carteira')
-    client=matches[0][0] if matches else {'id':str(uuid.uuid4()),'name':data.name,'taxId':tax,'state':data.state,'city':data.city,'phone':data.phone,'owner':result['owner'],'stage':'Prospecção'}
+    client=matches[0][0] if matches else {'id':str(uuid.uuid4()),'name':data.name,'taxId':tax,'state':data.state,'city':data.city,'phone':data.phone,'owner':result['owner'],'stage':'Prospecção','latitude':data.latitude,'longitude':data.longitude,'address':data.address,'district':data.district,'opens':data.opens,'closes':data.closes}
     # Existing ownership takes precedence over the intake round robin.
     if info['qualified']:
         client['tdc']=info
@@ -487,3 +545,70 @@ def history(client_id: str, authorization: str | None = Header(default=None)):
                 statuses={r[0] for r in con.execute('SELECT status FROM zara_delivery_events WHERE message_id=%s',(row['messageId'],)).fetchall()}
                 row['deliveryStatus']=next((s for s in ('read','delivered','failed','sent') if s in statuses),'pending')
     return {'messages':rows}
+
+@router.get('/sri/temporary')
+def temporary_routes(authorization:str|None=Header(default=None)):
+    user=access(authorization,'routes')
+    with _services['db']() as con:
+        rows=[r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='temporary_route' AND payload->>'user'=%s AND payload->>'expiresAt'>%s ORDER BY updated_at DESC LIMIT 20",(user,datetime.now(TZ).isoformat())).fetchall()]
+    return rows
+
+@router.post('/sri/temporary/{route_id}/publish')
+def publish_temporary(route_id:str,authorization:str|None=Header(default=None)):
+    user=access(authorization,'routes')
+    with _services['db']() as con:
+        con.execute('SELECT pg_advisory_xact_lock(%s)',(8239020,))
+        item=record(con,'temporary_route',route_id)
+        if item.get('user')!=user:raise HTTPException(403,'Rota pertence a outro operador')
+        if item.get('publishedAt'):return {'published':True,'alreadyPublished':True}
+        if datetime.fromisoformat(item['expiresAt'])<datetime.now(TZ):raise HTTPException(409,'Prévia expirada; recalcule a rota')
+        plan=item['plan'];day=local_date(plan.get('date'))
+        if not day or day<datetime.now(TZ).date():raise HTTPException(422,'Data da rota já passou')
+        if not plan['stops']:raise HTTPException(422,'Rota sem visitas viáveis')
+        if con.execute("SELECT 1 FROM entities WHERE kind='route' AND payload->>'user'=%s AND payload->>'date'=%s LIMIT 1",(user,day.isoformat())).fetchone():raise HTTPException(409,'Já existe roteiro publicado nesse dia')
+        for stop in plan['stops']:
+            _services['check_client_scope'](con,user,stop['clientId'])
+            client=record(con,'client',stop['clientId'])
+            if coords(client)!=(stop['latitude'],stop['longitude']) or day.weekday() in client.get('closedDays',[6]) or stop['arrival']<(client.get('opens') or '09:00') or stop['departure']>(client.get('closes') or '18:00'):raise HTTPException(409,'Cadastro ou horário mudou; recalcule a rota')
+        for stop in plan['stops']:
+            identifier='sri-'+route_id+'-'+str(stop['order'])
+            put(con,'route',{'id':identifier,'user':user,'date':day.isoformat(),'source':'SRI','status':'Planejado','temporaryRouteId':route_id,**stop})
+            con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,'route',identifier,'sri_publish'))
+        put(con,'task',{'id':'sri-expense-'+route_id,'user':user,'date':day.isoformat(),'text':'Conferir despesas do roteiro SRI','status':'Aberta','estimatedExpense':plan['estimatedExpense'],'source':'SRI'})
+        put(con,'field_notice',{'id':route_id,'user':user,'date':day.isoformat(),'visits':len(plan['stops']),'text':'Roteiro publicado na agenda'})
+        item['publishedAt']=datetime.now(TZ).isoformat();put(con,'temporary_route',item);changed(con)
+    return {'published':True,'visits':len(plan['stops'])}
+
+class RouteExpense(StrictModel):
+    routeId:str=Field(min_length=1,max_length=128)
+    amount:float=Field(gt=0,le=100000,allow_inf_nan=False)
+    description:str=Field(min_length=3,max_length=300)
+
+@router.post('/sri/expenses')
+def submit_route_expense(data:RouteExpense,authorization:str|None=Header(default=None)):
+    user=access(authorization,'routes')
+    with _services['db']() as con:
+        con.execute('SELECT pg_advisory_xact_lock(%s)',(8239020,))
+        route=record(con,'route',data.routeId)
+        if route.get('user')!=user:raise HTTPException(403,'Despesa fora da sua rota')
+        _services['check_client_scope'](con,user,route['clientId'])
+        identifier=str(uuid.uuid4())
+        put(con,'route_expense',{'id':identifier,'user':user,'date':datetime.now(TZ).date().isoformat(),'status':'Enviada para conferência',**data.model_dump()})
+        put(con,'office_action',{'id':'expense-'+identifier,'Área':'Operações','Responsável':'Marlene','Status':'Aberta','Prazo':datetime.now(TZ).date().isoformat(),'Demanda ou problema':'Conferir despesa de rota: '+data.description,'expenseId':identifier,'Valor':data.amount,'user':user})
+        con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,'route_expense',identifier,'submitted'))
+        changed(con)
+    return {'id':identifier,'status':'Enviada para conferência'}
+
+@router.get('/sri/expenses')
+def route_expenses(authorization:str|None=Header(default=None)):
+    user=access(authorization)
+    with _services['db']() as con:
+        all_users=not _services['is_seller'](con,user)
+        return [r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='route_expense' AND (%s OR payload->>'user'=%s) ORDER BY updated_at DESC LIMIT 100",(all_users,user)).fetchall()]
+
+@router.get('/tdc/signals')
+def discovery_signals(authorization:str|None=Header(default=None)):
+    user=access(authorization)
+    with _services['db']() as con:
+        ids={c['id'] for c in _services['scoped_rows'](con,'client',user)}
+        return [r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='tdc_signal' ORDER BY updated_at DESC LIMIT 500").fetchall() if r[0].get('clientId') in ids][:100]
