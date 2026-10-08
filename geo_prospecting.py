@@ -1,6 +1,7 @@
 """User-triggered nearby discovery from scoped CRM and OpenStreetMap; no fabricated ICP."""
 import hashlib
 import json
+import logging
 import math
 import os
 import re
@@ -68,8 +69,28 @@ class Search(crm.StrictModel):
 def query_for(data):
     if data.channel not in FILTERS:raise HTTPException(422,'Selecione um segmento de comércio')
     criteria=FILTERS[data.channel];around=f'(around:{int(data.radiusKm*1000)},{data.latitude:.6f},{data.longitude:.6f})'
-    pieces=''.join(f'nwr(area.region){around}["{key}"="{value}"]["name"];' for key,value in criteria)
-    return f'[out:json][timeout:20];area["ISO3166-2"="BR-{data.state}"]->.region;({pieces});out center tags 150;'
+    # Resolve the small nearby set first, then intersect with the requested UF.
+    # Scanning a whole state separately for each category caused provider timeouts.
+    groups={}
+    for key,value in criteria:groups.setdefault(key,[]).append(value)
+    pieces=''.join(f'nwr{around}["{key}"~"^({"|".join(values)})$"]["name"];' for key,values in groups.items())
+    return f'[out:json][timeout:15];({pieces})->.nearby;area["ISO3166-2"="BR-{data.state}"]->.region;nwr.nearby(area.region);out tags center 150;'
+
+def query_provider(query):
+    # GET avoids the POST transport failures observed on the public endpoint.
+    configured=os.getenv('L2_PROSPECTING_URL')
+    providers=[configured] if configured else ['https://maps.mail.ru/osm/tools/overpass/api/interpreter','https://overpass.private.coffee/api/interpreter']
+    last=None
+    for index,url in enumerate(providers):
+        try:
+            result=_fetch(url+'?'+urllib.parse.urlencode({'data':query}),timeout=32 if index==0 else 12)
+            if not isinstance(result,dict) or not isinstance(result.get('elements'),list) or result.get('remark'):
+                raise ValueError('Consulta do provedor incompleta')
+            return result
+        except (OSError,ValueError,TypeError,KeyError) as error:
+            last=error
+            logging.getLogger('uvicorn.error').warning('prospecting_provider_failed host=%s error=%s code=%s',urllib.parse.urlparse(url).hostname,type(error).__name__,getattr(error,'code',''))
+    raise last
 
 def external_search(data):
     query=query_for(data);key=('places',query)
@@ -78,8 +99,7 @@ def external_search(data):
             for k in list(_cache)[:150]:_cache.pop(k,None)
         cached=_cache.get(key)
         if cached and cached[0]>time.time():return cached[1]
-        result=_fetch(os.getenv('L2_PROSPECTING_URL','https://overpass-api.de/api/interpreter'),urllib.parse.urlencode({'data':query}).encode(),timeout=25)
-        if result.get('remark'):raise ValueError('Consulta do provedor incompleta')
+        result=query_provider(query)
         rows=[];seen=set()
         for element in result.get('elements',[]):
             tags=element.get('tags',{});center=element.get('center') or element
@@ -125,6 +145,24 @@ def locate(q:str,state:str,authorization:str|None=Header(default=None)):
     try:return {'locations':geocode(q.strip(),state),'source':'OpenStreetMap/Nominatim'}
     except (OSError,ValueError,KeyError,TypeError):raise HTTPException(503,'Localização indisponível. Use GPS ou informe as coordenadas.')
 
+def source_cache_id(data):return 'osm-'+hashlib.sha256(query_for(data).encode()).hexdigest()
+
+def read_source_cache(data):
+    with crm._services['db']() as con:
+        record=con.execute("SELECT payload FROM entities WHERE kind='geo_source_cache' AND id=%s",(source_cache_id(data),)).fetchone()
+    if not record:return None
+    cached=record[0]
+    try:
+        age=time.time()-float(cached['capturedAt'])
+        if not 0<=age<=86400 or not isinstance(cached['rows'],list):return None
+        return cached,age
+    except (ValueError,KeyError,TypeError):return None
+
+def write_source_cache(data,rows):
+    with crm._services['db']() as con:
+        crm.put(con,'geo_source_cache',{'id':source_cache_id(data),'capturedAt':time.time(),'rows':rows})
+        con.execute("DELETE FROM entities WHERE kind='geo_source_cache' AND updated_at < now()-interval '7 days'")
+
 @router.post('/search')
 def search(data:Search,authorization:str|None=Header(default=None)):
     user=crm.access(authorization);query_for(data)
@@ -132,22 +170,38 @@ def search(data:Search,authorization:str|None=Header(default=None)):
         clients=crm._services['scoped_rows'](con,'client',user)
         all_users=not crm._services['is_seller'](con,user)
         leads=[r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='lead' AND (%s OR payload->>'owner'=%s) ORDER BY updated_at DESC LIMIT 1000",(all_users,user)).fetchall()]
-    rows,missing=base_search(clients,leads,data);warning='';external=[]
+    rows,missing=base_search(clients,leads,data);warning='';external=[];external_status='not_requested'
     if data.external:
-        try:external=external_search(data)
-        except (OSError,ValueError,TypeError,KeyError):warning='Novos estabelecimentos indisponíveis no provedor. Resultados da carteira foram preservados; tente novamente.'
+        cached=None
+        try:cached=read_source_cache(data)
+        except Exception as error:
+            logging.getLogger('uvicorn.error').warning('prospecting_cache_read_failed error=%s',type(error).__name__)
+        if cached and cached[1]<3600:
+            external=cached[0]['rows'];external_status='cached'
+        else:
+            try:
+                external=external_search(data);external_status='ok'
+                try:write_source_cache(data,external)
+                except Exception as error:
+                    logging.getLogger('uvicorn.error').warning('prospecting_cache_write_failed error=%s',type(error).__name__)
+            except (OSError,ValueError,TypeError,KeyError):
+                if cached:
+                    external=cached[0]['rows'];external_status='cached';warning='Provedor temporariamente indisponível. Exibindo a última consulta pública válida, realizada há '+str(round(cached[1]/3600,1))+' horas.'
+                else:
+                    external_status='unavailable';warning='A consulta de novos estabelecimentos não foi concluída. O provedor está indisponível ou ocupado. Os resultados internos abaixo não representam a busca externa; tente novamente.'
+    if external_status=='cached' and not warning:warning='Resultados da consulta pública recente, armazenada há '+str(round(cached[1]/60))+' minutos.'
     for candidate in external:
         match=next((c for c in clients if norm(c.get('name'))==norm(candidate['name']) and distance(candidate['latitude'],candidate['longitude'],c) is not None and distance(candidate['latitude'],candidate['longitude'],c)<.05),None)
         if match:
             if not any(r.get('clientId')==match['id'] for r in rows):rows.append({**candidate,'clientId':match['id'],'source':'Minha Carteira','status':'Cliente já cadastrado'})
         else:
-            saved=next((x for x in leads if x.get('sourceId')==candidate['sourceId']),None)
+            saved=next((x for x in leads if x.get('sourceId')==candidate['sourceId'] and x.get('owner')==user),None)
             rows.append({**candidate,'saved':bool(saved),'id':saved.get('id') if saved else None})
     rows.sort(key=lambda x:x['distanceKm']);token=uuid.uuid4().hex
     if len(_searches)>200:
         for k in list(_searches)[:100]:_searches.pop(k,None)
     _searches[token]={'user':user,'expires':time.time()+1800,'rows':external}
-    return {'results':rows,'missingCoordinates':missing,'warning':warning,'searchId':token,'attribution':'© OpenStreetMap contributors · ODbL','sourceNotice':'Distância em linha reta. Dados públicos não comprovam CNPJ, porte, funcionamento ou intenção de compra.'}
+    return {'results':rows,'missingCoordinates':missing,'warning':warning,'externalStatus':external_status,'searchId':token,'attribution':'© OpenStreetMap contributors · ODbL','sourceNotice':'Distância em linha reta. Dados públicos não comprovam CNPJ, porte, funcionamento ou intenção de compra.'}
 
 class Save(crm.StrictModel):
     searchId:str=Field(min_length=32,max_length=32)
