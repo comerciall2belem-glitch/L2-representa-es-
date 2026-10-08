@@ -1,0 +1,440 @@
+[
+  {
+    "sku": "62340",
+    "description": "MB BLOND DREAM MASC 200GR",
+    "price": "49.94",
+    "ean": "7898671791357"
+  },
+  {
+    "sku": "63380",
+    "description": "MB BLOND DREAM SH 250ML",
+    "price": "34.31",
+    "ean": "7898671791210"
+  },
+  {
+    "sku": "80080",
+    "description": "MB BLOND DREAM SH/MASC/OIL KIT 3X1",
+    "price": "84.25",
+    "ean": "7898671795034"
+  },
+  {
+    "sku": "61166",
+    "description": "MB CRYSTAL GLOW COND 1000ML",
+    "price": "119.33",
+    "ean": "7898671791647"
+  },
+  {
+    "sku": "61131",
+    "description": "MB CRYSTAL GLOW COND 250ML",
+    "price": "41.19",
+    "ean": "7898671791296"
+  },
+  {
+    "sku": "61140",
+    "description": "MB CRYSTAL GLOW MASC 200GR",
+    "price": "49.94",
+    "ean": "7898671791371"
+  },
+  {
+    "sku": "61174",
+    "description": "MB CRYSTAL GLOW MASC 500GR",
+    "price": "79.33",
+    "ean": "7898671791708"
+  },
+  {
+    "sku": "61158",
+    "description": "MB CRYSTAL GLOW SH 1000ML",
+    "price": "92.67",
+    "ean": "7898671791562"
+  },
+  {
+    "sku": "61123",
+    "description": "MB CRYSTAL GLOW SH 250ML",
+    "price": "34.31",
+    "ean": "7898671791234"
+  },
+  {
+    "sku": "80063",
+    "description": "MB CRYSTAL GLOW SH/MASC/OIL KIT 3X1",
+    "price": "84.25",
+    "ean": "7898671795027"
+  },
+  {
+    "sku": "83674",
+    "description": "MB CURLY CLUB COND 1000ML",
+    "price": "100.00",
+    "ean": "7898671794143"
+  },
+  {
+    "sku": "83585",
+    "description": "MB CURLY CLUB COND 250ML",
+    "price": "40.00",
+    "ean": "7898671794136"
+  },
+  {
+    "sku": "83615",
+    "description": "MB CURLY CLUB CURLY CREAM 280ML",
+    "price": "47.00",
+    "ean": "7898671794099"
+  },
+  {
+    "sku": "83623",
+    "description": "MB CURLY CLUB CURLY CREAM 450ML",
+    "price": "66.00",
+    "ean": "7898671794105"
+  },
+  {
+    "sku": "83607",
+    "description": "MB CURLY CLUB HONEY BUTTER 300GR",
+    "price": "60.00",
+    "ean": "7898671794174"
+  },
+  {
+    "sku": "83640",
+    "description": "MB CURLY CLUB MAGIC JELLY 500GR",
+    "price": "57.00",
+    "ean": "7898671794167"
+  },
+  {
+    "sku": "83593",
+    "description": "MB CURLY CLUB MASK 500GR",
+    "price": "80.00",
+    "ean": "7898671794150"
+  },
+  {
+    "sku": "83631",
+    "description": "MB CURLY CLUB MELTING GEL 300ML",
+    "price": "47.00",
+    "ean": "7898671794181"
+  },
+  {
+    "sku": "83666",
+    "description": "MB CURLY CLUB SH 1000ML",
+    "price": "93.00",
+    "ean": "7898671794112"
+  },
+  {
+    "sku": "83496",
+    "description": "MB CURLY CLUB SH 250ML",
+    "price": "37.00",
+    "ean": "7898671794082"
+  },
+  {
+    "sku": "83658",
+    "description": "MB CURLY CLUB 10 IN 1 GEL CREAM 280ML",
+    "price": "53.00",
+    "ean": "7898671794198"
+  },
+  {
+    "sku": "61018",
+    "description": "MB CURLY CRUSH COND 250ML",
+    "price": "41.19",
+    "ean": "7898671791265"
+  },
+  {
+    "sku": "61042",
+    "description": "MB CURLY CRUSH UMIDIFICADOR CACHOS 300ML",
+    "price": "43.69",
+    "ean": "7898671791487"
+  },
+  {
+    "sku": "65200",
+    "description": "MB CURLY GELATINA MODELADORA JELLY 500GR",
+    "price": "46.81",
+    "ean": "7898671791470"
+  },
+  {
+    "sku": "65668",
+    "description": "MB CURLY 2A A 3A MASC 500GR",
+    "price": "74.38",
+    "ean": "7898671791326"
+  },
+  {
+    "sku": "65676",
+    "description": "MB CURLY 3B A 4C MASC 500GR",
+    "price": "74.38",
+    "ean": "7898671791333"
+  },
+  {
+    "sku": "69841",
+    "description": "MB FUTURE RECOVERY COND 1000ML",
+    "price": "126.00",
+    "ean": "7898671792026"
+  },
+  {
+    "sku": "69850",
+    "description": "MB FUTURE RECOVERY COND 250ML",
+    "price": "49.94",
+    "ean": "7898671791982"
+  },
+  {
+    "sku": "70173",
+    "description": "MB FUTURE RECOVERY MASC 200GR",
+    "price": "59.31",
+    "ean": "7898671791999"
+  },
+  {
+    "sku": "70181",
+    "description": "MB FUTURE RECOVERY MASC 500GR",
+    "price": "92.67",
+    "ean": "7898671792033"
+  },
+  {
+    "sku": "69884",
+    "description": "MB FUTURE RECOVERY PEPTI LEAVE IN 120ML",
+    "price": "56.19",
+    "ean": "7898671792958"
+  },
+  {
+    "sku": "69817",
+    "description": "MB FUTURE RECOVERY SH 1000ML",
+    "price": "112.67",
+    "ean": "7898671792019"
+  },
+  {
+    "sku": "69833",
+    "description": "MB FUTURE RECOVERY SH 250ML",
+    "price": "43.69",
+    "ean": "7898671791975"
+  },
+  {
+    "sku": "69892",
+    "description": "MB FUTURE RECOVERY SHIELD LEAVE IN 120ML",
+    "price": "43.69",
+    "ean": "7898671792002"
+  },
+  {
+    "sku": "80110",
+    "description": "MB FUTURE RECOVERY SH/MASC/OIL KIT 3X1",
+    "price": "110.00",
+    "ean": "7898671795041"
+  },
+  {
+    "sku": "62375",
+    "description": "MB GROW LONG COND 250ML",
+    "price": "41.19",
+    "ean": "7898671791753"
+  },
+  {
+    "sku": "62383",
+    "description": "MB GROW LONG MASC 200GR",
+    "price": "49.94",
+    "ean": "7898671791760"
+  },
+  {
+    "sku": "62367",
+    "description": "MB GROW LONG SH 250ML",
+    "price": "34.31",
+    "ean": "7898671791746"
+  },
+  {
+    "sku": "62359",
+    "description": "MB HYDRA HERO AGUA DE ALOE 120ML",
+    "price": "43.69",
+    "ean": "7898671791500"
+  },
+  {
+    "sku": "61107",
+    "description": "MB HYDRA HERO COND 250ML",
+    "price": "41.19",
+    "ean": "7898671791289"
+  },
+  {
+    "sku": "61115",
+    "description": "MB HYDRA HERO MASC 200GR",
+    "price": "49.94",
+    "ean": "7898671791364"
+  },
+  {
+    "sku": "61093",
+    "description": "MB HYDRA HERO SH 250ML",
+    "price": "34.31",
+    "ean": "7898671791227"
+  },
+  {
+    "sku": "80098",
+    "description": "MB HYDRA HERO SH/MASC/OIL KIT 3X1",
+    "price": "84.25",
+    "ean": "7898671795065"
+  },
+  {
+    "sku": "63649",
+    "description": "MB LISS EXTREME COND 250ML",
+    "price": "41.19",
+    "ean": "7898671791272"
+  },
+  {
+    "sku": "61077",
+    "description": "MB LISS EXTREME MASC 200GR",
+    "price": "49.94",
+    "ean": "7898671791340"
+  },
+  {
+    "sku": "61085",
+    "description": "MB LISS EXTREME SELADOR REC QUERAT 120ML",
+    "price": "31.19",
+    "ean": "7898671791449"
+  },
+  {
+    "sku": "62332",
+    "description": "MB LISS EXTREME SH 250ML",
+    "price": "34.31",
+    "ean": "7898671791203"
+  },
+  {
+    "sku": "80071",
+    "description": "MB LISS EXTREME SH/MASC/OIL KIT 3X1",
+    "price": "84.25",
+    "ean": "7898671795072"
+  },
+  {
+    "sku": "61182",
+    "description": "MB MAGIC OIL SERUM 60ML",
+    "price": "31.19",
+    "ean": "7898671791524"
+  },
+  {
+    "sku": "60992",
+    "description": "MB NUTRI EXPERT COND 1000ML",
+    "price": "119.33",
+    "ean": "7898671791623"
+  },
+  {
+    "sku": "60950",
+    "description": "MB NUTRI EXPERT COND 250ML",
+    "price": "41.19",
+    "ean": "7898671791258"
+  },
+  {
+    "sku": "60968",
+    "description": "MB NUTRI EXPERT MASC 200GR",
+    "price": "49.94",
+    "ean": "7898671791319"
+  },
+  {
+    "sku": "72443",
+    "description": "MB NUTRI EXPERT MASC 500GR",
+    "price": "79.33",
+    "ean": "7898671791692"
+  },
+  {
+    "sku": "71986",
+    "description": "MB NUTRI EXPERT NIGHT 100ML",
+    "price": "37.44",
+    "ean": "7898671791784"
+  },
+  {
+    "sku": "60976",
+    "description": "MB NUTRI EXPERT SELDOR INJECAO NUT 120ML",
+    "price": "31.19",
+    "ean": "7898671791395"
+  },
+  {
+    "sku": "60984",
+    "description": "MB NUTRI EXPERT SH 1000ML",
+    "price": "92.67",
+    "ean": "7898671791548"
+  },
+  {
+    "sku": "60941",
+    "description": "MB NUTRI EXPERT SH 250ML",
+    "price": "34.31",
+    "ean": "7898671791180"
+  },
+  {
+    "sku": "65196",
+    "description": "MB PLV CURLY CRUSH CREME PENT/ATIVA 50ML",
+    "price": "17.00",
+    "ean": "7898671791678"
+  },
+  {
+    "sku": "55247",
+    "description": "MB PLV EXPOSITOR CHAO MAGIC BEAUTY 1X1",
+    "price": "300.00",
+    "ean": "55247"
+  },
+  {
+    "sku": "73385",
+    "description": "MB PLV FUTURE RECOVERY PEPT LEAV IN 50ML",
+    "price": "25.00",
+    "ean": "7898671792095"
+  },
+  {
+    "sku": "73253",
+    "description": "MB PLV NECESSAIRE ATOALHADA ROSA 1X1",
+    "price": "17.00",
+    "ean": "7898671793252"
+  },
+  {
+    "sku": "62391",
+    "description": "MB PLV NECESSAIRE DE VERAO BRANCA 1X1",
+    "price": "42.00",
+    "ean": "7898671791937"
+  },
+  {
+    "sku": "62413",
+    "description": "MB PLV SACOLA REVENDA ROSA 2023 1X1",
+    "price": "8.00",
+    "ean": "7898671791128"
+  },
+  {
+    "sku": "62421",
+    "description": "MB PLV VALVULA LITROS 1X1",
+    "price": "6.00",
+    "ean": "07898671791838"
+  },
+  {
+    "sku": "81060",
+    "description": "MB PLV WOBBLER 1X1",
+    "price": "28.00",
+    "ean": "7898671794822"
+  },
+  {
+    "sku": "62316",
+    "description": "MB TOTAL REPAIR COND 1000ML",
+    "price": "119.33",
+    "ean": "7898671791616"
+  },
+  {
+    "sku": "62286",
+    "description": "MB TOTAL REPAIR COND 250ML",
+    "price": "41.19",
+    "ean": "7898671791241"
+  },
+  {
+    "sku": "62294",
+    "description": "MB TOTAL REPAIR MASC 200GR",
+    "price": "49.94",
+    "ean": "7898671791302"
+  },
+  {
+    "sku": "72451",
+    "description": "MB TOTAL REPAIR MASC 500GR",
+    "price": "79.33",
+    "ean": "7898671791685"
+  },
+  {
+    "sku": "60933",
+    "description": "MB TOTAL REPAIR SELADOR REC PROTEN 120ML",
+    "price": "31.19",
+    "ean": "7898671791388"
+  },
+  {
+    "sku": "62308",
+    "description": "MB TOTAL REPAIR SH 1000ML",
+    "price": "92.67",
+    "ean": "7898671791531"
+  },
+  {
+    "sku": "62278",
+    "description": "MB TOTAL REPAIR SH 250ML",
+    "price": "34.31",
+    "ean": "7898671791173"
+  },
+  {
+    "sku": "80101",
+    "description": "MB TOTAL REPAIR SH/MASC/OIL KIT 3X1",
+    "price": "84.25",
+    "ean": "7898671795096"
+  }
+]

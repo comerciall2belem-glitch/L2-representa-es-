@@ -16,6 +16,7 @@ from speedio_integration import lookup_cnpj, SpeedioError
 from cnpj_registry import lookup_registry, RegistryError
 from senscience_seed import seed_senscience
 from davines_seed import seed_davines
+from magic_beauty_seed import seed_magic_beauty
 from order_reconciliation import reconcile_invoice, InvoiceError
 from lead_capture import LeadIntake, normalize_intake, ingest_lead, lead_sla
 from login_identity import resolve_identity
@@ -124,6 +125,7 @@ def initialize():
         seed_bella(con, BASE)
         seed_senscience(con, BASE)
         seed_davines(con, BASE)
+        seed_magic_beauty(con, BASE)
         # Cadastro inicial idempotente; preserva alterações feitas pela equipe no sistema.
         bth = {'id':'Brotherhood BTH','name':'Brotherhood BTH','active':True,
                'contact':'','notes':'Tabela BTH Varejo - Brotherhood 2026. Mesmos preços para PA e AP.',
