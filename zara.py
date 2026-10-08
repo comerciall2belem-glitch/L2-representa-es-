@@ -277,6 +277,7 @@ def validate_payload(payload):
                 context = mapping(mapping(message).get('context', {}))
                 if not isinstance(context.get('id', ''), str):
                     raise ValueError('Invalid reply context')
+                if message.get('type')=='location' and not field_assistant.operations.location_valid(message.get('location')):raise ValueError('Invalid location')
                 text = mapping(mapping(message).get('text', {}))
                 if not isinstance(text.get('body', ''), str):
                     raise ValueError('Invalid text')
@@ -323,6 +324,8 @@ async def receive_webhook(request: Request, x_hub_signature_256: str | None = He
                 body = (msg.get('text', {}).get('body', '') if msg.get('type') == 'text' else '')[:4000]
                 if not body:
                     body = '[Mensagem não textual recebida]'
+                location=msg.get('location') if msg.get('type')=='location' else None
+                if location is not None:body=f"[Localização recebida: {location['latitude']}, {location['longitude']}]"
                 name = str(contacts.get(phone, ''))[:120]
                 reply_to = msg.get('context', {}).get('id', '')[:256] or None
                 def persist_inbound():
@@ -335,11 +338,11 @@ async def receive_webhook(request: Request, x_hub_signature_256: str | None = He
                             return None
                         mode = con.execute('SELECT mode FROM zara_conversations WHERE phone=%s FOR UPDATE', (phone,)).fetchone()[0]
                         first = con.execute("SELECT count(*) FROM zara_messages WHERE phone=%s AND direction='in'", (phone,)).fetchone()[0] == 1
-                        field_reply = field_assistant.handle_message(con,phone,mid,body)
+                        field_reply = field_assistant.handle_message(con,phone,mid,body,location=location) if location is not None else field_assistant.handle_message(con,phone,mid,body)
                         if field_reply is not None:
                             return 'bot', field_reply
                         rule, handoff = response_rule(body, name, first)
-                        if not body or body == '[Mensagem não textual recebida]':
+                        if not body or body == '[Mensagem não textual recebida]' or location is not None:
                             rule, handoff = HANDOFF, True
                         if handoff:
                             con.execute("UPDATE zara_conversations SET mode='human' WHERE phone=%s", (phone,))

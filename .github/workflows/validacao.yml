@@ -19,7 +19,7 @@ jobs:
       - name: Instalar dependências de teste
         run: python -m pip install -r requirements-dev.txt
       - name: Verificar sintaxe Python
-        run: python -m py_compile field_assistant.py routing_engine.py strategic_crm.py server.py speedio_integration.py commercial_tables.py access_policy.py seller_commission.py financial_visibility.py
+        run: python -m py_compile field_operations.py field_assistant.py routing_engine.py strategic_crm.py server.py speedio_integration.py commercial_tables.py access_policy.py seller_commission.py financial_visibility.py
       - name: Verificar sintaxe JavaScript
         run: |
           node --check strategic_crm.js

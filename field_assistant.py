@@ -8,6 +8,7 @@ from fastapi import APIRouter, Header, HTTPException
 from pydantic import Field
 from psycopg.types.json import Jsonb
 import strategic_crm as crm
+import field_operations as operations
 
 router=APIRouter(prefix='/api/strategy/field',tags=['Preposto Virtual'])
 RESULTS={'pedido realizado':'Visitado - pedido','sem pedido':'Visitado - sem pedido','cliente ausente':'Cliente ausente','cliente quente':'Quente'}
@@ -15,6 +16,8 @@ HELP=('Preposto L2 • Comandos de campo\n'
       '• agenda hoje / agenda amanhã\n• resumo hoje\n'
       '• visita NOME ou CNPJ: pedido realizado\n• visita NOME: sem pedido\n'
       '• visita NOME: cliente ausente\n• cliente quente NOME\n'
+      '• despesa combustível R$ 183,00\n• lembrete em 30 min: ligar para cliente NOME\n'
+      '• envie localização atual; perto cosméticos; localizar NOME\n'
       'Depois confira o cliente e responda CONFIRMAR. CANCELAR encerra a ação.\n'
       'Pedido realizado registra a visita; valores e comissões vêm do pedido no ERP.')
 
@@ -77,6 +80,8 @@ def list_events(authorization:str|None=Header(default=None)):
 
 def intent(body):
     text=normalize(body)
+    extra=operations.parse(text)
+    if extra:return extra
     if text in ('cancelar','confirmar','ajuda','menu'):return {'kind':text}
     m=re.fullmatch(r'(agenda|resumo)(?: (hoje|amanha|\d{4}-\d{2}-\d{2}))?',text)
     if m:return {'kind':m[1],'day':m[2] or 'hoje'}
@@ -123,7 +128,7 @@ def prompt(client,action):
     label=action['result']
     return f"Conferir registro: {client.get('name','')} • {client.get('city','')} / {client.get('state','')}\nResultado: {label}\nResponda CONFIRMAR para salvar ou CANCELAR."
 
-def handle_message(con,phone,mid,body):
+def handle_message(con,phone,mid,body,location=None):
     """Called inside the signed webhook's inbound transaction, before acknowledgment."""
     operator=con.execute('SELECT username FROM field_operators WHERE phone=%s AND enabled',(phone,)).fetchone()
     if not operator:return None
@@ -135,11 +140,15 @@ def handle_message(con,phone,mid,body):
     if not account or 'commercial' not in (account[1] or []):return 'Acesso de campo suspenso. Procure a administração L2.'
     previous=con.execute('SELECT 1 FROM field_events WHERE message_id=%s',(mid,)).fetchone()
     if previous:return 'Essa atualização já foi registrada.'
+    if location is not None:return operations.receive_location(con,user,mid,location)
     command=intent(body)
     row=con.execute('SELECT payload,updated_at FROM field_sessions WHERE phone=%s FOR UPDATE',(phone,)).fetchone()
     session=row[0] if row and datetime.now(crm.TZ)-row[1]<timedelta(minutes=15) else None
     if command['kind']=='cancelar':
         con.execute('DELETE FROM field_sessions WHERE phone=%s',(phone,));return 'Ação cancelada. '+HELP
+    clients=crm._services['scoped_rows'](con,'client',user)
+    extra=operations.handle(con,user,phone,mid,command,session,clients)
+    if extra is not None:return extra
     if command['kind'] in ('agenda','resumo'):
         try:day=selected_day(command['day'])
         except HTTPException:return 'Data inválida. Use agenda hoje ou agenda 2026-10-08.'
@@ -151,7 +160,9 @@ def handle_message(con,phone,mid,body):
             c=clients.get(route.get('clientId'))
             if not c:continue
             lines.append(f"{route.get('order','')}. {c.get('name')} • {route.get('arrival','Horário a confirmar')}\nMaps: {links(c)['maps']}")
-        return '\n'.join(lines) if len(lines)>1 else 'Nenhuma visita agendada para essa data.'
+        tasks=[t for t in crm._services['scoped_rows'](con,'task',user) if t.get('user')==user and t.get('date')==day.isoformat() and t.get('status')=='Aberta']
+        for task in sorted(tasks,key=lambda t:t.get('time','99:99'))[:15]:lines.append(f"Lembrete • {task.get('time','Sem horário')} • {task.get('text')}")
+        return '\n'.join(lines) if len(lines)>1 else 'Nenhum compromisso agendado para essa data.'
     clients=crm._services['scoped_rows'](con,'client',user)
     if command['kind']=='choice':
         if not session or not session.get('choices'):return 'Nenhuma escolha pendente. '+HELP
@@ -228,14 +239,14 @@ def notification_text(con,user,now):
         lines.append(f"{r.get('order','')}. {c.get('name','Cliente')} • {r.get('arrival','A confirmar')}")
     return 'agenda','\n'.join(lines)
 
-def notification_tick():
+def _notification_once():
     """One daily agenda and summary per enabled operator, only with approved template.
     Reserve before network I/O. Ambiguous sends are never automatically repeated.
     """
     from whatsapp_media import provider_config,_post
     import json
     now=datetime.now(crm.TZ);config=provider_config()
-    if not config or now.weekday()>=5 or not 8<=now.hour<20:return
+    if not config:return
     with crm._services['db']() as con:
         if not con.execute('SELECT pg_try_advisory_xact_lock(%s)',(8239020,)).fetchone()[0]:return
         row=con.execute("SELECT payload FROM entities WHERE kind='strategy_settings' AND id='field'").fetchone()
@@ -243,6 +254,12 @@ def notification_tick():
         if not settings.get('enabled'):return
         operators=con.execute("SELECT f.phone,f.username FROM field_operators f JOIN app_users u ON u.username=f.username WHERE f.enabled AND u.active AND u.sectors ? 'commercial'").fetchall()
         for phone,user in operators:
+            reminder=operations.reminder_candidate(con,user,now)
+            if reminder:
+                key,mode,body=reminder
+                crm.put(con,'field_send',{'id':key,'user':user,'mode':mode,'status':'Enviando','attemptAt':now.isoformat()})
+                break
+            if now.weekday()>=5 or not 8<=now.hour<20:continue
             notices=[r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='field_notice' AND payload->>'user'=%s AND payload->>'date'>=%s ORDER BY updated_at DESC LIMIT 100",(user,now.date().isoformat())).fetchall()]
             pending=None
             for notice in notices:
@@ -274,6 +291,12 @@ def notification_tick():
             con.execute("INSERT INTO zara_conversations(phone,name,mode) VALUES(%s,%s,'bot') ON CONFLICT(phone) DO UPDATE SET updated_at=now()",(phone,user))
             con.execute("INSERT INTO zara_messages(message_id,phone,direction,body,delivered) VALUES(%s,%s,'out',%s,false) ON CONFLICT DO NOTHING",(mid,phone,'Preposto • '+body))
         crm.changed(con)
+    return True
+
+def notification_tick():
+    # Bounded drain handles simultaneous reminders without blocking the API thread.
+    for _ in range(4):
+        if not _notification_once():break
 
 @router.get('/history')
 def notification_history(authorization:str|None=Header(default=None)):
@@ -285,3 +308,48 @@ def notification_history(authorization:str|None=Header(default=None)):
                 statuses={r[0] for r in con.execute('SELECT status FROM zara_delivery_events WHERE message_id=%s',(row['messageId'],)).fetchall()}
                 row['deliveryStatus']=next((s for s in ('read','delivered','failed','sent') if s in statuses),'pending')
     return rows
+
+@router.get('/productivity')
+def field_productivity(start:str='',end:str='',authorization:str|None=Header(default=None)):
+    user=crm.access(authorization);today=datetime.now(crm.TZ).date()
+    try:
+        a=date.fromisoformat(start) if start else today.replace(day=1)
+        b=date.fromisoformat(end) if end else today
+    except ValueError:raise HTTPException(422,'Datas inválidas')
+    if not a<=b<=today or (b-a).days>92:raise HTTPException(422,'Escolha período até hoje, limitado a 93 dias')
+    with crm._services['db']() as con:
+        seller=crm._services['is_seller'](con,user)
+        visits=crm._services['scoped_rows'](con,'visit',user)
+        routes=crm._services['scoped_rows'](con,'route',user)
+        if seller:visits=[v for v in visits if v.get('user')==user]
+        expenses=[r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='route_expense' AND (%s OR payload->>'user'=%s)",(not seller,user)).fetchall()]
+        clients=crm._services['scoped_rows'](con,'client',user)
+    return operations.productivity(clients,visits,routes,expenses,a.isoformat(),b.isoformat())
+
+
+def opening_status(client,now=None):
+    now=now or datetime.now(crm.TZ)
+    if now.weekday() in client.get('closedDays',[6]):return 'Fechado hoje (cadastro)'
+    opening,closing=client.get('opens'),client.get('closes')
+    if not opening or not closing:return 'Horário não informado'
+    clock=now.strftime('%H:%M')
+    return 'Aberto agora (cadastro)' if opening<=clock<closing else 'Fechado agora (cadastro)'
+
+@router.get('/agenda')
+def field_agenda(day:str='',authorization:str|None=Header(default=None)):
+    user=crm.access(authorization)
+    try:selected=date.fromisoformat(day) if day else datetime.now(crm.TZ).date()
+    except ValueError:raise HTTPException(422,'Data inválida')
+    with crm._services['db']() as con:
+        clients={c['id']:c for c in crm._services['scoped_rows'](con,'client',user)}
+        routes=crm._services['scoped_rows'](con,'route',user)
+        tasks=crm._services['scoped_rows'](con,'task',user)
+    rows=[]
+    for kind,items in [('route',routes),('task',tasks)]:
+        for item in items:
+            if item.get('user')!=user or item.get('date')!=selected.isoformat():continue
+            client=clients.get(item.get('clientId'))
+            rows.append({'id':item['id'],'kind':kind,'date':item['date'],'time':item.get('time') or item.get('arrival') or '',
+                'text':item.get('text') or item.get('objective') or 'Visita planejada','clientName':client.get('name') if client else 'Geral','status':item.get('status','Aberta'),
+                'openingStatus':opening_status(client) if client else '', 'needsReview':item.get('needsReview',False),'links':links(client) if client else {}})
+    return sorted(rows,key=lambda r:(r['time'] or '99:99',r['kind'],r['id']))
