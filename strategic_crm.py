@@ -57,6 +57,7 @@ class Qualification(StrictModel):
     evidenceDate: date
     urgencyDays: int = Field(ge=0, le=90)
     estimatedMonthlyValue: float = Field(ge=0, le=100000000, allow_inf_nan=False)
+    prospectId: str = Field(default='',max_length=128)
     phone: str = Field(default='', max_length=30)
     district: str = Field(default='', max_length=120)
     address: str = Field(default='', max_length=250)
@@ -271,6 +272,11 @@ def tdc_qualify(data: Qualification, authorization: str | None = Header(default=
             con.execute('INSERT INTO clientes(id,razao_social,nome_fantasia,documento) VALUES(%s,%s,%s,%s) ON CONFLICT(id) DO NOTHING',(client['id'],client['name'],client.get('tradeName'),client['taxId']))
             refresh_client(con,client['id'])
             con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,'client',client['id'],'tdc_qualification'))
+        if data.prospectId:
+            raw=con.execute("SELECT payload FROM entities WHERE kind='lead' AND id=%s",(data.prospectId,)).fetchone()
+            if not raw or raw[0].get('origin')!='OpenStreetMap':raise HTTPException(422,'Prospect de origem não encontrado')
+            if raw[0].get('owner')!=user:raise HTTPException(403,'Prospect pertence a outro responsável')
+            put(con,'lead',{**raw[0],'clientId':client['id'] if info['qualified'] or matches else None,'taxId':tax,'city':data.city,'tdc':info,'status':info['tag']})
         changed(con)
     return {'qualification':info,'clientId':client['id'] if info['qualified'] or matches else None,'leadId':lead_id}
 
