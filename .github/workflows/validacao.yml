@@ -19,7 +19,7 @@ jobs:
       - name: Instalar dependências de teste
         run: python -m pip install -r requirements-dev.txt
       - name: Verificar sintaxe Python
-        run: python -m py_compile geo_prospecting.py field_audio.py field_operations.py field_assistant.py routing_engine.py strategic_crm.py server.py speedio_integration.py commercial_tables.py access_policy.py seller_commission.py financial_visibility.py
+        run: python -m py_compile client_bases.py geo_prospecting.py field_audio.py field_operations.py field_assistant.py routing_engine.py strategic_crm.py server.py speedio_integration.py commercial_tables.py access_policy.py seller_commission.py financial_visibility.py
       - name: Verificar sintaxe JavaScript
         run: |
           node --check strategic_crm.js
@@ -42,3 +42,4 @@ jobs:
         run: |
           npm install --prefix /tmp/l2-test-dom jsdom --no-audit --no-fund
           L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/strategic_crm_dom.cjs
+          L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/sales_workspace_dom.cjs

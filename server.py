@@ -32,6 +32,7 @@ import zara
 import webchat
 import strategic_crm
 import field_assistant
+import client_bases
 import geo_prospecting
 
 BASE = Path(__file__).resolve().parent
@@ -387,6 +388,8 @@ def restore_bt_pa_table(con):
 @asynccontextmanager
 async def lifespan(app):
     initialize()
+    bella_import=client_bases.import_bella(db,valid_cnpj)
+    if bella_import:logging.getLogger('uvicorn.error').info('bella_base_import unique=%s created=%s updated=%s already=%s',bella_import['uniqueClients'],bella_import['created'],bella_import['updated'],bella_import.get('alreadyApplied',False))
     with db() as con:
         restore_bt_pa_table(con)
     initialize_personal(db)
@@ -1370,6 +1373,9 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     existing = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (entity_id,)).fetchone()
                     if not existing and not normalize_uf(obj.get('state')):
                         raise HTTPException(400, 'UF PA ou AP obrigatória para novo cliente')
+                    if existing:
+                        for protected_base_field in ('clientBases','baseImports','sourceDocument'):
+                            if protected_base_field in existing[0]:obj[protected_base_field]=existing[0][protected_base_field]
                     tax_id = ''.join(ch for ch in str(obj.get('taxId') or '') if ch.isdigit())
                     registration = str(obj.get('stateRegistration') or '').strip().upper()
                     # Aceita pontuação comum da IE sem converter palavras inválidas em números.
