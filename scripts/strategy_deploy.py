@@ -13,7 +13,8 @@ def main():
     args=parser.parse_args()
     from whatsapp_media import provider_config
     if args.action=='check':
-        print(json.dumps({'databaseConfigured':bool(os.getenv('DATABASE_URL')),'whatsappOutboundConfigured':bool(provider_config()),'whatsappSignatureConfigured':bool(os.getenv('WA_APP_SECRET') or os.getenv('WHATSAPP_APP_SECRET')),'routingProviderHostname':urlparse(os.getenv('L2_ROUTING_URL','https://router.project-osrm.org')).hostname,'automaticSending':'Requires enabled settings and bound operators or customer consent'},ensure_ascii=False))
+        from field_audio import ready
+        print(json.dumps({'audioTranscriptionConfigured':ready(),'databaseConfigured':bool(os.getenv('DATABASE_URL')),'whatsappOutboundConfigured':bool(provider_config()),'whatsappSignatureConfigured':bool(os.getenv('WA_APP_SECRET') or os.getenv('WHATSAPP_APP_SECRET')),'routingProviderHostname':urlparse(os.getenv('L2_ROUTING_URL','https://router.project-osrm.org')).hostname,'automaticSending':'Requires enabled settings and bound operators or customer consent'},ensure_ascii=False))
         return
     if not os.getenv('DATABASE_URL'):raise SystemExit('DATABASE_URL ausente')
     import strategic_crm as crm
