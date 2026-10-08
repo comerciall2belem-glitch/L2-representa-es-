@@ -282,7 +282,7 @@ def overview(authorization: str | None = Header(default=None)):
         orders = _services['scoped_rows'](con,'order',user)
         visits = _services['scoped_rows'](con,'visit',user)+_services['scoped_rows'](con,'interaction',user)
     rows = [{'id':c['id'],'name':c.get('name',''),'city':c.get('city',''),'state':c.get('state',''),
-             'tdc':c.get('tdc'),'mcr':cadence(c,orders,visits),
+             'tags':list(dict.fromkeys([*(c.get('tags') if isinstance(c.get('tags'),list) else []),*c.get('tdc',{}).get('tags',[])])), 'tdc':c.get('tdc'),'mcr':cadence(c,orders,visits),
              'brandCycles': {brand:cadence(c,[o for o in orders if o.get('brand')==brand or any(i.get('brand')==brand for i in o.get('items',[]))],visits) for brand in sorted({o.get('brand') or i.get('brand') for o in orders if o.get('clientId')==c['id'] for i in (o.get('items') or [{}])} - {None,''})}} for c in clients]
     return {'clients':sorted(rows,key=lambda c:c['mcr']['priority'],reverse=True),
             'searchSuggestions':sorted({c['tdc']['segment'] for c in rows if c['tdc'] and c['mcr']['status']=='Inativo'}),
@@ -454,10 +454,11 @@ async def worker():
         await asyncio.sleep(60)
 
 @router.get('/tdc/discover')
-def discover(state: str = '', segment: str = '', channel: str = '', urgency: int = 90, size: str = '', tag: str = '', authorization: str | None = Header(default=None)):
+def discover(state: str = '', segment: str = '', channel: str = '', urgency: int = 90, size: str = '', tag: str = '', city: str = '', taxId: str = '', authorization: str | None = Header(default=None)):
     user = access(authorization)
     if state and state not in ('PA','AP'): raise HTTPException(422,'UF deve ser PA ou AP')
     if size and size not in ('MEI','Micro','Pequena','Média','Grande'):raise HTTPException(422,'Porte inválido')
+    if len(city)>120 or (taxId and not _services['valid_cnpj'](re.sub(r'\D','',taxId))):raise HTTPException(422,'Cidade ou CNPJ inválido')
     if len(tag)>40:raise HTTPException(422,'Tag inválida')
     if not 0<=urgency<=90 or len(segment)>120 or (channel and channel not in CHANNELS):raise HTTPException(422,'Filtros inválidos')
     with _services['db']() as con:
@@ -467,10 +468,12 @@ def discover(state: str = '', segment: str = '', channel: str = '', urgency: int
     results=[]
     for lead in leads:
         info=lead.get('tdc',{})
+        if city and city.strip().casefold() not in str(lead.get('city','')).casefold():continue
+        if taxId and re.sub(r'\D','',taxId)!=re.sub(r'\D','',lead.get('taxId','')):continue
         if not info or (state and lead.get('state')!=state) or (channel and info.get('channel')!=channel) or segment.casefold() not in info.get('segment','').casefold() or info.get('urgencyDays',91)>urgency: continue
         if (size and info.get('size')!=size) or (tag and tag.casefold() not in [str(x).casefold() for x in info.get('tags',[])]):continue
         evidence=local_date(info.get('evidenceDate'))
-        item={k:lead.get(k) for k in ('id','clientId','name','state','city','owner','status','tdc')}
+        item={k:lead.get(k) for k in ('id','clientId','name','taxId','state','city','owner','status','tdc')}
         item['evidenceExpired']=not evidence or not 0<=(today-evidence).days<=30
         results.append(item)
     return {'leads':results[:100], 'source':'Leads registrados no L2 One; sem inferir demanda externa'}

@@ -232,4 +232,50 @@ Tempo observado só aparece quando `checkIn` e `checkOut` válidos existem. Desl
 
 ### Validação e implantação desta ampliação
 
-A migração anterior já fornece as tabelas de conversação; `field_location`, despesas e tarefas usam a persistência existente. Nenhuma tabela adicional, fornecedor pago ou credencial é criada. Executar os mesmos comandos de `strategy_deploy.py check`, CI e publicação em `main`. A suíte acrescenta moeda brasileira, datas relativas, confirmação de despesas, autorização de geolocalização, deduplicação, duas fases de lembretes, cancelamento, reagendamento, indicadores sem perda fictícia e localização recebida por webhook assinado. Áudio não é transcrito automaticamente nesta versão; o operador usa texto ou localização do WhatsApp.
+A migração anterior já fornece as tabelas de conversação; `field_location`, despesas e tarefas usam a persistência existente. Nenhuma tabela adicional, fornecedor pago ou credencial é criada. Executar os mesmos comandos de `strategy_deploy.py check`, CI e publicação em `main`. A suíte acrescenta moeda brasileira, datas relativas, confirmação de despesas, autorização de geolocalização, deduplicação, duas fases de lembretes, cancelamento, reagendamento, indicadores sem perda fictícia e localização recebida por webhook assinado. A ampliação visual e de áudio descrita abaixo acrescenta transcrição opcional com confirmação por texto.
+
+
+## Dashboard integrado e áudio — implantação por fase
+
+### 1. Identidade visual e TDC
+
+`strategy_ui.css` mantém o cabeçalho e logotipo L2 existentes, acrescentando painel claro, cards em três colunas, faixas de cor por função, bordas suaves e adaptação para celular. A composição reproduz a organização das referências; cores do destaque principal usam petróleo e verde da L2. O dashboard preserva métricas, tarefas e pedidos existentes.
+
+Abertura: **Hoje → Encontrar Clientes**. O TDC aparece antes da carteira, com etapas **1. Local → 2. Segmentos → 3. Buscar**. Botões verificam campos da etapa; busca final passa UF, cidade, segmento/produto, urgência, CNPJ, porte e tag à API. Cards retornam nome, cidade, CNPJ, aderência ao ICP, situação da evidência e link para a carteira. Qualificação continua transacional: CNPJ válido, demanda recente, perfil aderente e deduplicação por CNPJ. Qualificados são salvos automaticamente na mesma carteira, sem cópia separada. Sem fonte de prospecção externa configurada, a busca consulta os leads capturados na base L2.
+
+### 2. SRI e roteiro visual
+
+Abertura: **Hoje → Rotas Temporárias**. O planejador aparece antes das rotas manuais existentes. O resultado combina mapa, cards dos pontos e tabela com ordem, cliente, chegada, saída, distância e minutos do trecho. Os horários são estimados pela malha rodoviária ou pelo modo geográfico explicitamente escolhido; não representam trânsito em tempo real. Status usa horário cadastrado, sem afirmar observação física da loja. Maps, Waze, WhatsApp e telefone usam dados do cliente; Registrar Visita abre o atendimento existente e Agendar Retorno abre o acompanhamento para criar a tarefa. Publicar o roteiro cria registros da agenda sem registrar visitas realizadas. Distâncias não atravessam rios por aproximação quando o modo rodoviário está selecionado: falha ou ausência de caminho exige revisão.
+
+### 3. MCR e filtros de carteira
+
+Abertura: **Hoje / CRM → Acompanhamento e reativação → Consultar prioridades**. Contadores: totais, ativos, em risco, inativos e com tags. Clicar num contador filtra a tabela; clicar numa tag combina o filtro de situação e tag. Sem histórico continua explicitamente identificado, não incluído artificialmente nos ativos. Tags são escapadas e não executam HTML. Próximo contato, ciclo, origem do ciclo e queda de volume vêm da API autorizada. Nenhum contador representa LTV ou economia estimada sem modelo de margem e amostra válida.
+
+### 4. Preposto: conversa e transcrição opcional
+
+**Abrir conversa de campo** consulta somente o WhatsApp vinculado ao usuário autenticado. Mensagens recebidas e enviadas aparecem em balões, com data e disponibilidade das integrações. Não é uma simulação de conversa nem uma ação de enviar mensagem.
+
+`field_audio.py` recebe somente mídias de webhook assinado e de operador comercial ativo vinculado. Antes da rede, reserva a mensagem em `entities(kind='field_audio')`; reserva repetida não faz outra chamada de transcrição. Limite de 30 reservas por operador/dia, entrada até 6 MB e gravação até 90 segundos. A URL de mídia deve ser HTTPS em host Meta permitido, sem redirecionamentos nem credenciais embutidas. Arquivos OGG/Opus do WhatsApp são convertidos para WAV mono/16 kHz por FFmpeg, executado em diretório temporário com timeout. Áudio bruto não fica armazenado no banco. Transcrição é persistida antes de processar o comando.
+
+A transcrição usa `POST https://api.openai.com/v1/audio/transcriptions`, multipart, idioma `pt`, modelo configurável. Modelo padrão: `gpt-4o-mini-transcribe`. Formatos de áudio e API: [documentação oficial](https://developers.openai.com/api/docs/guides/speech-to-text).
+
+Exemplos de voz: “visita Loja Alfa sem pedido”, “despesa combustível R$ 100,00”, “agenda hoje”. O primeiro prepara uma visita; o segundo prepara despesa; ambos exigem **CONFIRMAR por texto**. Voz não confirma, cancela ou escolhe um cliente por número. Comando ambíguo ou não reconhecido pede reformulação; a transcrição não pode criar pedido, valor de faturamento ou comissão. Valores monetários por extenso que o parser não reconheça exigem texto, sem estimativa automática. Localização usa mensagem de localização suportada pelo WhatsApp; atualização contínua de posição não é inferida de áudio.
+
+### Comandos de publicação e configuração
+
+```bash
+python -m pip install -r requirements.txt
+python scripts/strategy_deploy.py check
+python scripts/strategy_deploy.py migrate
+python -m unittest discover -s tests -p 'test_*.py'
+node --check strategic_crm.js
+L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/strategic_crm_dom.cjs
+```
+
+A integração existente está no GitHub e publicação automática do Render pela branch `main`. A migração é aditiva; bootstrap da aplicação a executa também. Manter a ordem funcional TDC, SRI, MCR e Preposto; os hooks de pedido/visita e o worker permanecem simultâneos após a implantação.
+
+Para ativar áudio, configurar em variáveis secretas do serviço: `OPENAI_API_KEY`, `L2_FIELD_AUDIO_ENABLED=true` e, opcionalmente, `L2_FIELD_AUDIO_MODEL`. Exige também credenciais Meta já descritas neste documento e operador vinculado. Não inserir segredos em código ou chat. O comando `check` informa presença de transcrição configurada, sem mostrar a chave. Dependência adicionada: `imageio-ffmpeg`, que fornece o binário FFmpeg usado na conversão.
+
+Sem credenciais ou flag, o operador recebe orientação para enviar texto. Erro de mídia/transcrição não grava ação comercial nem repete a chamada automaticamente. Reserva interrompida permanece sem reenvio automático: o operador envia uma mensagem nova. Processamento de áudio ocorre fora da transação PostgreSQL, com timeout total de 75 segundos; webhook persistente/baixo volume, sujeito ao tempo de serviço externo. Escalar ingestão para fila durável separada quando volume/SLA exigir. Não há garantia de ausência absoluta de gargalos: há limites explícitos, isolamento de transações e registros de falha.
+
+Homologação final requer WhatsApp real: envio de áudio pelo operador vinculado, confirmação por texto, leitura da visita/despesa na tela e verificação da entrega pela Meta. Testes com mocks validam protocolo e bloqueios; não substituem esse teste no aparelho. Templates aprovados e instância ativa continuam necessários para lembretes pontuais. A implantação não ativa custos de API ou cadências sem configuração.

@@ -353,3 +353,14 @@ def field_agenda(day:str='',authorization:str|None=Header(default=None)):
                 'text':item.get('text') or item.get('objective') or 'Visita planejada','clientName':client.get('name') if client else 'Geral','status':item.get('status','Aberta'),
                 'openingStatus':opening_status(client) if client else '', 'needsReview':item.get('needsReview',False),'links':links(client) if client else {}})
     return sorted(rows,key=lambda r:(r['time'] or '99:99',r['kind'],r['id']))
+
+
+@router.get('/conversation')
+def conversation(authorization:str|None=Header(default=None)):
+    user=crm.access(authorization)
+    import zara
+    import field_audio
+    with crm._services['db']() as con:
+        row=con.execute('SELECT phone FROM field_operators WHERE username=%s AND enabled',(user,)).fetchone()
+        rows=con.execute('SELECT direction,body,created_at FROM zara_messages WHERE phone=%s ORDER BY created_at DESC,message_id DESC LIMIT 50',(row[0],)).fetchall() if row else []
+    return {'messages':[{'direction':d,'body':b,'at':at.isoformat()} for d,b,at in reversed(rows)],'audioReady':field_audio.ready(),'whatsappReady':all(zara.configured_value(k) for k in ('WA_ACCESS_TOKEN','WA_PHONE_NUMBER_ID','WA_APP_SECRET','WA_GRAPH_VERSION'))}

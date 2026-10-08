@@ -1,3 +1,4 @@
+import field_audio
 """Zara: inbound WhatsApp Cloud API support with explicit human handoff."""
 import field_assistant
 import hashlib
@@ -278,6 +279,9 @@ def validate_payload(payload):
                 if not isinstance(context.get('id', ''), str):
                     raise ValueError('Invalid reply context')
                 if message.get('type')=='location' and not field_assistant.operations.location_valid(message.get('location')):raise ValueError('Invalid location')
+                if message.get('type')=='audio':
+                    audio=mapping(message.get('audio',{}))
+                    if not isinstance(audio.get('id',''),str) or not re.fullmatch(r'\d{1,40}',audio.get('id','')):raise ValueError('Invalid audio')
                 text = mapping(mapping(message).get('text', {}))
                 if not isinstance(text.get('body', ''), str):
                     raise ValueError('Invalid text')
@@ -326,6 +330,11 @@ async def receive_webhook(request: Request, x_hub_signature_256: str | None = He
                     body = '[Mensagem não textual recebida]'
                 location=msg.get('location') if msg.get('type')=='location' else None
                 if location is not None:body=f"[Localização recebida: {location['latitude']}, {location['longitude']}]"
+                audio=None
+                if msg.get('type')=='audio':
+                    audio=await field_audio.prepare(db,phone,mid,msg.get('audio',{}),setting)
+                    if audio and audio.get('skip'):continue
+                    if audio and audio.get('transcript'):body='[Áudio] '+audio['transcript']
                 name = str(contacts.get(phone, ''))[:120]
                 reply_to = msg.get('context', {}).get('id', '')[:256] or None
                 def persist_inbound():
@@ -340,6 +349,13 @@ async def receive_webhook(request: Request, x_hub_signature_256: str | None = He
                         first = con.execute("SELECT count(*) FROM zara_messages WHERE phone=%s AND direction='in'", (phone,)).fetchone()[0] == 1
                         field_reply = field_assistant.handle_message(con,phone,mid,body,location=location) if location is not None else field_assistant.handle_message(con,phone,mid,body)
                         if field_reply is not None:
+                            if audio is not None:
+                                transcript=audio.get('transcript','')
+                                command=field_audio.command_text(transcript) if transcript else None
+                                if command:
+                                    field_reply=field_assistant.handle_message(con,phone,mid,command)
+                                    return 'bot', 'Transcrição: '+transcript+'\n\n'+field_reply
+                                return 'bot', ('Transcrição: '+transcript+'\nEnvie CONFIRMAR por texto para confirmar uma ação pendente, ou reformule o comando.' if transcript else field_audio.FALLBACK)
                             return 'bot', field_reply
                         rule, handoff = response_rule(body, name, first)
                         if not body or body == '[Mensagem não textual recebida]' or location is not None:
