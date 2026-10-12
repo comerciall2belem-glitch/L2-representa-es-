@@ -32,6 +32,7 @@ import zara
 import webchat
 import strategic_crm
 import field_assistant
+import routine_alerts
 import client_bases
 import geo_prospecting
 
@@ -416,6 +417,7 @@ app.include_router(webchat.router)
 app.include_router(strategic_crm.router)
 app.include_router(field_assistant.router)
 app.include_router(geo_prospecting.router)
+app.include_router(routine_alerts.router)
 
 def sectors_for(user):
     with db() as con:
@@ -2052,7 +2054,7 @@ async def security_headers(request, call_next):
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     response.headers['Permissions-Policy'] = 'camera=(self), microphone=(), geolocation=(self)'
-    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:; img-src 'self' data: https://tile.openstreetmap.org; frame-ancestors 'none'"
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https:; img-src 'self' data: https://tile.openstreetmap.org; frame-ancestors 'none'"
     if request.url.path.startswith('/api/'):
         response.headers['Cache-Control'] = 'no-store'
     return response
@@ -2067,7 +2069,7 @@ def zara_page():
 
 @app.get('/{filename}')
 def asset(filename: str):
-    if filename not in ('strategy_ui.css','leaflet.js','leaflet.css','strategic_crm.js','app.js','live_records.js','crm_operations.js','goals_dashboard.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
+    if filename not in ('modern_workspace.js','modern_workspace.css','strategy_ui.css','leaflet.js','leaflet.css','strategic_crm.js','app.js','live_records.js','crm_operations.js','goals_dashboard.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
         raise HTTPException(404)
     if filename in ('logo-l2-light.jpg','logo-l2-dark.jpg'):
         source={'logo-l2-light.jpg':'logo-light.jpg.b64','logo-l2-dark.jpg':'logo-dark.jpg.b64'}[filename]
