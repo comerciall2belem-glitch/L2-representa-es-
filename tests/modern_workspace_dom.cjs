@@ -1,0 +1,33 @@
+const fs=require('fs'),assert=require('node:assert/strict');
+const {JSDOM}=require(process.env.L2_JSDOM||'jsdom');
+(async()=>{for(const user of ['Ana Paula','Euler','Laís','Marlene','Erika']){
+ const html=fs.readFileSync('index.html','utf8').replace(/<script[\s\S]*?<\/script>/g,'');const dom=new JSDOM(html,{url:'https://l2.test',runScripts:'outside-only',pretendToBeVisual:true});const w=dom.window;
+ w.structuredClone=structuredClone;w.matchMedia=()=>({matches:false});w.alert=()=>{};w.confirm=()=>true;w.setInterval=()=>0;w.fetch=async()=>({ok:true,json:async()=>[]});w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'))};
+ const sectors=['commercial','routes','office','management','finance','admin','catalog'];w.localStorage.setItem('l2one_state_v2',JSON.stringify({user,role:user==='Erika'?'Vendedor':'Administrativo',token:'x'.repeat(40),server:'https://l2.test',sectors,sellers:['Ana Paula','Erika'],clients:[{id:'c1',name:'Cliente Teste',owner:user,state:'PA',city:'Belém',clientBases:['Bella Brazil']}],orders:[{id:'o1',clientId:'c1',sellerResponsible:user,status:'Pendente',amount:100,date:'2026-10-05'}],tasks:[],opportunities:[],pending:[]}));
+ w.eval(fs.readFileSync('commercial_drafts.js','utf8')+'\n'+fs.readFileSync('crm_operations.js','utf8')+'\n'+fs.readFileSync('goals_dashboard.js','utf8')+'\n'+fs.readFileSync('workspace.js','utf8')+'\n'+fs.readFileSync('modern_workspace.js','utf8')+'\n'+fs.readFileSync('app.js','utf8')+'\n'+fs.readFileSync('live_records.js','utf8')+'\nwindow.testL2State=s;L2Live.pause();');
+ assert(w.document.querySelector('#app').textContent.includes('Vender e acompanhar'));
+ assert(w.document.querySelector('#l2BottomNav'));assert.equal(w.document.querySelectorAll('.l2-metric').length,4);assert(!w.document.querySelector('#app').textContent.includes('162.800'));assert.equal(w.document.querySelector('#app').textContent.includes('Comissões apuradas'),w.financeAllowed());
+ w.L2Modern.toggleMenu();assert(w.document.body.classList.contains('l2-menu-open'));w.L2Modern.toggleMenu();assert(!w.document.body.classList.contains('l2-menu-open'));
+ const d=new Date(),day=new Intl.DateTimeFormat('sv-SE').format(d),month=day.slice(0,7),daysAgo=n=>new Date(Date.parse(day+'T12:00:00Z')-n*864e5).toISOString().slice(0,10);
+ w.testL2State.clients.push({id:'old',name:'Cliente Antigo',city:'Belém',state:'PA',clientBases:['Bella Brazil'],baseImports:{bella_brazil:{sourceRows:[{sourcePurchaseDate:daysAgo(65)}]}}});
+ w.testL2State.orders.push({id:'positive',clientId:'c1',date:day,status:'Confirmado',amount:100,brand:'Marca A'},{id:'budget',clientId:'old',date:day,status:'Orçamento',amount:200,brand:'Marca A'});
+ assert(w.L2Modern.clientFlags(w.testL2State.clients[0]).positive);const old=w.L2Modern.clientFlags(w.testL2State.clients.at(-1));assert(old.over60);assert(old.budget);assert(!old.positive);
+ w.show('clientes');assert(w.document.querySelector('.l2-source-tag'));w.L2Modern.clientFilter('over60');assert.equal(w.document.querySelectorAll('.client-row').length,1);assert(w.document.querySelector('.l2-client-over60'));w.L2Modern.clientFilter('');
+ w.L2Live.pause();w.show('hoje');const oldMetric=w.document.querySelector('.l2-metric strong').textContent;w.testL2State.orders.push({id:'live-billed',clientId:'c1',date:day,status:'Faturado',amount:1234.56,brand:'Marca A',sellerResponsible:user});w.L2Live.refresh();assert.notEqual(w.document.querySelector('.l2-metric strong').textContent,oldMetric);w.show('clientes');const editor=w.document.querySelector('#clientForm');editor.elements.name.value='Texto em edição';w.L2Live.refresh();assert.equal(w.document.querySelector('#clientForm'),editor);assert.equal(editor.elements.name.value,'Texto em edição');w.L2Live.pause();
+ w.testL2State.opportunities=[{id:'opp',clientId:'c1',owner:user,brand:'Marca A',amount:100,stage:'Prospectado'}];w.show('crm');assert(w.document.querySelector('.l2-kanban'));w.L2Modern.move('opp','Qualificado');assert.equal(w.testL2State.opportunities[0].stage,'Qualificado');assert(w.testL2State.pending.some(p=>p.type==='opportunity'));w.testL2State.pending=[];
+
+ for(const id of ['crm','rota','crescimento','operations','pedidos','marcas'])assert(w.document.querySelector('#tabs button[data-tab='+id+']'));assert(w.document.querySelector('#sectionTabs').hidden);
+ w.show('bella');assert.equal(w.document.querySelector('#tabs button[data-tab=bella]'),null);assert(w.document.querySelector('#app').textContent.includes('Clientes'));w.startClientOrder(w.document.querySelector('[data-client-order=\"c1\"]').dataset.clientOrder);assert(w.document.querySelector('#orderForm'));assert.equal(w.orderDraft().clientId,'c1');
+ w.show('crm');assert(w.document.querySelector('#tabs button[data-tab=crm]'));assert(w.document.querySelector('#app').textContent.includes('Visão 360'));assert.equal(w.document.querySelector('#clientWorkspaceDrawer'),null);
+ const activity=w.commercialActivityHTML([{user:'Marlene',kind:'task',action:'upsert',clientName:'Cliente <teste>',at:'2026-10-07T13:23:00+00:00'}]);assert(activity.includes('Tarefa atualizada'));assert(activity.includes('10:23'));assert(!activity.includes('upsert'));assert(activity.includes('&lt;teste&gt;'));
+ assert(w.commercialActivityHTML(Array.from({length:11},()=>({kind:'route',at:'bad'}))).includes('Ver mais 1 atividades'));
+
+ w.show('clientes');w.openClient360('c1');assert(w.document.querySelector('#clientWorkspaceDrawer').open);assert(w.document.querySelector('#app').textContent.includes('Cliente Teste'));w.closeClientWorkspace();assert.equal(w.document.querySelector('#clientWorkspaceDrawer'),null);
+ w.show('crescimento');assert(w.document.querySelector('#app').textContent.includes('Crescimento da carteira'));
+ w.newOrder();assert(w.document.querySelector('#orderForm'));
+ w.show('hoje');w.openWorkspaceChat();assert.equal(!!w.document.querySelector('#workspaceChatDrawer'),user!=='Erika');w.document.querySelector('#workspaceChatDrawer')?.close();
+ w.show('config');if(['Marlene','Erika'].includes(user)){w.show('finance');assert(!w.document.querySelector('#app').textContent.includes('Contas e lançamentos'))}
+ if(user==='Erika'){w.show('admin');assert(w.document.querySelector('#app').textContent.includes('Vender e acompanhar'))}
+ await new Promise(r=>setTimeout(r,10));dom.window.close();
+ }console.log('5 profiles passed: responsive shell, live indicators, colored portfolio, Bella provenance and persistent pipeline');
+})().catch(e=>{console.error(e);process.exit(1)});
