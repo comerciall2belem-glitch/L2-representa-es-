@@ -33,8 +33,14 @@ def build_catalog_pdf(table, industry, prices, base, issued):
     story = []
     logo = base / 'logo-light.jpg.b64'
     image = Image(io.BytesIO(base64.b64decode(logo.read_text())), width=32*mm, height=22*mm, kind='proportional') if logo.exists() else p('L2 Representações')
-    heading=[Paragraph(escape(str(table.get('brand',''))),styles['Heading1']),p(table.get('title') or table.get('id')),p('TABELA COMERCIAL | '+str(table.get('state','')))]
-    header=Table([[image,heading]],colWidths=[42*mm,138*mm]);header.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'MIDDLE'),('BOTTOMPADDING',(0,0),(-1,-1),12),('LINEBELOW',(0,0),(-1,-1),1,colors.HexColor('#b59b6a'))]));story.append(header)
+    heading=[Paragraph(escape(str(industry.get('displayName') or table.get('brand',''))),styles['Heading1']),p(table.get('title') or table.get('id')),p('TABELA COMERCIAL | '+str(table.get('state','')))]
+    brand_logo=industry.get('logoData','')
+    if brand_logo.startswith(('data:image/png;base64,','data:image/jpeg;base64,')):
+        brand_image=Image(io.BytesIO(base64.b64decode(brand_logo.split(',',1)[1])),width=28*mm,height=22*mm,kind='proportional')
+        header=Table([[image,heading,brand_image]],colWidths=[42*mm,106*mm,32*mm])
+    else:
+        header=Table([[image,heading]],colWidths=[42*mm,138*mm])
+    header.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'MIDDLE'),('BOTTOMPADDING',(0,0),(-1,-1),12),('LINEBELOW',(0,0),(-1,-1),1,colors.HexColor('#b59b6a'))]));story.append(header)
     story += [Spacer(1,4*mm),p('Emissão: '+issued+' | Vigência: '+str(table.get('effectiveDate') or 'Conforme tabela cadastrada')),p(str(len(prices))+' produtos | Preços em reais | '+str(table.get('focus') or table.get('brand',''))),Spacer(1,3*mm)]
     # Explicit commercial fields only: industry notes may contain commissions.
     terms = []

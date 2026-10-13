@@ -26,6 +26,7 @@ jobs:
           node --check app.js
           node --check modern_workspace.js
           node --check central_operations.js
+          node --check industry_workspace.js
           node --check cash.js
       - name: Testar regras fiscais
         run: python -m unittest discover -s tests -p 'test_*.py' -v
