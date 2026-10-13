@@ -36,9 +36,13 @@ function suggestedClients(day,limit=8){
    return proximity(b)-proximity(a)||String(a.name).localeCompare(String(b.name),'pt-BR');
  }).slice(0,limit));
 }
-function save(){localStorage.setItem(key,JSON.stringify(s));network()}
+function save(){try{localStorage.setItem(key,JSON.stringify(s));window.l2CatalogCacheLimited=false;}catch(error){if(error.name!=='QuotaExceededError'&&error.code!==22&&error.code!==1014)throw error;
+ // Only reduce the replaceable catalog cache. Never discard unsynchronized records.
+ const cached={...s,prices:s.prices.filter(p=>s.pending.some(c=>c.type==='price'&&c.data.id===p.id))};
+ try{localStorage.setItem(key,JSON.stringify(cached));window.l2CatalogCacheLimited=true;}catch(_){throw Error('Sem espaço no aparelho para salvar. A ficha anterior foi preservada. Sincronize os registros e tente novamente.');}
+ }network()}
 function editingForm(){const active=document.activeElement;return Date.now()-(window.lastCommercialInputAt||0)<60000||!!(active?.closest?.('#app')&&active.matches?.('input, textarea, select, [contenteditable="true"]'))}
-function network(){let n=$('network');if(n)n.textContent=(window.lastSyncError?'⚠ '+window.lastSyncError+' · ':'')+(navigator.onLine?'● Online':'● Offline')+(s.server?' · '+s.pending.length+' alterações pendentes':' · somente neste aparelho');const button=$('syncButton');if(button){button.hidden=!s.token;button.textContent=s.pending.length?'Sincronizar ('+s.pending.length+')':'Sincronizar';button.disabled=syncing||!navigator.onLine}}
+function network(){let n=$('network');if(n)n.textContent=(window.lastSyncError?'⚠ '+window.lastSyncError+' · ':'')+(window.l2CatalogCacheLimited?'Catálogo offline reduzido; conecte-se para recarregar · ':'')+(navigator.onLine?'● Online':'● Offline')+(s.server?' · '+s.pending.length+' alterações pendentes':' · somente neste aparelho');const button=$('syncButton');if(button){button.hidden=!s.token;button.textContent=s.pending.length?'Sincronizar ('+s.pending.length+')':'Sincronizar';button.disabled=syncing||!navigator.onLine}}
 function uid(){return crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random()}
 function options(arr,val){return arr.map(v=>`<option ${v===val?'selected':''}>${esc(v)}</option>`).join('')}
 function client(id){return s.clients.find(c=>c.id===id)||s.orders.find(x=>x.clientId===id)?.clientSnapshot||s.visits.find(x=>x.clientId===id)?.clientSnapshot||s.tasks.find(x=>x.clientId===id)?.clientSnapshot||{}}

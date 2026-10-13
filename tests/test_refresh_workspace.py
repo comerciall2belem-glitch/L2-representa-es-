@@ -13,8 +13,8 @@ class RefreshWorkspaceTests(unittest.TestCase):
         response = context['refresh_workspace']()
         html = response['content']
         self.assertEqual(response['headers']['Cache-Control'], 'no-store')
-        self.assertIn('app.js?v=20261013-table-names', html)
-        self.assertIn('modern_workspace.css?v=20261013-table-names', html)
+        self.assertIn('app.js?v=20261013-logo-storage', html)
+        self.assertIn('modern_workspace.css?v=20261013-logo-storage', html)
         self.assertEqual(len(re.findall(r'<script src=', html)), len(re.findall(r'<script src=', Path('index.html').read_text())))
         self.assertNotIn('localStorage.clear', html)
         self.assertNotIn('indexedDB.deleteDatabase', html)

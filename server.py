@@ -2074,7 +2074,7 @@ def home(): return FileResponse(BASE/'index.html',headers={'Cache-Control':'no-s
 def refresh_workspace():
     # A distinct navigation bypasses cached home documents without clearing user data.
     content = (BASE/'index.html').read_text()
-    version = '20261013-table-names'
+    version = '20261013-logo-storage'
     content = re.sub(r'(<script src="[^"?]+)(?:\?[^" ]*)?("[^>]*>)', lambda m: m[1]+'?v='+version+m[2], content)
     content = re.sub(r'(<link[^>]+href="modern_workspace\.css)(?:\?[^" ]*)?("[^>]*>)', lambda m: m[1]+'?v='+version+m[2], content)
     return Response(content=content, media_type='text/html', headers={'Cache-Control':'no-store'})
