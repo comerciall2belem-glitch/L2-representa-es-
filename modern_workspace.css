@@ -21,3 +21,5 @@
 .l2-workflow-bar label[hidden],.l2-workflow-bar select[hidden]{display:none!important}
 
 .l2-industry-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin:20px 0}.l2-industry-card{display:flex;flex-direction:column;gap:12px;text-align:left;padding:22px!important;background:#fff!important;border:1px solid var(--line)!important;color:var(--brand)!important}.l2-industry-card img,#l2IndustryLogoPreview img{width:150px;height:70px;object-fit:contain;background:#fff;padding:8px;border-radius:10px}.l2-industry-logo-placeholder{height:70px;display:grid;place-items:center;background:#edf1ef;border-radius:10px;color:#788986}.l2-industry-detail{margin-top:22px}
+
+.l2-catalog-sector{grid-column:1/-1;margin:16px 0 0;border-bottom:2px solid var(--accent);padding:10px 0;color:var(--brand)}.l2-sku-variant{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding:12px 0}.l2-modern #l2RegisteredCatalog:focus{outline:2px solid var(--accent);outline-offset:4px}
