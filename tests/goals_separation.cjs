@@ -1,0 +1,9 @@
+const assert=require('assert'),G=require('../goals_dashboard.js');
+const state={sellers:['Euler','Erika','Laís'],team:['Ana Paula','Euler','Erika','Laís'],industries:[{name:'BT'},{name:'RK'},{name:'Sem meta'}],goals:[{month:'2026-10',user:'Equipe',brand:'BT',amount:1000.01},{month:'2026-10',user:'Equipe',brand:'RK',amount:600},{month:'2026-10',user:'Equipe',amount:3000}],orders:[{id:'o',sellerResponsible:'Erika',user:'Laís',status:'Confirmado',date:'2026-10-12',amount:100,items:[{brand:'BT',subtotal:60},{brand:'RK',subtotal:40}]},{id:'budget',user:'Euler',status:'Orçamento',date:'2026-10-12',brand:'BT',amount:999}],billedDocuments:[{orderId:'o',brand:'BT',billedDate:'2026-10-12',billed:30}]};
+const snapshot=JSON.stringify(state),m=G.separated(state,'2026-10','2026-10-12');
+assert.deepEqual(m.sellers,['Ana Paula','Erika','Euler']);assert.equal(m.teamTarget,300000);assert.equal(m.commercial.total,10000);assert.equal(m.industry.total,3000);
+for(const brand of ['BT','RK']){const target=m.commercial.rows.find(r=>r.brand===brand),rows=m.allocations.filter(r=>r.brand===brand);for(const field of ['target','daily','weekly'])assert.equal(rows.reduce((n,r)=>n+r[field],0),target[field]);}
+assert.equal(m.members.find(r=>r.seller==='Erika').actual,10000);assert.equal(m.members.find(r=>r.seller==='Euler').actual,0);assert.equal(m.allocations.find(r=>r.seller==='Erika'&&r.brand==='BT').actual,6000);assert(m.allocations.filter(r=>r.brand==='Sem meta').every(r=>r.target===null));assert.equal(JSON.stringify(state),snapshot);
+const past=G.separated(state,'2026-10','2026-11-01');assert.equal(past.remainingDays,0);assert(past.allocations.every(r=>r.requiredDaily===null));
+const empty=G.separated({...state,sellers:[],team:[]},'2026-10','2026-10-12');assert.equal(empty.members.length,0);assert.equal(empty.allocations.length,0);
+console.log('Separate commercial sales and invoicing, active team, exact allocation, missing goals and month end: OK');

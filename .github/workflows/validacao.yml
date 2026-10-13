@@ -45,3 +45,4 @@ jobs:
           L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/strategic_crm_dom.cjs
           L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/sales_workspace_dom.cjs
           L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/modern_workspace_dom.cjs
+          node tests/goals_separation.cjs
