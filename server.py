@@ -2070,6 +2070,15 @@ async def security_headers(request, call_next):
 @app.get('/index.html')
 def home(): return FileResponse(BASE/'index.html',headers={'Cache-Control':'no-store'})
 
+@app.get('/atualizar')
+def refresh_workspace():
+    # A distinct navigation bypasses cached home documents without clearing user data.
+    content = (BASE/'index.html').read_text()
+    version = '20261013-names-refresh'
+    content = re.sub(r'(<script src="[^"?]+)(?:\?[^" ]*)?("[^>]*>)', lambda m: m[1]+'?v='+version+m[2], content)
+    content = re.sub(r'(<link[^>]+href="modern_workspace\.css)(?:\?[^" ]*)?("[^>]*>)', lambda m: m[1]+'?v='+version+m[2], content)
+    return Response(content=content, media_type='text/html', headers={'Cache-Control':'no-store'})
+
 @app.get('/zara.html')
 def zara_page():
     return FileResponse(BASE/'zara.html', headers={'Cache-Control':'no-store'})
