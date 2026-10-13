@@ -1132,6 +1132,10 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         previous_table=con.execute("SELECT payload FROM entities WHERE kind='price_table' AND id=%s",(entity_id,)).fetchone()
                         if previous_table and (previous_table[0].get('brand')!=brand or previous_table[0].get('state')!=state): raise HTTPException(400,'Tabela vinculada não pode mudar de indústria ou abrangência')
                         if not str(obj.get('title','')).strip(): raise HTTPException(400,'Nome da tabela obrigatório')
+                        if len(str(obj.get('title',''))) > 180 or len(str(obj.get('focus',''))) > 120: raise HTTPException(400,'Nome ou foco da tabela muito longo')
+                        if obj.get('effectiveDate'):
+                            try: date.fromisoformat(obj['effectiveDate'])
+                            except (ValueError, TypeError): raise HTTPException(400,'Vigência da tabela inválida')
                         if not admin_access(user):
                             previous_table=con.execute("SELECT payload FROM entities WHERE kind='price_table' AND id=%s",(entity_id,)).fetchone()
                             if not previous_table or obj.get('active') != previous_table[0].get('active'):
@@ -2054,7 +2058,7 @@ async def security_headers(request, call_next):
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     response.headers['Permissions-Policy'] = 'camera=(self), microphone=(), geolocation=(self)'
-    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https:; img-src 'self' data: https://tile.openstreetmap.org; frame-ancestors 'none'"
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https:; img-src 'self' data: blob: https://tile.openstreetmap.org; media-src 'self' blob:; frame-ancestors 'none'"
     if request.url.path.startswith('/api/'):
         response.headers['Cache-Control'] = 'no-store'
     return response
@@ -2069,7 +2073,7 @@ def zara_page():
 
 @app.get('/{filename}')
 def asset(filename: str):
-    if filename not in ('modern_workspace.js','modern_workspace.css','strategy_ui.css','leaflet.js','leaflet.css','strategic_crm.js','app.js','live_records.js','crm_operations.js','goals_dashboard.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
+    if filename not in ('jspdf.umd.min.js','central_operations.js','modern_workspace.js','modern_workspace.css','strategy_ui.css','leaflet.js','leaflet.css','strategic_crm.js','app.js','live_records.js','crm_operations.js','goals_dashboard.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
         raise HTTPException(404)
     if filename in ('logo-l2-light.jpg','logo-l2-dark.jpg'):
         source={'logo-l2-light.jpg':'logo-light.jpg.b64','logo-l2-dark.jpg':'logo-dark.jpg.b64'}[filename]
