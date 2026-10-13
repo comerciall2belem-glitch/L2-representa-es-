@@ -21,3 +21,19 @@ s.pending=[{changeId:'all',type:'order',data:{id:'o2',brand:'Bella Brazil',price
 s.pending=[{changeId:'bad-record',type:'visit',data:{id:'bad'}},{changeId:'valid-record',type:'visit',data:{id:'good'}}];s.syncFaults={'bad-record':'Data inválida'};assert.deepEqual(Array.from(context.syncReadyBatch(),x=>x.changeId),['valid-record']);assert(context.syncFaultsHTML().includes('Data inválida'));assert.equal(s.pending.length,2);
 
 s.priceTables=[{id:'Bruna Tavares|PA',brand:'Bruna Tavares',state:'PA',active:false}];s.prices=[{brand:'Bruna Tavares',state:'PA',sku:'BMM10B'}];s.pending=[{changeId:'restored',type:'order',data:{id:'o',brand:'Bruna Tavares',priceTable:'PA',items:[{sku:'BMM10B'}]}}];s.syncFaults={restored:'Selecione uma tabela comercial ativa da indústria'};context.releaseRestoredTableFaults();assert(s.syncFaults.restored);s.priceTables[0].active=true;context.releaseRestoredTableFaults();assert(!s.syncFaults.restored);assert.equal(context.syncReadyBatch().length,1);assert.equal(s.pending.length,1);
+
+// Authorized AP/PA order tables are not stranded in the local sync queue.
+s.clients=[{id:'ap-client',state:'AP'},{id:'pa-client',state:'PA'}];
+s.priceTables=[{id:'BT|PA',brand:'BT',state:'PA',active:true},{id:'BT|AP',brand:'BT',state:'AP',active:true}];
+s.prices=[{brand:'BT',state:'PA',sku:'x',tableId:'BT|PA'}];
+s.pending=[{changeId:'ap-pa',type:'order',data:{id:'ap-order',clientId:'ap-client',brand:'BT',priceTable:'AP',items:[{sku:'x',tableId:'BT|PA'}]}}];
+s.syncFaults={'ap-pa':'Tabela comercial incompatível com a UF do cliente'};
+assert.equal(context.pendingTableIssues().length,0);
+context.releaseRestoredTableFaults();
+assert.equal(context.syncReadyBatch().length,1);
+assert.equal(s.pending.length,1,'No pending record is deleted during recovery');
+s.pending[0].data.clientId='pa-client';s.pending[0].data.priceTable='PA';s.pending[0].data.items[0].tableId='BT|AP';
+assert.equal(context.pendingTableIssues().length,1,'PA still cannot use AP');
+s.pending[0].type='price';s.pending[0].data={id:'price',brand:'BT',state:'AP',tableId:'BT|PA',sku:'x'};
+assert.equal(context.pendingTableIssues().length,1,'Product UF rules remain strict');
+console.log('AP/PA sync recovery preserves pending records and validation: OK');

@@ -342,12 +342,17 @@ function auditActionLabel(x){
  const names={price_table:'Tabela de preços',price:'Produto / preço',industry:'Indústria',visit:'Atendimento',task:'Tarefa',route:'Rota',client:'Cadastro de cliente',order:'Pedido',interaction:'Contato',opportunity:'Oportunidade',goal:'Meta',login:'Acesso',office_action:'Ação de escritório',office_process:'Processo de escritório'};
  return (names[x.kind]||'Registro')+' · '+(x.action==='delete'?'Exclusão registrada':x.action==='upsert'?'Salvamento registrado':'Ação registrada');
 }
+function pendingTableCompatible(change,table,brand,uf){
+ const customer=(s.clients||[]).find(c=>c.id===change.data.clientId),clientUF=String(customer?.state||change.data.clientState||'').trim().toUpperCase();
+ const apOrder=change.type==='order'&&(clientUF==='AP'||uf==='AP');
+ return table.active&&table.brand===brand&&(!uf||table.state===uf||table.state==='ALL'||apOrder&&['PA','AP'].includes(table.state));
+}
 function pendingTableIssues(){
  const issues=[];
  for(const change of s.pending){
   const items=change.type==='price'?[change.data]:change.type==='order'?change.data.items||[]:[];
   items.forEach((item,index)=>{const brand=item.brand||change.data.brand,uf=change.type==='order'?change.data.priceTable:item.state,id=item.tableId||brand+'|'+uf;
-   if(!s.priceTables.some(t=>t.id===id&&t.active&&t.brand===brand&&(!uf||t.state===uf||t.state==='ALL')))issues.push({change,item,index,brand,uf});
+   if(!s.priceTables.some(t=>t.id===id&&pendingTableCompatible(change,t,brand,uf)))issues.push({change,item,index,brand,uf});
   });
  }
  return issues;
@@ -355,7 +360,7 @@ function pendingTableIssues(){
 function releaseRestoredTableFaults(){
  const invalid=new Set(pendingTableIssues().map(x=>x.change.changeId));
  for(const x of s.pending){
-  if(x.type!=='order'||invalid.has(x.changeId)||s.syncFaults?.[x.changeId]!=='Selecione uma tabela comercial ativa da indústria')continue;
+  if(x.type!=='order'||invalid.has(x.changeId)||!['Selecione uma tabela comercial ativa da indústria','Tabela comercial incompatível com a UF do cliente'].includes(s.syncFaults?.[x.changeId]))continue;
   if((x.data.items||[]).length&&(x.data.items||[]).every(i=>s.prices.some(p=>(p.tableId||p.brand+'|'+p.state)===(i.tableId||(i.brand||x.data.brand)+'|'+x.data.priceTable)&&p.sku===i.sku)))delete s.syncFaults[x.changeId];
  }
 }
@@ -372,7 +377,7 @@ function syncFaultsHTML(){
 function retrySyncFaults(){s.syncFaults={};save();sync();}
 function pendingTableRepairsHTML(){
  const issues=pendingTableIssues();if(!issues.length)return '';
- return '<div id="pendingTableRepairs" class="box"><h3>Tabelas das alterações pendentes</h3><p>Escolha a tabela correta de cada produto ou pedido. Os dados continuam salvos neste aparelho. Nenhuma tabela será substituída automaticamente.</p>'+issues.map(x=>`<form onsubmit="repairPendingTable(event,'${esc(x.change.changeId)}',${x.index})"><label>`+esc(x.brand)+' · '+esc(x.item.sku||'Produto')+' · '+(x.change.type==='order'?'Pedido':'Preço')+'<select name="tableId" required><option value="">Selecione a tabela</option>'+s.priceTables.filter(t=>t.active&&t.brand===x.brand&&(!x.uf||t.state===x.uf||t.state==='ALL')).map(t=>'<option value="'+esc(t.id)+'">'+esc(t.title||t.id)+'</option>').join('')+'</select></label><button>Corrigir vínculo</button></form>').join('')+'</div>';
+ return '<div id="pendingTableRepairs" class="box"><h3>Tabelas das alterações pendentes</h3><p>Escolha a tabela correta de cada produto ou pedido. Os dados continuam salvos neste aparelho. Nenhuma tabela será substituída automaticamente.</p>'+issues.map(x=>`<form onsubmit="repairPendingTable(event,'${esc(x.change.changeId)}',${x.index})"><label>`+esc(x.brand)+' · '+esc(x.item.sku||'Produto')+' · '+(x.change.type==='order'?'Pedido':'Preço')+'<select name="tableId" required><option value="">Selecione a tabela</option>'+s.priceTables.filter(t=>pendingTableCompatible(x.change,t,x.brand,x.uf)).map(t=>'<option value="'+esc(t.id)+'">'+esc(t.title||t.id)+'</option>').join('')+'</select></label><button>Corrigir vínculo</button></form>').join('')+'</div>';
 }
 function repairPendingTable(event,changeId,index){
  event.preventDefault();const change=s.pending.find(x=>x.changeId===changeId);if(!change)return;
@@ -898,6 +903,7 @@ async function sync(options={}){
   }catch(error){window.lastSyncError=error.message;network();return;}finally{syncing=false;network();}
  }
  syncing=true;network();
+ releaseRestoredTableFaults();
  const batch=syncReadyBatch(), user=s.user, server=s.server, token=s.token;
  try{
   const r=await fetch(server+'/api/sync',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({changes:batch})});
@@ -910,7 +916,7 @@ async function sync(options={}){
   for(const name of ['clients','visits','orders','tasks','routes','goals','prices','officeProcesses','officeActions','officeCommercial','officeAdministrative','officeRituals','officeRoles','officeFinance','officeBudget','officeMonthlyClose','commissionRates','commissionReceipts','cashDays','cashEntries','whatsappTemplates','opportunities','interactions','fulfillments','settlements','industries','priceTables'])if(Array.isArray(data[name]))s[name]=data[name];
   // Reaplica alterações criadas enquanto a solicitação estava em andamento.
   for(const change of s.pending){const name={...entityCollections,industry:'industries',price_table:'priceTables',delete_industry:'industries',delete_price_table:'priceTables',fulfillment:'fulfillments',settlement:'settlements',delete_fulfillment:'fulfillments',delete_settlement:'settlements',opportunity:'opportunities',interaction:'interactions',delete_opportunity:'opportunities',delete_interaction:'interactions',delete_lead:'leads',lead:'leads',delete_whatsapp_template:'whatsappTemplates',delete_client:'clients',delete_visit:'visits',delete_order:'orders',delete_task:'tasks',delete_goal:'goals',delete_price:'prices',delete_cash_entry:'cashEntries',delete_office_process:'officeProcesses',delete_office_action:'officeActions',delete_office_commercial:'officeCommercial',delete_office_administrative:'officeAdministrative',delete_office_ritual:'officeRituals',delete_office_role:'officeRoles',delete_office_finance:'officeFinance',delete_office_budget:'officeBudget',delete_office_monthly_close:'officeMonthlyClose',delete_commission_rate:'commissionRates',delete_commission_receipt:'commissionReceipts',commission_rate:'commissionRates',commission_receipt:'commissionReceipts',client:'clients',visit:'visits',order:'orders',task:'tasks',route:'routes',delete_route:'routes',office_action:'officeActions',office_commercial:'officeCommercial',office_administrative:'officeAdministrative',office_ritual:'officeRituals',office_role:'officeRoles',office_finance:'officeFinance',office_budget:'officeBudget',office_monthly_close:'officeMonthlyClose',office_process:'officeProcesses',cash_day:'cashDays',cash_entry:'cashEntries'}[change.type];if(!name)continue;s[name]=s[name].filter(x=>(name==='prices'?(x.id||catalogPriceId(x)):x.id)!==change.data.id);if(!change.type.startsWith('delete_'))s[name].push(change.data)}
-  if(data.role)s.role=data.role;if(Array.isArray(data.sectors))s.sectors=data.sectors;if(Array.isArray(data.team))s.team=data.team;if(Array.isArray(data.sellers))s.sellers=data.sellers;if(Array.isArray(data.sellerCommissions))s.sellerCommissions=data.sellerCommissions;releaseRestoredTableFaults();await CommercialDrafts.flush();await CommercialDrafts.load();s.syncAt=new Date().toLocaleString('pt-BR');window.routeAttemptedDay='';save();window.lastSyncError=s.pending.length&&!syncReadyBatch().length?'Sistema disponível. Registros pendentes precisam de correção em Configurações.':'';if(!automatic&&!editingForm())show(tab);else window.L2Live?.refresh();await loadCommercialActivity();await loadWorkspaceChatCount();await loadLeadConversion();window.L2Live?.connected();
+  if(data.role)s.role=data.role;if(Array.isArray(data.sectors))s.sectors=data.sectors;if(Array.isArray(data.team))s.team=data.team;if(Array.isArray(data.sellers))s.sellers=data.sellers;if(Array.isArray(data.sellerCommissions))s.sellerCommissions=data.sellerCommissions;releaseRestoredTableFaults();await CommercialDrafts.flush();await CommercialDrafts.load();s.syncAt=new Date().toLocaleString('pt-BR');window.routeAttemptedDay='';save();window.lastSyncError=s.pending.length&&!syncReadyBatch().length?'Sistema disponível. Registros pendentes precisam de correção em Configurações.':'';if(!automatic&&s.pending.length&&!syncReadyBatch().length)show('config');else if(!automatic&&!editingForm())show(tab);else window.L2Live?.refresh();await loadCommercialActivity();await loadWorkspaceChatCount();await loadLeadConversion();window.L2Live?.connected();
  }catch(e){console.warn(e);window.lastSyncError=e.message;network();if(batch.length&&!automatic&&!batch.some(x=>(s.syncFaults||{})[x.changeId]))alert('Os dados foram salvos neste aparelho, mas NÃO foram enviados à nuvem. '+e.message)}finally{syncing=false;network();window.L2Live?.settled();if(s.pending.length&&syncReadyBatch().length&&batch.some(x=>(s.syncFaults||{})[x.changeId]))setTimeout(()=>sync({automatic:true}),700);}
 }
 
