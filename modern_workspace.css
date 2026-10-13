@@ -46,3 +46,24 @@
 .l2-modern .order-actions summary{min-height:44px;white-space:nowrap}
 .l2-modern .order-action-menu button{width:100%;min-height:44px;white-space:normal;overflow-wrap:anywhere}
 .l2-modern .order-audit{overflow-wrap:anywhere}
+
+/* Phone order screens use complete cards rather than pinned table columns. */
+@media(max-width:760px){
+ .l2-modern main,.l2-modern #orderForm{min-width:0;max-width:100%}
+ .l2-modern .order-register,.l2-modern .order-products-scroll,.l2-modern .order-cart-scroll{overflow:visible;max-height:none;border:0;scrollbar-gutter:auto}
+ .l2-modern .order-register-table,.l2-modern .order-items,.l2-modern .order-cart-table{display:block;min-width:0;width:100%;table-layout:auto}
+ .l2-modern .order-register-table>tbody,.l2-modern .order-items>tbody,.l2-modern .order-cart-table>tbody{display:block;width:100%}
+ .l2-modern .order-register-table tr:has(th),.l2-modern .order-items tr:has(th),.l2-modern .order-cart-table tr:has(th){display:none}
+ .l2-modern .order-register-table tr:has(td),.l2-modern .order-items tr:has(td),.l2-modern .order-cart-table tr:has(td){display:block;padding:12px;margin:12px 0;border:1px solid var(--line);border-radius:12px;background:#fff}
+ .l2-modern .order-register-table td,.l2-modern .order-register-table td.order-actions,.l2-modern .order-items td,.l2-modern .order-cart-table td{display:block;position:static;width:100%;padding:8px 0;white-space:normal;border:0;box-shadow:none;overflow-wrap:anywhere}
+ .l2-modern .order-register-table td::before,.l2-modern .order-items td::before,.l2-modern .order-cart-table td::before{content:attr(data-label);display:block;font-size:11px;font-weight:700;letter-spacing:.04em;color:#607779;margin-bottom:4px}
+ .l2-modern .order-register-table select,.l2-modern .order-items input{width:100%;min-width:0;font-size:16px;min-height:44px}
+ .l2-modern .order-action-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .l2-modern .order-action-menu button{font-size:13px;padding:10px 8px;text-align:center;min-width:0}
+ .l2-modern .order-audit{grid-column:1/-1}
+ .l2-modern .order-submit-actions{display:grid;grid-template-columns:1fr;gap:8px}
+ .l2-modern .order-submit-actions button{width:100%;min-height:48px;white-space:normal}
+ .l2-modern .order-total{flex-wrap:wrap;gap:8px;justify-content:space-between;padding:14px}
+ .l2-modern .order-total span{font-size:14px}
+ .l2-modern .order-total strong{font-size:24px}
+}
