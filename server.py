@@ -1112,6 +1112,9 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     brand=str(obj.get('name' if kind=='industry' else 'brand','')).strip()
                     if not brand or len(brand)>120 or '|' in brand: raise HTTPException(400,'Indústria inválida')
                     if kind=='industry':
+                        for field in ('displayName','legalName','taxId','segment','coverage','phone','email','website','address','delivery','paymentConditions','freightConditions','serviceContact'):
+                            if field in obj and (not isinstance(obj[field],str) or len(obj[field])>180): raise HTTPException(400,'Campo cadastral da indústria inválido')
+                        if obj.get('logoData') and (not isinstance(obj['logoData'],str) or len(obj['logoData'])>1400000 or not obj['logoData'].startswith(('data:image/png;base64,','data:image/jpeg;base64,'))): raise HTTPException(400,'Logomarca inválida')
                         if con.execute("SELECT 1 FROM entities WHERE kind='industry' AND lower(id)=lower(%s) AND id<>%s LIMIT 1",(brand,entity_id)).fetchone(): raise HTTPException(409,'Indústria já cadastrada')
                         if entity_id!=brand: raise HTTPException(400,'Identificação da indústria inválida')
                         if not isinstance(obj.get('active'),bool): raise HTTPException(400,'Situação inválida')
@@ -2073,7 +2076,7 @@ def zara_page():
 
 @app.get('/{filename}')
 def asset(filename: str):
-    if filename not in ('jspdf.umd.min.js','central_operations.js','modern_workspace.js','modern_workspace.css','strategy_ui.css','leaflet.js','leaflet.css','strategic_crm.js','app.js','live_records.js','crm_operations.js','goals_dashboard.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
+    if filename not in ('industry_workspace.js','jspdf.umd.min.js','central_operations.js','modern_workspace.js','modern_workspace.css','strategy_ui.css','leaflet.js','leaflet.css','strategic_crm.js','app.js','live_records.js','crm_operations.js','goals_dashboard.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
         raise HTTPException(404)
     if filename in ('logo-l2-light.jpg','logo-l2-dark.jpg'):
         source={'logo-l2-light.jpg':'logo-light.jpg.b64','logo-l2-dark.jpg':'logo-dark.jpg.b64'}[filename]
