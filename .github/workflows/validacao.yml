@@ -49,3 +49,6 @@ jobs:
           L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/modern_workspace_dom.cjs
           node tests/goals_separation.cjs
           L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/central_operations_dom.cjs
+
+          L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/workspace_audit_dom.cjs
+          L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/live_records_dom.cjs
