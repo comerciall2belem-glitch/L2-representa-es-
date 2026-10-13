@@ -7,3 +7,5 @@
 .l2-product-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}.l2-product-grid article{display:flex;flex-direction:column;gap:10px;padding:18px;border:1px solid var(--line);border-radius:12px}.l2-product-symbol{display:grid;place-items:center;background:#f0f3ef;color:#a18c63;height:62px;border-radius:8px}.l2-product-grid small{font-size:11px;color:#84918c}.l2-product-grid strong{font-size:21px}.l2-product-grid button{margin-top:auto}
 
 .l2-modern .l2-action-card{background:#fff;color:var(--text);text-align:left;border:1px solid var(--line)}.l2-action-card strong{display:block;font-size:28px;margin:12px 0}.l2-action-card small{display:block;color:#788986}.l2-workflow-bar .client-actions{display:flex;gap:8px;flex-wrap:wrap}.l2-workflow-bar select{width:100%;max-width:100%}
+
+.l2-audit-history{margin-top:16px;border-top:1px solid var(--line);padding-top:14px}.l2-audit-history summary{cursor:pointer;font-weight:600;min-height:44px;padding:10px 0}.l2-audit-history-list{max-height:360px;overflow:auto;overscroll-behavior:contain}.l2-audit-history-list p{font-size:13px;padding:10px 0;margin:0;border-bottom:1px solid var(--line)}
