@@ -25,6 +25,7 @@ jobs:
           node --check strategic_crm.js
           node --check app.js
           node --check modern_workspace.js
+          node --check central_operations.js
           node --check cash.js
       - name: Testar regras fiscais
         run: python -m unittest discover -s tests -p 'test_*.py' -v
@@ -46,3 +47,4 @@ jobs:
           L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/sales_workspace_dom.cjs
           L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/modern_workspace_dom.cjs
           node tests/goals_separation.cjs
+          L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/central_operations_dom.cjs
