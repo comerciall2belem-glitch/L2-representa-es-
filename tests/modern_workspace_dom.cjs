@@ -25,6 +25,9 @@ const {JSDOM}=require(process.env.L2_JSDOM||'jsdom');
  w.show('clientes');w.openClient360('c1');assert(w.document.querySelector('#clientWorkspaceDrawer').open);assert(w.document.querySelector('#app').textContent.includes('Cliente Teste'));w.closeClientWorkspace();assert.equal(w.document.querySelector('#clientWorkspaceDrawer'),null);
  w.show('crescimento');assert(w.document.querySelector('#app').textContent.includes('Crescimento da carteira'));
  w.newOrder();assert(w.document.querySelector('#orderForm'));
+ w.show('hoje');assert(w.document.querySelector('.l2-workflow-bar'));w.document.getElementById('l2ActionClient').value='c1';w.L2Modern.clientAction('order');assert.equal(w.orderDraft().clientId,'c1');
+ w.show('hoje');w.document.getElementById('l2ActionClient').value='c1';w.L2Modern.clientAction('contact');assert.equal(w.document.getElementById('whatsappClient').value,'c1');
+ if(w.sectionAllowed('office')){w.L2Modern.openOffice('painel');assert(w.document.querySelector('.l2-action-card'));assert(w.document.querySelector('.l2-action-card').getAttribute('onclick').includes('processos'));w.L2Modern.openOffice('processos');assert(w.document.getElementById('recordForm'));w.L2Modern.openOffice('comercial');assert.equal(w.document.getElementById('recordForm').dataset.collection,'officeCommercial');}
  w.show('hoje');w.openWorkspaceChat();assert.equal(!!w.document.querySelector('#workspaceChatDrawer'),user!=='Erika');w.document.querySelector('#workspaceChatDrawer')?.close();
  w.show('config');if(['Marlene','Erika'].includes(user)){w.show('finance');assert(!w.document.querySelector('#app').textContent.includes('Contas e lançamentos'))}
  if(user==='Erika'){w.show('admin');assert(w.document.querySelector('#app').textContent.includes('Vender e acompanhar'))}
