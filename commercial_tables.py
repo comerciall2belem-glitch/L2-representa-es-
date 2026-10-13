@@ -18,11 +18,11 @@ def table_id(payload):
 def price_id(payload):
     return f"{table_id(payload)}|{payload.get('sku', '')}"
 
-def validate_table(con, payload, brand, state=None):
+def validate_table(con, payload, brand, state=None, allowed_states=None):
     row = con.execute("SELECT payload FROM entities WHERE kind='price_table' AND id=%s", (table_id(payload),)).fetchone()
     if not row or not row[0].get('active') or row[0].get('brand') != brand:
         raise HTTPException(400, 'Selecione uma tabela comercial ativa da indústria')
-    if state and row[0].get('state') not in (state, 'ALL'):
+    if state and row[0].get('state') not in (*((allowed_states or [state])), 'ALL'):
         raise HTTPException(400, 'Tabela comercial incompatível com a UF do cliente')
     return row[0]
 

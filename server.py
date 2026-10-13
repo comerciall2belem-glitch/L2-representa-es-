@@ -1428,7 +1428,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         item_brand=str(item.get('brand') or obj.get('brand') or '').strip()
                         if not item_brand or item_brand=='Multimarcas': raise HTTPException(400,'Indústria do item obrigatória')
                         brands.add(item_brand)
-                        table=validate_table(con,{**item,'brand':item_brand,'state':price_table},item_brand,price_table)
+                        table=validate_table(con,{**item,'brand':item_brand,'state':price_table},item_brand,price_table,allowed_states=['AP','PA'] if client_uf=='AP' else ['PA'])
                         item['tableId']=table['id']
                         price_key = price_id({**item,'brand':item_brand,'sku':item['sku'].strip()})
                         price_row = con.execute("SELECT payload FROM entities WHERE kind='price' AND id=%s", (price_key,)).fetchone()

@@ -44,6 +44,12 @@ class CommercialTests(unittest.TestCase):
         with self.assertRaises(HTTPException):ns['validate_table'](self.db,self.order['items'][0],'BT','PA')
         self.db.tables['local']={'id':'local','brand':'BT','state':'PA','active':True}
         with self.assertRaises(HTTPException):ns['validate_table'](self.db,{'tableId':'local'},'BT','AP')
+    def test_ap_order_accepts_pa_table_only_when_explicitly_allowed(self):
+        self.db.tables['BT|PA']={'id':'BT|PA','brand':'BT','state':'PA','active':True}
+        result=ns['validate_table'](self.db,{'tableId':'BT|PA'},'BT','AP',allowed_states=['AP','PA'])
+        self.assertEqual(result['state'],'PA')
+        with self.assertRaises(HTTPException):
+            ns['validate_table'](self.db,{'tableId':'BT|PA'},'BT','AP')
     def test_revenda_eight_percent_and_cif(self):
         ns['validate_bella_order'](self.db,self.order,'PA','Ana Paula')
         self.assertEqual(self.order['bellaCommissionRate'],8)
