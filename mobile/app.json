@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "L2 One - Sistema de Produtividade",
-    "slug": "l2-produtividade-maleta-digital",
+    "slug": "l2-one",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -49,6 +49,7 @@
     },
     "extra": {
       "releaseStage": "pilot"
-    }
+    },
+    "owner": "l2representacoes"
   }
 }

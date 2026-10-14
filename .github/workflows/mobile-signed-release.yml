@@ -22,8 +22,8 @@ jobs:
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
-      EXPO_OWNER: ${{ vars.EXPO_OWNER }}
-      EXPO_PROJECT_SLUG: ${{ vars.EXPO_PROJECT_SLUG }}
+      EXPO_OWNER: ${{ vars.EXPO_OWNER || 'l2representacoes' }}
+      EXPO_PROJECT_SLUG: ${{ vars.EXPO_PROJECT_SLUG || 'l2-one' }}
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       EXPO_PUBLIC_L2_API_URL: ${{ vars.L2_API_URL }}
       L2_BUILD_PLATFORM: ${{ inputs.platform }}
