@@ -40,7 +40,7 @@ function save(){try{localStorage.setItem(key,JSON.stringify(s));window.l2Catalog
  // Only reduce the replaceable catalog cache. Never discard unsynchronized records.
  const cached={...s,prices:s.prices.filter(p=>s.pending.some(c=>c.type==='price'&&c.data.id===p.id))};
  try{localStorage.setItem(key,JSON.stringify(cached));window.l2CatalogCacheLimited=true;}catch(_){throw Error('Sem espaço no aparelho para salvar. A ficha anterior foi preservada. Sincronize os registros e tente novamente.');}
- }network()}
+ }if(tab==='estoque')window.L2Inventory?.load();network()}
 function editingForm(){const active=document.activeElement;return Date.now()-(window.lastCommercialInputAt||0)<60000||!!(active?.closest?.('#app')&&active.matches?.('input, textarea, select, [contenteditable="true"]'))}
 function network(){let n=$('network');if(n)n.textContent=(window.lastSyncError?'⚠ '+window.lastSyncError+' · ':'')+(window.l2CatalogCacheLimited?'Catálogo offline reduzido; conecte-se para recarregar · ':'')+(navigator.onLine?'● Online':'● Offline')+(s.server?' · '+s.pending.length+' alterações pendentes':' · somente neste aparelho');const button=$('syncButton');if(button){button.hidden=!s.token;button.textContent=s.pending.length?'Sincronizar ('+s.pending.length+')':'Sincronizar';button.disabled=syncing||!navigator.onLine}}
 function uid(){return crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random()}
@@ -52,7 +52,7 @@ function orderSeller(order){const seller=order.sellerResponsible||order.commissi
 function orderSellerField(draft){const selected=draft.sellerResponsible||(!administrativeOrderEntry()?s.user:'');return '<label>Vendedor responsável<select name="sellerResponsible" required '+(!administrativeOrderEntry()?'disabled':'')+'><option value="">Selecione o vendedor</option>'+sellerOptions(selected)+'</select></label>'}
 function assignOrderSeller(id,seller){const order=s.orders.find(x=>x.id===id);if(!order||!administrativeOrderEntry())return;if(!seller||seller==='Laís'||!s.sellers.includes(seller))return alert('Selecione um vendedor ativo.');order.sellerResponsible=seller;order.commissionSeller=seller;repairQueuedOrderSeller(id,seller);queue('order',order);show('pedidos')}
 function teamNames(){return [...new Set(((s.team||[]).length?s.team:['Ana Paula','Euler','Laís','Marlene']).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'))}
-function sectionAllowed(name){if(name==='personal')return !!s.token&&!s.mustChangePassword&&['Ana Paula','Euler'].includes(s.user);if(name==='config'||name==='hoje')return true;if(name==='crescimento')return hasSector('commercial')||hasSector('management');if(name==='admin')return hasSector('admin');if(name==='gestao')return hasSector('management');if(name==='finance'||name==='cash')return hasSector('finance');if(name==='rota')return hasSector('routes');if(name==='office')return hasSector('office');if(name==='operations')return hasSector('office')||hasSector('commercial');if(name==='marcas')return hasSector('catalog')||hasSector('commercial');return hasSector('commercial')}
+function sectionAllowed(name){if(name==='estoque')return hasSector('commercial')||hasSector('office');if(name==='personal')return !!s.token&&!s.mustChangePassword&&['Ana Paula','Euler'].includes(s.user);if(name==='config'||name==='hoje')return true;if(name==='crescimento')return hasSector('commercial')||hasSector('management');if(name==='admin')return hasSector('admin');if(name==='gestao')return hasSector('management');if(name==='finance'||name==='cash')return hasSector('finance');if(name==='rota')return hasSector('routes');if(name==='office')return hasSector('office');if(name==='operations')return hasSector('office')||hasSector('commercial');if(name==='marcas')return hasSector('catalog')||hasSector('commercial');return hasSector('commercial')}
 function financeAllowed(){return hasSector('finance')}
 function hideCachedIndustryCommissions(value){if(Array.isArray(value))return value.map(hideCachedIndustryCommissions);if(value&&typeof value==='object'){const result={};for(const [name,item] of Object.entries(value)){if(/^commission/i.test(name))continue;result[name]=name==='notes'&&typeof item==='string'?item.split(/(?<=\.)\s+|\n/).filter(x=>!/comiss(?:ão|ões|ao|oes|ion)/i.test(x)).join(' '):hideCachedIndustryCommissions(item)}return result}return value}
 if(!financeAllowed()){for(const name of ['industries','priceTables','prices','orders'])s[name]=hideCachedIndustryCommissions(s[name]);save()}
@@ -65,6 +65,7 @@ if(tab==='clientes')h=renderClientWorkspace();
 if(tab==='routine')h=window.L2Modern?.routinePanel()||'';
 if(tab==='crm')h=window.crmClientId?renderClientDrawer():(window.L2Modern?.pipeline()||'')+renderCRM();
  if(tab==='operations')h=renderOperations();
+ if(tab==='estoque')h=window.L2Inventory?.shell()||'<p>Atualize o aplicativo para carregar o estoque.</p>';
  if(tab==='industries')h=L2Industries.panel();
  if(tab==='admin')h=renderAdmin();
  if(tab==='hoje'&&!s.token)h='<div class="box"><h2>Entre no L2 ONE</h2><p>Abra Configurações para acessar sua conta e sincronizar os dados.</p><button onclick="show(\'config\')">Acessar configurações</button></div>';
