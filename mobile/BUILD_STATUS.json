@@ -25,5 +25,12 @@
   "staging_validation": "docs/STAGING_VALIDATION.json",
   "real_staging_asgi_checks": 8,
   "signed_release_pipeline": "prepared_missing_account_linkage",
-  "physical_device_qa": "not_run"
+  "physical_device_qa": "not_run",
+  "next_configuration": {
+    "version": "1.0.0",
+    "stage": "pilot",
+    "application_id": "com.l2representacoes.l2one",
+    "signed_build": "not_generated",
+    "expo_apple_identifiers": "placeholders_not_supplied"
+  }
 }

@@ -1,6 +1,6 @@
 {
   "name": "l2-produtividade-maleta-digital",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "private": true,
   "main": "index.ts",
   "scripts": {

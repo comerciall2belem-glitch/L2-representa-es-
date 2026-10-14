@@ -1,4 +1,4 @@
-appId: br.com.l2representacoes.produtividade
+appId: com.l2representacoes.l2one
 ---
 # Manual staging pilot; requires seeded test client and signed development build.
 # Credentials supplied at execution, never committed.

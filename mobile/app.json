@@ -1,19 +1,25 @@
 {
   "expo": {
-    "name": "L2 Produtividade",
+    "name": "L2 One - Sistema de Produtividade",
     "slug": "l2-produtividade-maleta-digital",
-    "version": "0.3.0",
-    "orientation": "default",
-    "userInterfaceStyle": "automatic",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "br.com.l2representacoes.produtividade"
+      "bundleIdentifier": "com.l2representacoes.l2one",
+      "buildNumber": "1"
     },
     "android": {
-      "package": "br.com.l2representacoes.produtividade",
+      "package": "com.l2representacoes.l2one",
       "permissions": [
         "ACCESS_NETWORK_STATE"
-      ]
+      ],
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      }
     },
     "plugins": [
       [
@@ -35,6 +41,14 @@
       ],
       "expo-font"
     ],
-    "icon": "./assets/app-icon.png"
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "extra": {
+      "releaseStage": "pilot"
+    }
   }
 }
