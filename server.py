@@ -18,7 +18,7 @@ from senscience_seed import seed_senscience
 from davines_seed import seed_davines
 from magic_beauty_seed import seed_magic_beauty
 from dalla_seed import seed_dalla
-from order_reconciliation import reconcile_invoice, InvoiceError
+from order_reconciliation import reconcile_invoice, reconcile_invoice_text, extract_invoice_pdf_text, InvoiceError
 from lead_capture import LeadIntake, normalize_intake, ingest_lead, lead_sla
 from login_identity import resolve_identity
 from catalog_document import build_catalog_pdf
@@ -1143,10 +1143,10 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                             except (ValueError, TypeError): raise HTTPException(400,'Vigência da tabela inválida')
                         if not admin_access(user):
                             previous_table=con.execute("SELECT payload FROM entities WHERE kind='price_table' AND id=%s",(entity_id,)).fetchone()
-                            if not previous_table or obj.get('active') != previous_table[0].get('active'):
+                            if previous_table and obj.get('active') != previous_table[0].get('active'):
                                 raise HTTPException(403,'Somente a administração altera a situação da tabela')
                         industry=con.execute("SELECT payload FROM entities WHERE kind='industry' AND id=%s",(brand,)).fetchone()
-                        if not industry or not industry[0].get('active'): raise HTTPException(400,'Cadastre uma indústria ativa antes da tabela')
+                        if not industry or industry[0].get('active') is False: raise HTTPException(400,'Cadastre uma indústria ativa antes da tabela')
                         if not isinstance(obj.get('active'),bool): raise HTTPException(400,'Situação inválida')
                         obj['state']=state
                 if kind in ('fulfillment','settlement'):
@@ -1916,6 +1916,48 @@ async def upload_order_invoice(order_id: str, file: UploadFile = File(...), bran
                     (invoice_id,order_id,report['brand'],report['invoiceNumber'],name,content,Jsonb(report),user))
         con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'order_invoice',%s,'reconciled')",(user,invoice_id))
     return dict(report,id=invoice_id)
+
+
+class InvoiceTextPreview(BaseModel):
+    brand: str = Field(min_length=1, max_length=180)
+    text: str = Field(min_length=1, max_length=200000)
+
+@app.post('/api/orders/{order_id}/invoices/text-preview')
+def preview_order_invoice_text(order_id: str, data: InvoiceTextPreview, authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    require_sector(user, 'commercial', 'office')
+    with db() as con:
+        check_order_scope(con, user, order_id)
+        row = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s", (order_id,)).fetchone()
+        if not row: raise HTTPException(404, 'Pedido não encontrado')
+        order = row[0]
+        customer = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (order.get('clientId'),)).fetchone()
+        recipient = re.sub(r'\D', '', str(customer[0].get('taxId') or '')) if customer else ''
+        try: return reconcile_invoice_text(order, data.text, data.brand.strip(), recipient or None)
+        except InvoiceError as exc: raise HTTPException(400, str(exc)) from exc
+
+
+@app.post('/api/orders/{order_id}/invoices/pdf-preview')
+async def preview_order_invoice_pdf(order_id: str, file: UploadFile = File(...), brand: str = Form(...), authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    require_sector(user, 'commercial', 'office')
+    content = await file.read(10*1024*1024+1)
+    try: text, scanned = extract_invoice_pdf_text(content)
+    except InvoiceError as exc: raise HTTPException(400, str(exc)) from exc
+    with db() as con:
+        check_order_scope(con, user, order_id)
+        row = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s", (order_id,)).fetchone()
+        if not row: raise HTTPException(404, 'Pedido não encontrado')
+        customer = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (row[0].get('clientId'),)).fetchone()
+        recipient = re.sub(r'\\D', '', str(customer[0].get('taxId') or '')) if customer else ''
+        try: report = reconcile_invoice_text(row[0], text, brand.strip(), recipient or None)
+        except InvoiceError as exc:
+            return {'report':None,'extractedText':text,'ocrPages':scanned,'requiresReview':True,'warning':str(exc)}
+        report['source'] = 'PDF'
+        if scanned:
+            report['warnings'].append('PDF digitalizado: confira os dados obtidos por OCR')
+            if report['status'] == 'Conferido': report['status'] = 'Revisar'
+        return {'report':report,'extractedText':text,'ocrPages':scanned,'requiresReview':True}
 
 @app.post('/api/orders/{order_id}/attachments')
 async def upload_order_attachment(order_id: str, file: UploadFile = File(...), authorization: str | None = Header(default=None)):
