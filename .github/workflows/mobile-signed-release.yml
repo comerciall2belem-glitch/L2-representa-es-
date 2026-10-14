@@ -8,8 +8,8 @@ on:
         default: all
       profile:
         type: choice
-        options: [preview, production]
-        default: preview
+        options: [preview-pilot, preview, production]
+        default: preview-pilot
 permissions:
   contents: read
 jobs:
