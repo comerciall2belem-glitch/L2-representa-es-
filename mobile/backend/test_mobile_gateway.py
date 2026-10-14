@@ -127,5 +127,8 @@ class GatewayTests(unittest.TestCase):
         with sqlite3.connect(self.path) as con:
             con.execute("UPDATE entities SET payload=? WHERE kind='client' AND id='c1'",(json.dumps({'id':'c1','name':'Loja','state':'PA','owner':'Outra pessoa'}),))
         self.assertEqual(self.post(op).status_code,403)
+    def test_old_staging_price_contract(self):
+        self.module.validate_table=lambda con,item,brand,state:{'id':brand+'|'+state}
+        self.assertEqual(self.post(self.op()).json()['results'][0]['state'],'acknowledged')
 
 if __name__=='__main__':unittest.main()

@@ -9,6 +9,8 @@ The shared connection preserves existing auth, order validation and projections.
 No production deployment has been performed by this delivery.
 """
 import contextvars
+import inspect
+import os
 import hashlib
 import json
 from contextlib import contextmanager
@@ -68,7 +70,8 @@ def verify_prices(module,con,order):
     for item in order['items']:
         if not isinstance(item,dict):raise HTTPException(422,'Item inválido')
         brand=item.get('brand') or order.get('brand')
-        table=module.validate_table(con,{**item,'brand':brand,'state':state},brand,state,allowed_states=['PA','AP'] if uf=='AP' else ['PA'])
+        options={'allowed_states':['PA','AP'] if uf=='AP' else ['PA']} if 'allowed_states' in inspect.signature(module.validate_table).parameters else {}
+        table=module.validate_table(con,{**item,'brand':brand,'state':state},brand,state,**options)
         con.execute("SELECT id FROM entities WHERE kind='price_table' AND id=%s FOR UPDATE",(table['id'],))
         source={**item,'brand':brand,'tableId':table['id']}
         row=con.execute("SELECT payload FROM entities WHERE kind='price' AND id=%s FOR UPDATE",(module.price_id(source),)).fetchone()
@@ -92,7 +95,11 @@ def install(module):
         if con is not None:
             yield con
         else:
-            with original_db() as own:yield own
+            with original_db() as own:
+                expected=os.getenv('L2_MOBILE_EXPECTED_DB')
+                if expected and own.execute('SELECT current_database()').fetchone()[0]!=expected:
+                    raise RuntimeError('Mobile database isolation check failed')
+                yield own
     module.db=connection
 
     def visible(payload,user):
