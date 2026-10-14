@@ -1,0 +1,23 @@
+appId: br.com.l2representacoes.produtividade
+---
+# Manual staging pilot; requires seeded test client and signed development build.
+# Credentials supplied at execution, never committed.
+- launchApp
+- tapOn: Usuário
+- inputText: ${L2_TEST_USER}
+- tapOn: Senha
+- inputText: ${L2_TEST_PASSWORD}
+- tapOn: Servidor HTTPS L2 One
+- eraseText: 100
+- inputText: ${L2_TEST_API_URL}
+- hideKeyboard
+- tapOn: Entrar
+- assertVisible: Hoje
+- tapOn: Clientes
+- tapOn: Buscar nome, CNPJ ou cidade
+- inputText: ${L2_TEST_CLIENT_NAME}
+- hideKeyboard
+- tapOn: ${L2_TEST_CLIENT_NAME}
+- assertVisible: Novo pedido
+- tapOn: Histórico
+- assertVisible: Iniciar visita

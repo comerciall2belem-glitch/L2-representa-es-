@@ -2333,3 +2333,10 @@ async def record_change_notifications(request: Request, call_next):
         except Exception:
             logging.warning('record_notification_unavailable')
     return response
+
+
+
+# Additive mobile API: preserve the existing CRM/PWA and all domain checks.
+import sys as _mobile_sys
+from mobile_gateway import install as _install_mobile
+_install_mobile(_mobile_sys.modules[__name__])

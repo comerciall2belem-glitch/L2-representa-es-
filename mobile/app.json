@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "L2 Produtividade",
+    "slug": "l2-produtividade-maleta-digital",
+    "version": "0.3.0",
+    "orientation": "default",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "br.com.l2representacoes.produtividade"
+    },
+    "android": {
+      "package": "br.com.l2representacoes.produtividade",
+      "permissions": [
+        "ACCESS_NETWORK_STATE"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-sqlite",
+        {
+          "useSQLCipher": true
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-background-task",
+        {}
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Permitir localização para registrar o check-in da visita, quando você solicitar."
+        }
+      ],
+      "expo-font"
+    ],
+    "icon": "./assets/app-icon.png"
+  }
+}
