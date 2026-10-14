@@ -67,3 +67,12 @@
  .l2-modern .order-total span{font-size:14px}
  .l2-modern .order-total strong{font-size:24px}
 }
+
+/* Keep long carts from hiding order settings and checkout controls. */
+.l2-modern #orderConfiguration{scroll-margin-top:100px}
+.l2-modern .order-submit-actions{display:flex;flex-wrap:wrap;gap:10px}
+@media(min-width:761px){
+ .l2-modern .order-cart-scroll{max-height:320px;max-height:min(320px,42vh);overflow:auto;scrollbar-gutter:stable}
+ .l2-modern .order-cart-table th{position:sticky;top:0;z-index:1}
+ .l2-modern .order-products-scroll{max-height:360px;overflow:auto}
+}
