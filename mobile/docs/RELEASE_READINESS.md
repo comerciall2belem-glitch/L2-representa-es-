@@ -12,11 +12,11 @@ O serviço implantado executou 8 verificações via TestClient/ASGI e PostgreSQL
 
 ## Assinatura preparada
 
-Workflow manual .github/workflows/mobile-signed-release.yml preparado para Expo/EAS CLI 24.13.0. Perfis preview (distribuição interna) e production; Android gera APK ARM64, e iOS usa credenciais remotas da conta Apple. O perfil play-store separado gera AAB. A versão efetiva precisa ser validada contra o projeto Expo existente antes da execução.
+Workflow manual .github/workflows/mobile-signed-release.yml preparado para Expo/EAS CLI 24.13.0. Perfis preview (distribuição interna) e production; Android gera APK ARM64, e iOS usa credenciais remotas da conta Apple. O perfil play-store separado gera AAB. Projeto Expo vinculado à equipe comerciall2belems-team, slug l2-one, Project ID 2ff296d6-739f-43b7-a075-a2856f6ae57a. A conta autenticada é comerciall2belem; a organização inicialmente informada l2representacoes recusou a criação por falta de permissão.
 
 Configure EXPO_TOKEN em GitHub Actions Secrets. Configure nas Variables: EAS_PROJECT_ID, EXPO_OWNER, EXPO_PROJECT_SLUG, APPLE_TEAM_ID e L2_API_URL. L2_API_URL deve apontar para homologação no piloto. O token não deve ser incluído em arquivos ou mensagens públicas. Para iOS interno, os dispositivos precisam estar cadastrados no perfil de distribuição; para produção, certificados e provisioning profile da equipe Apple devem existir no EAS.
 
-O workflow bloqueia variáveis ausentes. Após um build finalizado, verifica assinatura APK, recusa certificado Android Debug, confirma API24 e ARM64, e no macOS verifica codesign/TeamIdentifier do IPA. Gera hashes e disponibiliza somente os artefatos verificados. Esse workflow ainda não foi executado com as contas da L2; nenhum IPA assinado ou APK definitivo foi emitido nesta fase.
+O workflow bloqueia variáveis ausentes. Após um build finalizado, verifica assinatura APK, recusa certificado Android Debug, confirma API24 e ARM64, e no macOS verifica codesign/TeamIdentifier do IPA. Gera hashes e disponibiliza somente os artefatos verificados. O workflow GitHub assinado ainda não foi executado. O build Android preview-pilot foi solicitado diretamente pelo EAS CLI autenticado e usa keystore remoto gerado na equipe. Resultado e assinatura final do artefato ficam em EAS_PILOT_BUILD.json. Nenhum IPA foi emitido.
 
 ## Dependências ainda abertas
 
@@ -25,7 +25,7 @@ O workflow bloqueia variáveis ausentes. Após um build finalizado, verifica ass
 | Estoque externo | Não conectado | Nome do ERP/WMS, documentação, ambiente sandbox, identificação por SKU/marca/CD, autenticação |
 | Logística externa | Não conectada | Nome da transportadora/plataforma, API sandbox, mapeamento de pedido/nota/rastreio, autenticação |
 | WhatsApp oficial | Não configurado na homologação | Credenciais Meta no Render, número/phone ID, templates/janela permitida e destinatário de teste autorizado |
-| Assinatura iOS | Contas confirmadas pela usuária; acesso não configurado | Project ID/owner/slug Expo, Apple Team ID, EXPO_TOKEN seguro e perfis remotos |
+| Assinatura iOS | Contas confirmadas pela usuária; acesso não configurado | Apple Team ID real, credenciais/perfis Apple e token seguro para CI; owner/slug/Project ID Expo já vinculados |
 | Android definitivo | Pipeline preparado | Keystore/certificado empresarial no EAS e aceite da homologação física |
 | QA físico | Não executado | Aparelho Android ARM64 Android7+, iPhone/iPad e evidências de layout/performance/bateria |
 | Release produção | Bloqueado | Aprovação dos testes reais, integrações oficiais e artefatos definitivos assinados |

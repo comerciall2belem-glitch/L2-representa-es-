@@ -1,5 +1,5 @@
 {
-  "version": "0.3.0",
+  "version": "1.0.0",
   "date": "2026-10-14",
   "typecheck": "passed",
   "mobile_tests": 17,
@@ -24,13 +24,14 @@
   },
   "staging_validation": "docs/STAGING_VALIDATION.json",
   "real_staging_asgi_checks": 8,
-  "signed_release_pipeline": "prepared_missing_account_linkage",
+  "signed_release_pipeline": "Android pilot generated; iOS pending Apple linkage",
   "physical_device_qa": "not_run",
   "next_configuration": {
     "version": "1.0.0",
     "stage": "pilot",
     "application_id": "com.l2representacoes.l2one",
-    "signed_build": "not_generated",
-    "expo_apple_identifiers": "placeholders_not_supplied"
-  }
+    "signed_build": "EAS Android pilot verified",
+    "expo_apple_identifiers": "Expo project linked; Apple Team ID pending"
+  },
+  "android_signed_eas_pilot": "docs/EAS_PILOT_BUILD.json"
 }

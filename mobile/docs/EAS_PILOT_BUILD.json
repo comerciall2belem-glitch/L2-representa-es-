@@ -1,6 +1,6 @@
 {
   "id": "18ae515e-0a92-4c12-a465-ffdddb1f9b8b",
-  "status": "IN_PROGRESS",
+  "status": "FINISHED",
   "platform": "ANDROID",
   "distribution": "INTERNAL",
   "buildProfile": "preview-pilot",
@@ -9,5 +9,23 @@
   "createdAt": "2026-10-14T12:18:03.472Z",
   "projectId": "2ff296d6-739f-43b7-a075-a2856f6ae57a",
   "owner": "comerciall2belems-team",
-  "dashboardUrl": "https://expo.dev/accounts/comerciall2belems-team/projects/l2-one/builds/18ae515e-0a92-4c12-a465-ffdddb1f9b8b"
+  "dashboardUrl": "https://expo.dev/accounts/comerciall2belems-team/projects/l2-one/builds/18ae515e-0a92-4c12-a465-ffdddb1f9b8b",
+  "completedAt": "2026-10-14T12:24:51.628Z",
+  "apk": {
+    "file": "L2_One_Piloto_1.0.0_ARM64.apk",
+    "bytes": 45928648,
+    "sha256": "8bcc0ce3879170c254fc8fb159c8fabd357e72cdbdb9fbbda680e1d1a4101d18",
+    "package": "com.l2representacoes.l2one",
+    "version": "1.0.0",
+    "minSdk": 24,
+    "abi": "arm64-v8a",
+    "signatureVerified": true,
+    "debugCertificate": false,
+    "keystore": "EAS managed remote"
+  },
+  "physicalDeviceTests": "not_run",
+  "productionReleased": false,
+  "sqlcipherStaticMarkers": [
+    "lib/arm64-v8a/libexpo-sqlite.so"
+  ]
 }
