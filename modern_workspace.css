@@ -76,3 +76,17 @@
  .l2-modern .order-cart-table th{position:sticky;top:0;z-index:1}
  .l2-modern .order-products-scroll{max-height:360px;overflow:auto}
 }
+
+/* Compact product search for field orders. */
+.l2-modern .order-products-scroll[hidden]{display:none!important}
+.l2-modern .order-product-name small{display:block;color:#607779;margin:4px 0}
+.l2-modern .order-product-detail summary{font-size:12px;min-height:32px;cursor:pointer;color:#607779}
+.l2-modern .order-product-detail:not([open])>small{display:none}
+@media(max-width:760px){
+ .l2-modern .order-items tr:has(td){display:grid;grid-template-columns:minmax(0,1fr) 105px;gap:8px;padding:12px;margin:8px 0}
+ .l2-modern .order-items .order-product-name{grid-column:1/-1;padding:0}
+ .l2-modern .order-items .order-product-name::before{display:none}
+ .l2-modern .order-items .order-product-subtotal{grid-column:1/-1;display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-top:1px solid var(--line)}
+ .l2-modern .order-items .order-product-subtotal::before{margin:0}
+ .l2-modern .order-items .order-product-qty input{min-height:44px;min-width:0;width:100%}
+}
