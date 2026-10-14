@@ -1,12 +1,14 @@
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
-const {chromium}=require(process.env.L2_PLAYWRIGHT||'playwright');
+const engines=require(process.env.L2_PLAYWRIGHT||'playwright');
+const engine=process.env.L2_BROWSER||'chromium';
+assert(['chromium','webkit'].includes(engine));
 (async()=>{
- const out='artifacts/mobile-visual';fs.mkdirSync(out,{recursive:true});
+ const out='artifacts/mobile-visual/'+engine;fs.mkdirSync(out,{recursive:true});
  let html=fs.readFileSync('index.html','utf8').replace(/<script[\s\S]*?<\/script>/g,'').replace(/<link\b[^>]*>/g,'');
  const styles=['strategy_ui.css','modern_workspace.css'].map(f=>fs.readFileSync(f,'utf8')).join('\n');
  html=html.replace('</head>','<style>'+styles+'</style></head>');
  const scripts=['commercial_drafts.js','crm_operations.js','goals_dashboard.js','workspace.js','modern_workspace.js','app.js','live_records.js'].map(f=>fs.readFileSync(f,'utf8')).join('\n');
- const browser=await chromium.launch({headless:true});const results=[];let failed=false;
+ const browser=await engines[engine].launch({headless:true});const results=[];let failed=false;
  try{for(const [width,height] of [[360,800],[390,844],[768,1024],[1024,768]]){
   const page=await browser.newPage({viewport:{width,height},hasTouch:true});
   await page.route('**/*',route=>route.abort());
@@ -21,6 +23,12 @@ const {chromium}=require(process.env.L2_PLAYWRIGHT||'playwright');
   await page.addScriptTag({content:scripts+'\nL2Live.pause();'});
   for(const screen of ['hoje','clientes','pedidos','marcas']){
    await page.evaluate(id=>{show(id);L2Live.pause();},screen);
+   if(screen==='clientes'){
+    const input=page.locator('#clientForm input[name="name"]');
+    if(await input.count()){await input.fill('Rascunho fictício por toque');await assert.equal(await input.inputValue(),'Rascunho fictício por toque');}
+   }
+   const menu=page.locator('#l2MenuButton');
+   if(await menu.isVisible()){await menu.click();assert.equal(await menu.getAttribute('aria-expanded'),'true');await page.locator('#l2MenuVeil').click({position:{x:width-10,y:10}});assert.equal(await menu.getAttribute('aria-expanded'),'false');}
    await page.screenshot({path:path.join(out,width+'-'+screen+'.png'),fullPage:true});
    const metrics=await page.evaluate(()=>{
     const visible=e=>e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';
@@ -33,7 +41,7 @@ const {chromium}=require(process.env.L2_PLAYWRIGHT||'playwright');
    for(const x of metrics.buttons)if(x.height<47.5)errors.push('button too small: '+x.text);
    if(errors.length)failed=true;results.push({width,height,screen,metrics,errors});
   }await page.close();
- }}finally{await browser.close();fs.writeFileSync(path.join(out,'results.json'),JSON.stringify({physicalDevice:false,engine:'Chromium',results},null,2));}
+ }}finally{await browser.close();fs.writeFileSync(path.join(out,'results.json'),JSON.stringify({physicalDevice:false,engine,results},null,2));}
  assert(!failed,'Responsive checks failed; inspect results.json and screenshots');
- console.log('16 screen/viewport checks passed. Chromium simulation; physical Android/iOS pending.');
+ console.log('16 screen/viewport checks passed. Browser-engine simulation; physical Android/iOS and Safari pending.');
 })().catch(e=>{console.error(e);process.exitCode=1});
