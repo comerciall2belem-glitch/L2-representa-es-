@@ -25,7 +25,7 @@ assert(['chromium','webkit'].includes(engine));
    await page.evaluate(id=>{show(id);L2Live.pause();},screen);
    if(screen==='clientes'){
     const input=page.locator('#clientForm input[name="name"]');
-    if(await input.count()){await input.fill('Rascunho fictício por toque');await assert.equal(await input.inputValue(),'Rascunho fictício por toque');}
+    if(await input.count()){await page.locator('details').filter({has:input}).first().evaluate(e=>{e.open=true;});await input.fill('Rascunho fictício por toque');await assert.equal(await input.inputValue(),'Rascunho fictício por toque');}
    }
    const menu=page.locator('#l2MenuButton');
    if(await menu.isVisible()){await menu.click();assert.equal(await menu.getAttribute('aria-expanded'),'true');await page.locator('#l2MenuVeil').click({position:{x:width-10,y:10}});assert.equal(await menu.getAttribute('aria-expanded'),'false');}
