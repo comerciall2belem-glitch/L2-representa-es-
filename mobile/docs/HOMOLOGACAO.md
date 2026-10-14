@@ -4,7 +4,7 @@ L2 Produtividade - Maleta Digital | 0.3.0 | 14/10/2026
 
 ## Resultado atual
 
-Candidato de desenvolvimento. Código TypeScript compila; bundles Hermes Android/iOS gerados; projetos nativos Android/iOS gerados; 25 testes automatizados aprovados. Esses resultados NÃO comprovam uso em produção, criptografia nativa em aparelho ou integração autenticada com a indústria/L2 One real.
+Candidato de desenvolvimento. Código TypeScript compila; bundles Hermes Android/iOS gerados; projetos nativos Android/iOS gerados; 27 testes automatizados aprovados. Esses resultados NÃO comprovam uso em produção, criptografia nativa em aparelho ou integração autenticada com a indústria/L2 One real.
 
 ## Evidências executadas
 
@@ -32,7 +32,7 @@ Ambiente: Linux, Node 24.19.0, JDK 17, Expo SDK 54, React Native 0.81.5, Python 
 16. Extrator identifica CNPJ, e-mail e SKU sem alterar cadastros.
 17. QR Code é gerado offline e rejeita links com credenciais.
 
-## Testes do gateway: 8 aprovados
+## Testes do gateway: 10 aprovados
 
 1. Rotas exigem autenticação.
 2. Reenvio idempotente mantém recibo e registro únicos.
@@ -42,6 +42,8 @@ Ambiente: Linux, Node 24.19.0, JDK 17, Expo SDK 54, React Native 0.81.5, Python 
 6. Cliente fora da carteira é negado.
 7. Falha de validação reverte a escrita da operação legada.
 8. Fechamento mantém unicidade por dia/revisão.
+9. Recibo não expõe campos privados de comissão.
+10. Reenvio respeita revogação de carteira posterior ao primeiro aceite.
 
 ## Verificação do ambiente conectado
 

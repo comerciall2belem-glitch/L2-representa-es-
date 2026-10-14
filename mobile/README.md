@@ -29,7 +29,7 @@ Usar `npm run android` em máquina com Android SDK e emulador/aparelho. iOS: ins
 - src/catalog.ts: download autenticado e armazenamento de PDF no SQLite cifrado; cópia temporária removida após compartilhar.
 - backend/mobile_gateway.py: rotas aditivas /api/mobile/v1/snapshot e /sync, reutilizando autenticação e validações existentes em transação compartilhada.
 - tests/: 17 testes TypeScript, incluindo ida/volta HTTP com ERP simulado e SQLite real do Node.
-- backend/test_mobile_gateway.py: 8 testes ASGI com ERP legado simulado e adaptador SQLite. Locks PostgreSQL não são testados nesse adaptador.
+- backend/test_mobile_gateway.py: 10 testes ASGI com ERP legado simulado e adaptador SQLite. Locks PostgreSQL não são testados nesse adaptador.
 - docs/: homologação e instalação, com limites e passos para piloto real.
 - maestro/: roteiro para piloto de UI; não executado nesta entrega.
 - android/ e ios/: projetos nativos gerados, sem compilação/assinatura do sistema operacional.
@@ -61,4 +61,4 @@ Metas/indicadores desta versão são de pedidos registrados e visitas. Não trat
 
 Banco SQLCipher precisa de binário nativo próprio. Token e chave no Keychain/Keystore; nenhum segredo incluído no pacote. PDFs só são decifrados temporariamente após ação do usuário. Reiniciar/reinstalar sem a chave pode inviabilizar recuperar dados locais; exigir sincronização antes de desinstalar. Usuários sem autorização não recebem dados financeiros por esta interface. Logout mantém dados cifrados e fila para a conta original.
 
-Notificações SSE atuais invalidam dados; polling 30s é fallback com app aberto. Background depende de agendamento iOS/Android: não garante execução imediata com app encerrado. Sync faz snapshots completos nesta integração de compatibilidade. Monitorar volume/performance e migrar para delta antes de carteiras muito grandes. Não houve teste visual em iPhone/iPad/Android, teste de criptografia no binário ou piloto PA/AP. Esta entrega é candidata de desenvolvimento, não versão liberada à equipe.
+Notificações SSE atuais invalidam dados; polling 30s é fallback com app aberto. Background depende de agendamento iOS/Android: não garante execução imediata com app encerrado. Sync faz snapshots completos nesta integração de compatibilidade. Monitorar volume/performance e migrar para delta antes de carteiras muito grandes. Fonte integrado em https://github.com/comerciall2belem-glitch/L2-representa-es-/pull/46. Não houve teste visual em iPhone/iPad/Android, teste de criptografia no binário ou piloto PA/AP. Esta entrega é candidata de desenvolvimento, não versão liberada à equipe.

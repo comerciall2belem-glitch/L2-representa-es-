@@ -95,6 +95,12 @@ def install(module):
             with original_db() as own:yield own
     module.db=connection
 
+    def visible(payload,user):
+        if payload is None:return None
+        if 'finance' not in module.sectors_for(user):
+            return getattr(module,'hide_industry_commissions',lambda value:value)(payload)
+        return payload
+
     def snapshot(authorization):
         data=module.sync(module.Sync(changes=[]),authorization)
         user=module.auth(authorization)
@@ -130,10 +136,12 @@ def install(module):
                     try:
                         # Recheck live session and scope inside the mutation transaction.
                         module.auth(authorization)
+                        module.require_sector(user,'commercial','office')
+                        if change.data.get('clientId'):module.check_client_scope(con,user,change.data['clientId'])
                         cached=con.execute('SELECT payload_hash,result FROM mobile_receipts WHERE username=%s AND change_id=%s',(user,change.changeId)).fetchone()
                         if cached:
                             if cached[0]!=hashed:raise HTTPException(409,'Identificador reutilizado com outro conteúdo')
-                            results.append(cached[1]);continue
+                            results.append(visible(cached[1],user));continue
                         if change.type=='closing':
                             module.require_sector(user,'commercial','office')
                             payload=dict(change.data)
@@ -160,8 +168,8 @@ def install(module):
                                 raise HTTPException(403,'Registro pertence a outro responsável')
                             for p in (previous,change.data):
                                 if p and p.get('clientId'):module.check_client_scope(con,user,p['clientId'])
-                            if canonical(previous)!=canonical(change.base):
-                                result={'changeId':change.changeId,'state':'conflict','error':'Registro mudou em outro aparelho; revise as versões.','remote':previous}
+                            if canonical(visible(previous,user))!=canonical(change.base):
+                                result={'changeId':change.changeId,'state':'conflict','error':'Registro mudou em outro aparelho; revise as versões.','remote':visible(previous,user)}
                                 con.execute('INSERT INTO mobile_receipts(username,change_id,payload_hash,result) VALUES(%s,%s,%s,%s)',(user,change.changeId,hashed,Jsonb(result)))
                                 results.append(result);continue
                             if change.type=='order':verify_prices(module,con,change.data)
@@ -169,7 +177,7 @@ def install(module):
                                 raise HTTPException(409,'Chave já utilizada fora da fila mobile; revise a operação')
                             module.sync(module.Sync(changes=[module.Change(type=change.type,data=change.data,changeId=change.changeId)]),authorization)
                             saved=con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s',(change.type,entity_id)).fetchone()[0]
-                        result={'changeId':change.changeId,'state':'acknowledged','canonical':saved}
+                        result={'changeId':change.changeId,'state':'acknowledged','canonical':visible(saved,user)}
                         con.execute('INSERT INTO mobile_receipts(username,change_id,payload_hash,result) VALUES(%s,%s,%s,%s)',(user,change.changeId,hashed,Jsonb(result)))
                         con.execute("SELECT pg_notify('l2_records_changed','')")
                         results.append(result)

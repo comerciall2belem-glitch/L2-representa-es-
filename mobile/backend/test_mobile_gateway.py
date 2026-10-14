@@ -41,6 +41,11 @@ def fake_module(path):
     m.db=db
     m.auth=lambda header: 'Euler' if header=='Bearer test-token' else (_ for _ in ()).throw(HTTPException(401,'Sessão inválida'))
     m.sectors_for=lambda user:{'commercial','catalog','routes'}
+    def hide(value):
+        if isinstance(value,dict):return {k:hide(v) for k,v in value.items() if k!='industryCommission'}
+        if isinstance(value,list):return [hide(x) for x in value]
+        return value
+    m.hide_industry_commissions=hide
     m.require_sector=lambda user,*sectors:None
     m.is_seller=lambda con,user:True
     def scope(con,user,cid):
@@ -113,5 +118,14 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual(len(self.client.get('/api/mobile/v1/snapshot',headers=self.headers).json()['closings']),1)
         op['changes'][0]['changeId']='closing-0002';op['changes'][0]['data']['id']='close2'
         self.assertEqual(self.post(op).json()['results'][0]['state'],'rejected')
+    def test_receipt_does_not_expose_private_commission(self):
+        op=self.op();op['changes'][0]['data']['industryCommission']='private'
+        result=self.post(op).json()['results'][0]
+        self.assertNotIn('industryCommission',result['canonical'])
+    def test_retry_respects_current_portfolio(self):
+        op=self.op();self.post(op)
+        with sqlite3.connect(self.path) as con:
+            con.execute("UPDATE entities SET payload=? WHERE kind='client' AND id='c1'",(json.dumps({'id':'c1','name':'Loja','state':'PA','owner':'Outra pessoa'}),))
+        self.assertEqual(self.post(op).status_code,403)
 
 if __name__=='__main__':unittest.main()
