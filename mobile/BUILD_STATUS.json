@@ -1,0 +1,25 @@
+{
+  "version": "0.3.0",
+  "date": "2026-10-14",
+  "typecheck": "passed",
+  "mobile_tests": 17,
+  "gateway_tests": 10,
+  "hermes_android_ios": "passed",
+  "android_local_apk": "blocked_google_maven_dependencies",
+  "android_hosted_run": "https://github.com/comerciall2belem-glitch/L2-representa-es-/actions/runs/38510727968",
+  "android_hosted_status": "success",
+  "ios_installer": "not_built",
+  "device_e2e": "not_run",
+  "authenticated_real_l2_one_e2e": "not_run",
+  "production_ready": false,
+  "android_apk": {
+    "file": "L2_Produtividade_Piloto_0.3.0_ARM64.apk",
+    "bytes": 45690579,
+    "sha256": "4b04c0cd9b5d3284693d9eebd00bddab5d6bc9c50752a837e324b5dae6fbfec9",
+    "min_sdk": 24,
+    "target_sdk": 36,
+    "abi": "arm64-v8a",
+    "signature": "verified_v2_android_debug_pilot_only",
+    "source_commit": "abe7f8c3ab6ef58b99b57858d1bc09f1327f3787"
+  }
+}

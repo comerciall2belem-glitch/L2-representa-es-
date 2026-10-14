@@ -57,6 +57,12 @@ Implementado em fonte: login/troca de senha provisória, Hoje, metas individuais
 
 Ainda exige homologação ou integração adicional: teste visual em aparelhos; background/GPS/compartilhamento nativos; SQLCipher no binário; regras completas de descontos/prazos por todas as marcas; metas coletivas agregadas; estoque/logística de fonte externa; registro de entrega WhatsApp oficial; painel web central de fechamentos; OCR de imagens do Kit v2.1 original; JWT/refresh e delta incremental. Snippets são funcionais por compartilhamento; não existe envio automático WhatsApp Business API nesta versão. Financeiro e faturamento não são inferidos a partir de pedido. A fonte do logotipo é o ativo existente no repositório L2 One, preservado sem redesenhar tipografia.
 
+## Builds nativos e CI
+
+APK piloto Android 0.3.0 gerado com sucesso no GitHub Actions, execução 38510727968, commit abe7f8c. Arquitetura arm64-v8a, Android 7.0/API 24 ou superior, target API 36, 45.690.579 bytes. Assinatura APK v2 verificada com apksigner; certificado Android Debug, destinado somente ao piloto. Hash SHA-256: 4b04c0cd9b5d3284693d9eebd00bddab5d6bc9c50752a837e324b5dae6fbfec9. A compilação local havia sido bloqueada por downloads Maven; a compilação hospedada concluiu. Compilar não comprova execução em aparelho. iOS continua sem IPA assinado.
+
+A validação web legada falha em tests/live_records_dom.cjs:41; a mesma falha foi confirmada no commit base da main fb1e96d, execução 38471304756, anterior às alterações mobile. Os 27 testes mobile/gateway e bundles passaram no CI.
+
 ## Condições para liberação
 
-Instalar o gateway em ambiente de homologação isolado, validar usuário/escopos, executar roteiro nativo em Android/iPhone/iPad e comprovar ida/volta no L2 One real. Conferir alterações de preço sob transação real PostgreSQL e direitos de carteira. Completar assinatura definitiva Android/iOS e limites/performance, testar migração e recuperabilidade e revisar itens não integrados antes de declarar todas as ferramentas liberadas. Resultado dos builds nativos e pacote instalável, quando disponíveis, consta em BUILD_STATUS.json.
+Instalar o gateway em ambiente de homologação isolado, validar usuário/escopos, executar roteiro nativo em Android/iPhone/iPad e comprovar ida/volta no L2 One real. Conferir alterações de preço sob transação real PostgreSQL e direitos de carteira. Completar assinatura definitiva Android/iOS e limites/performance, testar migração e recuperabilidade e revisar itens não integrados antes de declarar todas as ferramentas liberadas. Builds: consulte BUILD_STATUS.json.

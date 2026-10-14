@@ -28,6 +28,8 @@ Configurar EXPO_PUBLIC_L2_API_URL com URL HTTPS de homologação para o piloto; 
 
 ## Android: APK para equipe e AAB para loja
 
+Arquivo entregue: L2_Produtividade_Piloto_0.3.0_ARM64.apk. Exige Android 7.0 ou superior e processador ARM64. Assinatura v2 conferida; usa certificado de desenvolvimento para homologação. Na tela de login, informar https://l2-one-homologacao.onrender.com e usuário de teste, depois que o gateway desta entrega estiver implantado nesse ambiente. Sem o gateway, o login mobile acusa integração indisponível. Não usar credenciais reais de produção no piloto. Hash SHA-256: 4b04c0cd9b5d3284693d9eebd00bddab5d6bc9c50752a837e324b5dae6fbfec9.
+
 Opção EAS Build: autenticar uma conta Expo autorizada, registrar projeto com `eas init` e configurar assinatura com `eas build:configure`. Usar o profile preview de eas.json para APK interno. O profile production gera AAB para Google Play.
 
 ```bash
