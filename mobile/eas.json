@@ -1,0 +1,43 @@
+{
+  "cli": {
+    "version": ">=16.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease -PreactNativeArchitectures=arm64-v8a"
+      },
+      "credentialsSource": "remote"
+    },
+    "production": {
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease -PreactNativeArchitectures=arm64-v8a"
+      },
+      "credentialsSource": "remote"
+    },
+    "play-store": {
+      "extends": "production",
+      "android": {
+        "buildType": "app-bundle",
+        "gradleCommand": ":app:bundleRelease -PreactNativeArchitectures=arm64-v8a"
+      }
+    },
+    "preview-pilot": {
+      "extends": "preview",
+      "env": {
+        "EXPO_PUBLIC_L2_API_URL": "https://l2-one-homologacao.onrender.com"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

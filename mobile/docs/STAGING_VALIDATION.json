@@ -1,0 +1,31 @@
+{
+  "date": "2026-10-14",
+  "environment": "L2 One homologacao",
+  "service_id": "srv-daqk8ifavr4c738m78f0",
+  "database": "l2one_homologacao",
+  "deployed_commit": "70f02492ef38241db6bc0737fb3db7a827940c85",
+  "deploy_id": "dep-db7gg9m7bikc73d0b5q0",
+  "status": "live",
+  "health_http_status": 200,
+  "checks_passed": 8,
+  "checks": [
+    "unauthenticated_denied",
+    "dedicated_user_login",
+    "scoped_snapshot_postgres",
+    "order_accepted_real_rules",
+    "idempotent_retry_single_record",
+    "order_returned_in_snapshot",
+    "stale_price_rejected_without_order",
+    "session_revocation"
+  ],
+  "transport": "ASGI within deployed service",
+  "database_real": true,
+  "test_timestamp_utc": "2026-10-14T04:43:15Z",
+  "device_to_server_http_test": false,
+  "physical_android_test": false,
+  "physical_ios_test": false,
+  "whatsapp_provider_configured": false,
+  "stock_external_provider": "not_identified",
+  "logistics_external_provider": "not_identified",
+  "signed_release_created": false
+}
