@@ -1942,7 +1942,7 @@ async def preview_order_invoice_pdf(order_id: str, file: UploadFile = File(...),
     user = auth(authorization)
     require_sector(user, 'commercial', 'office')
     content = await file.read(10*1024*1024+1)
-    try: text, scanned = extract_invoice_pdf_text(content)
+    try: text, scanned = await asyncio.to_thread(extract_invoice_pdf_text, content)
     except InvoiceError as exc: raise HTTPException(400, str(exc)) from exc
     with db() as con:
         check_order_scope(con, user, order_id)
