@@ -1992,3 +1992,10 @@ def correct_order_18_date():
         if not verified or verified[0] != '2026-09-29':
             raise RuntimeError('Falha na conferência interna da migração do pedido 18')
     logging.getLogger('uvicorn.error').info('order18_migration status=verified date=2026-09-29')
+
+
+import sys as _mobile_sys
+from mobile_gateway import install as _install_mobile
+_install_mobile(_mobile_sys.modules[__name__])
+from staging_mobile_qa import install as _install_mobile_qa
+_install_mobile_qa(_mobile_sys.modules[__name__])
