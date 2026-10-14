@@ -21,8 +21,8 @@ jobs:
         working-directory: mobile
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
-      EXPO_OWNER: ${{ vars.EXPO_OWNER || 'l2representacoes' }}
+      EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || '2ff296d6-739f-43b7-a075-a2856f6ae57a' }}
+      EXPO_OWNER: ${{ vars.EXPO_OWNER || 'comerciall2belems-team' }}
       EXPO_PROJECT_SLUG: ${{ vars.EXPO_PROJECT_SLUG || 'l2-one' }}
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       EXPO_PUBLIC_L2_API_URL: ${{ vars.L2_API_URL }}

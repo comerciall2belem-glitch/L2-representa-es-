@@ -1,6 +1,6 @@
 # Vinculação e APK piloto
 
-Owner l2representacoes e slug l2-one estão configurados. A verificação EAS CLI 24.13.0 retornou Not logged in neste ambiente; não houve criação/vinculação remota nem solicitação de build pela conta Expo.
+Login confirmado como comerciall2belem. Owner efetivo comerciall2belems-team, slug l2-one e Project ID 2ff296d6-739f-43b7-a075-a2856f6ae57a vinculados. A organização l2representacoes recusou criação por falta de permissão; o piloto foi criado na equipe acessível. Build preview-pilot solicitado após geração de keystore remoto.
 
 No diretório do projeto, autenticar com a conta autorizada usando `npx eas-cli@24.13.0 login`, conferir com `npx eas-cli@24.13.0 whoami`, vincular com `npx eas-cli@24.13.0 project:init` e gerar com `npx eas-cli@24.13.0 build --profile preview-pilot --platform android`.
 

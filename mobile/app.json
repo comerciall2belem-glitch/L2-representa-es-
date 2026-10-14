@@ -48,8 +48,11 @@
       "backgroundColor": "#ffffff"
     },
     "extra": {
-      "releaseStage": "pilot"
+      "releaseStage": "pilot",
+      "eas": {
+        "projectId": "2ff296d6-739f-43b7-a075-a2856f6ae57a"
+      }
     },
-    "owner": "l2representacoes"
+    "owner": "comerciall2belems-team"
   }
 }

@@ -2,7 +2,9 @@
 
 Nome: L2 One - Sistema de Produtividade. Bundle ID iOS e package Android: com.l2representacoes.l2one. Retrato, tema claro, iPad habilitado, ícone/splash com os ativos oficiais existentes. Plugins SQLCipher, armazenamento seguro, localização e sincronização em background preservados.
 
-A versão técnica é 1.0.0; extra.releaseStage identifica pilot. Owner informado: l2representacoes. Slug informado: l2-one. Project ID e Apple Team ID continuam pendentes; os textos SUBSTITUA_PELO_PROJECT_ID e SUBSTITUA_PELO_APPLE_TEAM_ID são exemplos e não serão usados como credenciais. Fornecer EAS_PROJECT_ID e APPLE_TEAM_ID reais no ambiente autorizado. A vinculação à conta Expo ainda depende de autenticação. Tokens devem permanecer nos campos seguros, fora do código.
+A versão técnica é 1.0.0; extra.releaseStage identifica pilot. O login EAS foi concluído como comerciall2belem. A conta não possui permissão na organização l2representacoes; o projeto piloto foi criado na equipe autorizada comerciall2belems-team, com slug l2-one e Project ID 2ff296d6-739f-43b7-a075-a2856f6ae57a. Painel: https://expo.dev/accounts/comerciall2belems-team/projects/l2-one. O Apple Team ID permanece pendente para iOS. Tokens e keystores ficam fora do código.
+
+O perfil preview-pilot usa URL de homologação e assinatura Android remota gerenciada no EAS. A emissão do build não significa aprovação dos testes em aparelho nem liberação para produção.
 
 O novo identificador cria outro aplicativo em relação a br.com.l2representacoes.produtividade, usado no APK 0.3.0 anterior. Não há migração de fila offline entre aplicativos nesta alteração. Sincronizar qualquer fila do piloto anterior antes de desinstalá-lo. Certificados e provisioning profiles precisam corresponder ao novo identificador.
 
