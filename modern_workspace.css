@@ -90,3 +90,23 @@
  .l2-modern .order-items .order-product-subtotal::before{margin:0}
  .l2-modern .order-items .order-product-qty input{min-height:44px;min-width:0;width:100%}
 }
+
+/* Field touch ergonomics for phones and tablets; preserve all modules. */
+@media (max-width:1179px), (pointer:coarse) {
+ .l2-modern input,.l2-modern select,.l2-modern textarea {font-size:16px;min-height:48px}
+ .l2-modern button,.l2-modern .button,.l2-modern header button,
+ .l2-modern summary {min-height:48px}
+ .l2-modern button,.l2-modern summary {touch-action:manipulation}
+ .l2-modern .row>* {min-width:0}
+ .l2-modern dialog {max-width:calc(100vw - 24px);max-height:85dvh;overflow:auto;overscroll-behavior:contain}
+ .l2-modern #l2WorkspaceBar {padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
+ #l2BottomNav {padding-left:max(5px,env(safe-area-inset-left));padding-right:max(5px,env(safe-area-inset-right))}
+}
+@media(max-width:760px) {
+ .l2-modern .row {grid-template-columns:minmax(0,1fr)}
+ .l2-modern header {padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
+ .l2-modern .l2-daily-heading {flex-wrap:wrap}
+}
+@media(prefers-reduced-motion:reduce) {
+ .l2-modern *, .l2-modern *::before, .l2-modern *::after {scroll-behavior:auto!important;animation:none!important;transition:none!important}
+}
