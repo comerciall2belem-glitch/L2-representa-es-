@@ -5,10 +5,10 @@ const WORKSPACE_GROUPS=[
  {id:'vendas',label:'Vendas',sections:[['pedidos','Pedidos'],['marcas','Marcas e preços'],['industries','Indústrias'],['whatsapp','Chat e tabelas']]},
  {id:'clientes',label:'Clientes',sections:[['clientes','Carteira e acompanhamento'],['crm','Visão 360°']]},
  {id:'crescimento',label:'Crescimento',sections:[['crescimento','Desempenho'],['gestao','Metas e gestão']]},
- {id:'escritorio',label:'Escritório',sections:[['office','Processos'],['operations','Operações'],['admin','Equipe'],['finance','Financeiro'],['cash','Caixa'],['personal','Pessoal'],['config','Configurações']]}
+ {id:'escritorio',label:'Escritório',sections:[['office','Processos'],['operations','Operações'],['estoque','Estoque'],['admin','Equipe'],['finance','Financeiro'],['cash','Caixa'],['personal','Pessoal'],['config','Configurações']]}
 ];
 function workspaceGroup(t){return WORKSPACE_GROUPS.find(g=>g.sections.some(x=>x[0]===t))||WORKSPACE_GROUPS.find(g=>g.id===(t==='crm'?'clientes':'inicio'))}
-const WORKSPACE_TABS=[['hoje','Hoje'],['clientes','Clientes'],['crm','Visão 360°'],['marcas','Marcas e preços'],['industries','Indústrias'],['rota','Atuação / Minha rota'],['registro','Registrar'],['routine','Rotina estratégica'],['pedidos','Pedidos'],['crescimento','Acompanhamento de vendas'],['whatsapp','Chat'],['gestao','Gestão'],['office','Escritório'],['operations','Operações'],['admin','Administração'],['finance','Financeiro'],['personal','Financeiro Pessoal'],['cash','Caixa diário'],['config','Configurações']];
+const WORKSPACE_TABS=[['hoje','Hoje'],['clientes','Clientes'],['crm','Visão 360°'],['marcas','Marcas e preços'],['industries','Indústrias'],['rota','Atuação / Minha rota'],['registro','Registrar'],['routine','Rotina estratégica'],['pedidos','Pedidos'],['crescimento','Acompanhamento de vendas'],['whatsapp','Chat'],['gestao','Gestão'],['office','Escritório'],['operations','Operações'],['estoque','Estoque'],['admin','Administração'],['finance','Financeiro'],['personal','Financeiro Pessoal'],['cash','Caixa diário'],['config','Configurações']];
 function workspaceNav(){
  const root=$('tabs'),sub=$('sectionTabs');if(!root)return;
  root.replaceChildren();for(const [id,label] of WORKSPACE_TABS){if(!sectionAllowed(id))continue;const b=document.createElement('button');b.textContent=label;b.dataset.tab=id;b.setAttribute('aria-current',tab===id?'page':'false');b.onclick=()=>{if(id==='crm')window.crmClientId='';show(id)};root.append(b)}
