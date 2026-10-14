@@ -18,6 +18,7 @@ from senscience_seed import seed_senscience
 from davines_seed import seed_davines
 from magic_beauty_seed import seed_magic_beauty
 from dalla_seed import seed_dalla
+from inventory import setup_inventory, snapshot as inventory_snapshot, apply_movement as inventory_apply, InventoryMovement
 from order_reconciliation import reconcile_invoice, reconcile_invoice_text, extract_invoice_pdf_text, InvoiceError
 from lead_capture import LeadIntake, normalize_intake, ingest_lead, lead_sla
 from login_identity import resolve_identity
@@ -157,6 +158,7 @@ def initialize():
                             (price_id,Jsonb(payload)))
         con.execute('CREATE TABLE IF NOT EXISTS archived_entities (kind TEXT NOT NULL, id TEXT NOT NULL, payload JSONB NOT NULL, reason TEXT NOT NULL, archived_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(kind,id))')
         seed_dalla(con, BASE)
+        setup_inventory(con)
         con.execute('CREATE TABLE IF NOT EXISTS order_counter (id SMALLINT PRIMARY KEY CHECK(id=1), value BIGINT NOT NULL CHECK(value>=0))')
         con.execute('INSERT INTO order_counter(id,value) VALUES(1,0) ON CONFLICT(id) DO NOTHING')
         existing_max = con.execute("SELECT COALESCE(MAX((payload->>'orderNumber')::bigint),0) FROM (SELECT payload FROM entities WHERE kind='order' UNION ALL SELECT payload FROM archived_entities WHERE kind='order') AS orders WHERE payload->>'orderNumber' ~ '^[0-9]+$'").fetchone()[0]
@@ -2377,3 +2379,18 @@ async def record_change_notifications(request: Request, call_next):
         except Exception:
             logging.warning('record_notification_unavailable')
     return response
+
+@app.get('/api/inventory')
+def get_inventory(authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    require_sector(user, 'commercial', 'office')
+    with db() as con: return inventory_snapshot(con)
+
+@app.post('/api/inventory/movements')
+def add_inventory_movement(data: InventoryMovement, authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    require_sector(user, 'commercial', 'office')
+    with db() as con:
+        result = inventory_apply(con, data, user)
+        con.execute("SELECT pg_notify('l2_records_changed','')")
+        return result
