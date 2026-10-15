@@ -4,7 +4,7 @@ import os, json, time, hashlib, secrets, re, base64, gzip, unicodedata, io, zipf
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Header, UploadFile, File, Form, Request
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse, JSONResponse
 from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
 from pydantic import BaseModel, Field
@@ -27,9 +27,10 @@ from whatsapp_media import send_media, validate_media, provider_config, MediaErr
 
 from commercial_tables import table_id, price_id, validate_table, seed_bella, validate_bella_order
 from access_policy import effective_sectors, attribute_order, COMMERCIAL_SECTORS
-from seller_commission import validate_rate, apply_seller_commission
+from seller_commission import validate_rate, apply_seller_commission, is_closed_order, preserve_closed_order
 from financial_visibility import hide_industry_commissions, preserve_industry_commissions
 
+import office_policy
 import zara
 import webchat
 import strategic_crm
@@ -40,7 +41,7 @@ import geo_prospecting
 
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
-SECTORS = {'commercial','clients_edit','routes','office','management','finance','catalog','admin'}
+SECTORS = {'commercial','clients_edit','routes','office','management','finance','catalog','admin','promotion'}
 DEFAULT_SECTORS = {
  'Ana Paula':sorted(SECTORS),
  'Euler':['commercial','routes','management','finance','catalog'],
@@ -441,7 +442,7 @@ def require_sector(user, *allowed):
 
 def is_seller(con, user):
     row=con.execute('SELECT role FROM app_users WHERE username=%s AND active',(user,)).fetchone()
-    return bool(row and row[0]=='Vendedor' and user!='Euler')
+    return bool(row and ((row[0]=='Vendedor' and user!='Euler') or row[0]=='Promotora'))
 
 def check_client_scope(con, user, client_id):
     """A carteira de um vendedor é definida no servidor, inclusive para anexos."""
@@ -781,8 +782,10 @@ def assign_portfolio(data: AssignPortfolio, authorization: str | None = Header(d
 
 def validate_member(user, role, sectors):
     name = unicodedata.normalize('NFC', user).strip()
-    if not re.fullmatch(r"[\wÀ-ÿ .'-]{2,80}",name) or role not in ('Vendedor','Administrativo','Gestão') or set(sectors)-SECTORS or len(set(sectors))!=len(sectors):
+    if not re.fullmatch(r"[\wÀ-ÿ .'-]{2,80}",name) or role not in ('Vendedor','Administrativo','Gestão','Promotora') or set(sectors)-SECTORS or len(set(sectors))!=len(sectors):
         raise HTTPException(400,'Nome, função ou setores inválidos')
+    if role=='Promotora' and ('promotion' not in sectors or set(sectors)-{'promotion','routes'}):
+        raise HTTPException(400,'Promotora pode acessar somente Promoção e Rotas')
     if role=='Vendedor' and 'commercial' not in sectors:
         raise HTTPException(400,'Vendedor precisa de acesso Comercial')
     if name=='Laís' and (role!='Administrativo' or 'admin' not in sectors):
@@ -810,6 +813,7 @@ def create_team_member(data: TeamMember, authorization: str | None = Header(defa
     actor=auth(authorization)
     if actor!='Ana Paula' and ('finance' in data.sectors or 'admin' in data.sectors): raise HTTPException(403,'Setor protegido')
     name=validate_member(data.user,data.role,data.sectors)
+    if data.role=='Vendedor': data.profile.setdefault('commissionRate', '2.50')
     profile=validate_seller_profile(data.profile) if data.role=='Vendedor' else None
     provisional=secrets.token_urlsafe(24)
     with db() as con:
@@ -1021,6 +1025,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
             try:
                 kind, obj = change.type, dict(change.data)
                 entity_id = obj.get('id')
+                if account and account[0]=='Promotora':
+                    office_policy.validate_promoter_change(con,user,kind,obj)
                 deletable = {'delete_industry':'industry','delete_price_table':'price_table','delete_fulfillment':'fulfillment','delete_settlement':'settlement','delete_opportunity':'opportunity','delete_lead':'lead','delete_interaction':'interaction','delete_whatsapp_template':'whatsapp_template','delete_client':'client','delete_visit':'visit','delete_task':'task','delete_goal':'goal','delete_route':'route','delete_order':'order','delete_price':'price','delete_cash_entry':'cash_entry','delete_commission_rate':'commission_rate','delete_commission_receipt':'commission_receipt','delete_office_process':'office_process','delete_office_action':'office_action','delete_office_commercial':'office_commercial','delete_office_administrative':'office_administrative','delete_office_ritual':'office_ritual','delete_office_role':'office_role','delete_office_finance':'office_finance','delete_office_budget':'office_budget','delete_office_monthly_close':'office_monthly_close'}
                 if kind not in ('industry','price_table','fulfillment','settlement','opportunity','interaction','lead','whatsapp_template','client','visit','order','task','route','goal','price','commission_rate','commission_receipt','office_action','office_commercial','office_administrative','office_ritual','office_role','office_finance','office_budget','office_monthly_close','office_process','cash_day','cash_entry',*deletable) or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
                     raise HTTPException(400, 'Alteração inválida')
@@ -1029,6 +1035,13 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 if con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s',(change.changeId,)).fetchone():
                     continue
                 target_kind=deletable.get(kind,kind)
+                if target_kind == 'commission_rate' and not admin_access(user):
+                    raise HTTPException(403, 'Parâmetros globais de comissão restritos à administração')
+                if target_kind == 'goal':
+                    prior_goal = con.execute("SELECT payload FROM entities WHERE kind='goal' AND id=%s",(entity_id,)).fetchone()
+                    candidates = [obj] + ([prior_goal[0]] if prior_goal else [])
+                    if any(str(g.get('user','')).strip().casefold() == 'equipe' and not g.get('brand') for g in candidates) and not admin_access(user):
+                        raise HTTPException(403, 'Meta geral que libera bônus restrita à administração')
                 if target_kind=='client':
                     previous_client=con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s",(entity_id,)).fetchone()
                     if not admin_access(user) and previous_client and obj.get('owner',previous_client[0].get('owner'))!=previous_client[0].get('owner'):
@@ -1082,6 +1095,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         if con.execute("SELECT 1 FROM entities WHERE kind='settlement' AND payload->>'orderId'=%s LIMIT 1",(entity_id,)).fetchone():
                             raise HTTPException(409,'Pedido com faturamento vinculado deve ser conciliado antes de arquivar')
                         previous = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
+                        if previous and is_closed_order(previous[0]):
+                            raise HTTPException(409, 'Pedido faturado ou concluído não pode ser arquivado')
                         if previous and previous[0].get('status') not in ('Pendente','Cancelado') and not admin_access(user):
                             raise HTTPException(403, 'Somente Ana Paula pode arquivar pedido confirmado ou faturado')
                     if con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s',(change.changeId,)).fetchone():
@@ -1107,7 +1122,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
                     con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,target,entity_id,'delete'))
                     continue
-                if kind in ('opportunity','interaction','lead','visit','order','task','goal','whatsapp_template','client') and 'commercial' not in permissions and 'office' not in permissions:
+                if kind in ('opportunity','interaction','lead','visit','order','task','goal','whatsapp_template','client') and 'commercial' not in permissions and 'office' not in permissions and not ('promotion' in permissions and kind in ('visit','interaction','task')):
                     raise HTTPException(403,'Setor comercial sem permissão')
                 if kind in ('fulfillment',) and not ({'office','commercial'} & permissions): raise HTTPException(403,'Setor operacional sem permissão')
                 if kind.startswith('office_') and kind not in ('office_finance','office_budget','office_monthly_close') and 'office' not in permissions: raise HTTPException(403,'Setor escritório sem permissão')
@@ -1405,63 +1420,67 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         if any(''.join(ch for ch in str(row[1].get('taxId') or '') if ch.isdigit()) == tax_id for row in duplicates):
                             raise HTTPException(409, 'CNPJ já cadastrado em outro cliente')
                 if kind == 'order':
-                    # Uma fila offline antiga não pode desfazer a correção autorizada.
-                    if entity_id == '858c6713-4712-4873-b716-8f5e76425468' and obj.get('date') == '2026-11-30':
-                        obj['date'] = '2026-09-29'
-                        obj['dateCorrection'] = {'original':'2026-11-30','corrected':'2026-09-29','reason':'Correção autorizada preservada na sincronização'}
-                    if not isinstance(obj.get('items'), list) or not obj['items']:
-                        raise HTTPException(400, 'Novo pedido exige itens e tabela de preços por UF; registros antigos permanecem somente para consulta')
-                    if not isinstance(obj.get('brand'), str) or not obj['brand'].strip():
-                        raise HTTPException(400, 'Marca obrigatória')
-                    if not isinstance(obj.get('clientId'), str):
-                        raise HTTPException(400, 'Cliente obrigatório')
-                    customer = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (obj.get('clientId'),)).fetchone()
-                    if not customer:
-                        raise HTTPException(400, 'Cliente não cadastrado')
-                    client_uf = normalize_uf(customer[0].get('state'))
-                    price_table = normalize_uf(obj.get('priceTable'))
-                    if not price_table:
-                        raise HTTPException(400, 'Escolha a tabela de preços PA ou AP')
-                    if not price_table_matches_client(customer[0].get('state'), obj.get('priceTable')):
-                        raise HTTPException(400, 'Cliente do Pará usa PA; cliente do Amapá pode usar PA ou AP')
-                    total = Decimal('0')
-                    brands=set()
-                    for item in obj['items']:
-                        if not isinstance(item, dict) or not isinstance(item.get('sku'), str) or not item['sku'].strip():
-                            raise HTTPException(400, 'SKU inválido')
-                        item_brand=str(item.get('brand') or obj.get('brand') or '').strip()
-                        if not item_brand or item_brand=='Multimarcas': raise HTTPException(400,'Indústria do item obrigatória')
-                        brands.add(item_brand)
-                        table=validate_table(con,{**item,'brand':item_brand,'state':price_table},item_brand,price_table,allowed_states=['AP','PA'] if client_uf=='AP' else ['PA'])
-                        item['tableId']=table['id']
-                        price_key = price_id({**item,'brand':item_brand,'sku':item['sku'].strip()})
-                        price_row = con.execute("SELECT payload FROM entities WHERE kind='price' AND id=%s", (price_key,)).fetchone()
-                        if not price_row:
-                            raise HTTPException(400, f"Preço não cadastrado na tabela {price_table}: {item['sku']}")
-                        try:
-                            qty = Decimal(str(item['quantity']))
-                            unit = Decimal(str(price_row[0]['price']))
-                        except (KeyError, TypeError, ValueError, InvalidOperation):
-                            raise HTTPException(400, 'Quantidade ou preço inválido')
-                        if not qty.is_finite() or not unit.is_finite() or qty != qty.to_integral_value() or qty <= 0 or qty > 100000 or unit <= 0:
-                            raise HTTPException(400, 'Quantidade ou preço inválido')
-                        item['unitPrice'] = str(unit)
-                        item['subtotal'] = str((qty * unit).quantize(Decimal('0.01')))
-                        item['brand']=item_brand
-                        total += qty * unit
-                    obj['brand']='Multimarcas' if len(brands)>1 else next(iter(brands))
-                    obj['clientState'] = client_uf
-                    obj['priceTable'] = price_table
-                    obj['state'] = price_table
-                    obj['amount'] = float(total.quantize(Decimal('0.01')))
-                    validate_bella_order(con,obj,client_uf,user)
-                    existing_order = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
-                    attribute_order(con,user,obj,existing_order[0] if existing_order else None)
-                    rate_row=con.execute('SELECT seller_commission_rate FROM app_users WHERE username=%s',(obj['sellerResponsible'],)).fetchone()
-                    apply_seller_commission(obj,rate_row[0] if rate_row else None,existing_order[0] if existing_order else None)
-                    if not existing_order and con.execute("SELECT 1 FROM archived_entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone():
-                        raise HTTPException(409, 'Pedido arquivado não pode ser recriado; restaure o original')
-                    obj['orderNumber'] = existing_order[0].get('orderNumber') if existing_order and existing_order[0].get('orderNumber') else next_order_number(con)
+                    frozen = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
+                    if frozen and is_closed_order(frozen[0]):
+                        preserve_closed_order(obj, frozen[0])
+                    else:
+                        # Uma fila offline antiga não pode desfazer a correção autorizada.
+                        if entity_id == '858c6713-4712-4873-b716-8f5e76425468' and obj.get('date') == '2026-11-30':
+                            obj['date'] = '2026-09-29'
+                            obj['dateCorrection'] = {'original':'2026-11-30','corrected':'2026-09-29','reason':'Correção autorizada preservada na sincronização'}
+                        if not isinstance(obj.get('items'), list) or not obj['items']:
+                            raise HTTPException(400, 'Novo pedido exige itens e tabela de preços por UF; registros antigos permanecem somente para consulta')
+                        if not isinstance(obj.get('brand'), str) or not obj['brand'].strip():
+                            raise HTTPException(400, 'Marca obrigatória')
+                        if not isinstance(obj.get('clientId'), str):
+                            raise HTTPException(400, 'Cliente obrigatório')
+                        customer = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (obj.get('clientId'),)).fetchone()
+                        if not customer:
+                            raise HTTPException(400, 'Cliente não cadastrado')
+                        client_uf = normalize_uf(customer[0].get('state'))
+                        price_table = normalize_uf(obj.get('priceTable'))
+                        if not price_table:
+                            raise HTTPException(400, 'Escolha a tabela de preços PA ou AP')
+                        if not price_table_matches_client(customer[0].get('state'), obj.get('priceTable')):
+                            raise HTTPException(400, 'Cliente do Pará usa PA; cliente do Amapá pode usar PA ou AP')
+                        total = Decimal('0')
+                        brands=set()
+                        for item in obj['items']:
+                            if not isinstance(item, dict) or not isinstance(item.get('sku'), str) or not item['sku'].strip():
+                                raise HTTPException(400, 'SKU inválido')
+                            item_brand=str(item.get('brand') or obj.get('brand') or '').strip()
+                            if not item_brand or item_brand=='Multimarcas': raise HTTPException(400,'Indústria do item obrigatória')
+                            brands.add(item_brand)
+                            table=validate_table(con,{**item,'brand':item_brand,'state':price_table},item_brand,price_table,allowed_states=['AP','PA'] if client_uf=='AP' else ['PA'])
+                            item['tableId']=table['id']
+                            price_key = price_id({**item,'brand':item_brand,'sku':item['sku'].strip()})
+                            price_row = con.execute("SELECT payload FROM entities WHERE kind='price' AND id=%s", (price_key,)).fetchone()
+                            if not price_row:
+                                raise HTTPException(400, f"Preço não cadastrado na tabela {price_table}: {item['sku']}")
+                            try:
+                                qty = Decimal(str(item['quantity']))
+                                unit = Decimal(str(price_row[0]['price']))
+                            except (KeyError, TypeError, ValueError, InvalidOperation):
+                                raise HTTPException(400, 'Quantidade ou preço inválido')
+                            if not qty.is_finite() or not unit.is_finite() or qty != qty.to_integral_value() or qty <= 0 or qty > 100000 or unit <= 0:
+                                raise HTTPException(400, 'Quantidade ou preço inválido')
+                            item['unitPrice'] = str(unit)
+                            item['subtotal'] = str((qty * unit).quantize(Decimal('0.01')))
+                            item['brand']=item_brand
+                            total += qty * unit
+                        obj['brand']='Multimarcas' if len(brands)>1 else next(iter(brands))
+                        obj['clientState'] = client_uf
+                        obj['priceTable'] = price_table
+                        obj['state'] = price_table
+                        obj['amount'] = float(total.quantize(Decimal('0.01')))
+                        validate_bella_order(con,obj,client_uf,user)
+                        existing_order = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
+                        attribute_order(con,user,obj,existing_order[0] if existing_order else None)
+                        rate_row=con.execute('SELECT seller_commission_rate FROM app_users WHERE username=%s',(obj['sellerResponsible'],)).fetchone()
+                        apply_seller_commission(obj,rate_row[0] if rate_row else None,existing_order[0] if existing_order else None)
+                        if not existing_order and con.execute("SELECT 1 FROM archived_entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone():
+                            raise HTTPException(409, 'Pedido arquivado não pode ser recriado; restaure o original')
+                        obj['orderNumber'] = existing_order[0].get('orderNumber') if existing_order and existing_order[0].get('orderNumber') else next_order_number(con)
                 if kind == 'order':
                     try: amount = float(obj.get('amount',0))
                     except (TypeError, ValueError): raise HTTPException(400,'Valor inválido')
@@ -1525,11 +1544,11 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 result[name]=[];continue
             if kind=='fulfillment' and not ({'office','commercial'} & permissions):
                 result[name]=[];continue
-            if kind in ('client','visit','order','task','goal','opportunity','interaction','lead','whatsapp_template') and not ({'commercial','office','finance','management'} & permissions):
+            if kind in ('client','visit','order','task','goal','opportunity','interaction','lead','whatsapp_template') and not ({'commercial','office','finance','management'} & permissions) and not ('promotion' in permissions and kind in ('client','visit','task','interaction')):
                 result[name]=[];continue
             if kind == 'route' and 'routes' not in permissions:
                 result[name]=[];continue
-            if kind in ('price','industry','price_table') and not ({'catalog','commercial'} & permissions):
+            if kind in ('price','industry','price_table') and not ({'catalog','commercial','promotion'} & permissions):
                 result[name]=[];continue
             if kind == 'office_process' and 'finance' not in permissions:
                 result[name] = [row[0] for row in con.execute("SELECT payload FROM entities WHERE kind=%s AND coalesce(payload->>'Área','')<>'Financeiro' ORDER BY updated_at,id", (kind,))]
@@ -1564,6 +1583,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
             result['crmTeam']['at'] = datetime.now(TZ).isoformat()
         for kind, name in [('settlement','settlements'),('office_finance','officeFinance'),('office_budget','officeBudget'),('office_monthly_close','officeMonthlyClose'),('cash_day','cashDays'),('cash_entry','cashEntries'),('commission_rate','commissionRates'),('commission_receipt','commissionReceipts')]:
             result[name] = scoped_rows(con,kind,user) if 'finance' in permissions else []
+        if account and account[0]=='Promotora': result=office_policy.promoter_snapshot(result,user)
         return result if 'finance' in permissions else hide_industry_commissions(result)
 
 def order_exists(con, order_id: str):
@@ -2394,3 +2414,20 @@ def add_inventory_movement(data: InventoryMovement, authorization: str | None = 
         result = inventory_apply(con, data, user)
         con.execute("SELECT pg_notify('l2_records_changed','')")
         return result
+
+# No background payment processing: bonus is a fresh, server-authoritative preview.
+office_policy.configure(db=lambda: db(), auth=lambda header: auth(header), sectors_for=lambda user: sectors_for(user), admin_access=lambda user: admin_access(user), today=lambda: datetime.now(TZ).date())
+app.include_router(office_policy.router)
+
+@app.middleware('http')
+async def restrict_promoter_api(request: Request, call_next):
+    path=request.url.path
+    authorization=request.headers.get('authorization')
+    if path.startswith('/api/') and path not in ('/api/login','/api/leads/webhook') and authorization and authorization.startswith('Bearer ') and not office_policy.promoter_route_allowed(request.method,path):
+        try:
+            restricted=await asyncio.to_thread(office_policy.restricted_promoter_request,authorization)
+        except HTTPException as error:
+            return JSONResponse({'detail':error.detail},status_code=error.status_code)
+        if restricted:
+            return JSONResponse({'detail':'Operação fora do perfil Promotora'},status_code=403)
+    return await call_next(request)

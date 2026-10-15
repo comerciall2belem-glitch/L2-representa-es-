@@ -23,6 +23,9 @@ context.s.prices = products.map((p, i) => ({...p, state:i === 2 ? 'AP' : 'PA'}))
 const draft = {priceTable:'PA', quantities:{'Bruna Tavares|BT01':2, 'Ruby Kisses|RK01':1}};
 const catalog = context.pricesForTable('PA');
 assert.equal(catalog.length, 2);
+assert.equal(context.orderVisibleProducts(catalog,draft,'').length, 0, 'Catálogo fechado não deve renderizar produtos');
+assert.equal(context.orderTotalCents(catalog,draft), 4125, 'Ocultar catálogo deve preservar o carrinho');
+context.window.orderCatalogOpen = true;
 assert.equal(context.orderVisibleProducts(catalog,draft,'').length, 2);
 assert.equal(context.orderVisibleProducts(catalog,draft,'ruby').length, 1);
 context.window.orderBrandFilter = 'Bruna Tavares';

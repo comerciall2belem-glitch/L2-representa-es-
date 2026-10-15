@@ -53,3 +53,4 @@ jobs:
           L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/workspace_audit_dom.cjs
           L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/daily_goals_ui.cjs
           L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/live_records_dom.cjs
+          L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/promoter_bonus_ui.cjs

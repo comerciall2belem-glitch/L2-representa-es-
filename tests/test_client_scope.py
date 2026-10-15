@@ -48,3 +48,14 @@ class ClientScopeTests(unittest.TestCase):
 
 if __name__=='__main__': unittest.main()
 
+
+class PromoterScopeTests(unittest.TestCase):
+    def test_promoter_scope_is_not_global(self):
+        class PromoterCon(FakeCon):
+            def execute(self,sql,params=None):
+                if sql.startswith('SELECT role FROM app_users') and params[0]=='Promo': return Cursor(('Promotora',))
+                return super().execute(sql,params)
+        con=PromoterCon()
+        self.assertTrue(namespace['is_seller'](con,'Promo'))
+        with self.assertRaises(HTTPException):namespace['check_client_scope'](con,'Promo','c1')
+        self.assertEqual(namespace['scoped_rows'](con,'client','Promo'),[])

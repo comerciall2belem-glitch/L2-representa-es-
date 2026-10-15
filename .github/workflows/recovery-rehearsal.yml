@@ -1,0 +1,35 @@
+name: PostgreSQL isolated recovery rehearsal
+on:
+  push:
+    branches: [feature/cloud-mobile-touch]
+  pull_request:
+    branches: [main]
+    paths: ['scripts/recovery_rehearsal.sh', '.github/workflows/recovery-rehearsal.yml']
+permissions:
+  contents: read
+jobs:
+  restore-fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: fixture-only-transient
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dump restore compare and switch isolated connection
+        env:
+          L2_QA_CONTAINER: ${{ job.services.postgres.id }}
+        run: bash scripts/recovery_rehearsal.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: isolated-recovery-fixture-only
+          path: artifacts/recovery/
+          retention-days: 14

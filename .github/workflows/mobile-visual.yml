@@ -1,0 +1,38 @@
+name: Mobile visual PR47
+on:
+  pull_request:
+    branches: [main]
+    paths: ['index.html', '*.css', 'tests/mobile_visual.cjs', '.github/workflows/mobile-visual.yml']
+  push:
+    branches: [feature/cloud-mobile-touch]
+permissions:
+  contents: read
+jobs:
+  responsive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned browser test tools
+        run: npm install --prefix /tmp/l2-visual playwright@1.62.1 --no-audit --no-fund
+      - name: Install browser and OS dependencies
+        run: node /tmp/l2-visual/node_modules/playwright/cli.js install --with-deps ${{ matrix.browser }}
+      - name: Check real UI with fictitious offline data
+        env:
+          L2_BROWSER: ${{ matrix.browser }}
+          L2_PLAYWRIGHT: /tmp/l2-visual/node_modules/playwright
+        run: node tests/mobile_visual.cjs
+      - name: Save screenshots and metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-visual-PR47-${{ matrix.browser }}
+          path: artifacts/mobile-visual/
+          retention-days: 14
