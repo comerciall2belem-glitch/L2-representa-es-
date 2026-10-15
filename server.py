@@ -27,7 +27,7 @@ from whatsapp_media import send_media, validate_media, provider_config, MediaErr
 
 from commercial_tables import table_id, price_id, validate_table, seed_bella, validate_bella_order
 from access_policy import effective_sectors, attribute_order, COMMERCIAL_SECTORS
-from seller_commission import validate_rate, apply_seller_commission
+from seller_commission import validate_rate, apply_seller_commission, is_closed_order, preserve_closed_order
 from financial_visibility import hide_industry_commissions, preserve_industry_commissions
 
 import office_policy
@@ -813,6 +813,7 @@ def create_team_member(data: TeamMember, authorization: str | None = Header(defa
     actor=auth(authorization)
     if actor!='Ana Paula' and ('finance' in data.sectors or 'admin' in data.sectors): raise HTTPException(403,'Setor protegido')
     name=validate_member(data.user,data.role,data.sectors)
+    if data.role=='Vendedor': data.profile.setdefault('commissionRate', '2.50')
     profile=validate_seller_profile(data.profile) if data.role=='Vendedor' else None
     provisional=secrets.token_urlsafe(24)
     with db() as con:
@@ -1087,6 +1088,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         if con.execute("SELECT 1 FROM entities WHERE kind='settlement' AND payload->>'orderId'=%s LIMIT 1",(entity_id,)).fetchone():
                             raise HTTPException(409,'Pedido com faturamento vinculado deve ser conciliado antes de arquivar')
                         previous = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
+                        if previous and is_closed_order(previous[0]):
+                            raise HTTPException(409, 'Pedido faturado ou concluído não pode ser arquivado')
                         if previous and previous[0].get('status') not in ('Pendente','Cancelado') and not admin_access(user):
                             raise HTTPException(403, 'Somente Ana Paula pode arquivar pedido confirmado ou faturado')
                     if con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s',(change.changeId,)).fetchone():
@@ -1410,63 +1413,67 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         if any(''.join(ch for ch in str(row[1].get('taxId') or '') if ch.isdigit()) == tax_id for row in duplicates):
                             raise HTTPException(409, 'CNPJ já cadastrado em outro cliente')
                 if kind == 'order':
-                    # Uma fila offline antiga não pode desfazer a correção autorizada.
-                    if entity_id == '858c6713-4712-4873-b716-8f5e76425468' and obj.get('date') == '2026-11-30':
-                        obj['date'] = '2026-09-29'
-                        obj['dateCorrection'] = {'original':'2026-11-30','corrected':'2026-09-29','reason':'Correção autorizada preservada na sincronização'}
-                    if not isinstance(obj.get('items'), list) or not obj['items']:
-                        raise HTTPException(400, 'Novo pedido exige itens e tabela de preços por UF; registros antigos permanecem somente para consulta')
-                    if not isinstance(obj.get('brand'), str) or not obj['brand'].strip():
-                        raise HTTPException(400, 'Marca obrigatória')
-                    if not isinstance(obj.get('clientId'), str):
-                        raise HTTPException(400, 'Cliente obrigatório')
-                    customer = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (obj.get('clientId'),)).fetchone()
-                    if not customer:
-                        raise HTTPException(400, 'Cliente não cadastrado')
-                    client_uf = normalize_uf(customer[0].get('state'))
-                    price_table = normalize_uf(obj.get('priceTable'))
-                    if not price_table:
-                        raise HTTPException(400, 'Escolha a tabela de preços PA ou AP')
-                    if not price_table_matches_client(customer[0].get('state'), obj.get('priceTable')):
-                        raise HTTPException(400, 'Cliente do Pará usa PA; cliente do Amapá pode usar PA ou AP')
-                    total = Decimal('0')
-                    brands=set()
-                    for item in obj['items']:
-                        if not isinstance(item, dict) or not isinstance(item.get('sku'), str) or not item['sku'].strip():
-                            raise HTTPException(400, 'SKU inválido')
-                        item_brand=str(item.get('brand') or obj.get('brand') or '').strip()
-                        if not item_brand or item_brand=='Multimarcas': raise HTTPException(400,'Indústria do item obrigatória')
-                        brands.add(item_brand)
-                        table=validate_table(con,{**item,'brand':item_brand,'state':price_table},item_brand,price_table,allowed_states=['AP','PA'] if client_uf=='AP' else ['PA'])
-                        item['tableId']=table['id']
-                        price_key = price_id({**item,'brand':item_brand,'sku':item['sku'].strip()})
-                        price_row = con.execute("SELECT payload FROM entities WHERE kind='price' AND id=%s", (price_key,)).fetchone()
-                        if not price_row:
-                            raise HTTPException(400, f"Preço não cadastrado na tabela {price_table}: {item['sku']}")
-                        try:
-                            qty = Decimal(str(item['quantity']))
-                            unit = Decimal(str(price_row[0]['price']))
-                        except (KeyError, TypeError, ValueError, InvalidOperation):
-                            raise HTTPException(400, 'Quantidade ou preço inválido')
-                        if not qty.is_finite() or not unit.is_finite() or qty != qty.to_integral_value() or qty <= 0 or qty > 100000 or unit <= 0:
-                            raise HTTPException(400, 'Quantidade ou preço inválido')
-                        item['unitPrice'] = str(unit)
-                        item['subtotal'] = str((qty * unit).quantize(Decimal('0.01')))
-                        item['brand']=item_brand
-                        total += qty * unit
-                    obj['brand']='Multimarcas' if len(brands)>1 else next(iter(brands))
-                    obj['clientState'] = client_uf
-                    obj['priceTable'] = price_table
-                    obj['state'] = price_table
-                    obj['amount'] = float(total.quantize(Decimal('0.01')))
-                    validate_bella_order(con,obj,client_uf,user)
-                    existing_order = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
-                    attribute_order(con,user,obj,existing_order[0] if existing_order else None)
-                    rate_row=con.execute('SELECT seller_commission_rate FROM app_users WHERE username=%s',(obj['sellerResponsible'],)).fetchone()
-                    apply_seller_commission(obj,rate_row[0] if rate_row else None,existing_order[0] if existing_order else None)
-                    if not existing_order and con.execute("SELECT 1 FROM archived_entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone():
-                        raise HTTPException(409, 'Pedido arquivado não pode ser recriado; restaure o original')
-                    obj['orderNumber'] = existing_order[0].get('orderNumber') if existing_order and existing_order[0].get('orderNumber') else next_order_number(con)
+                    frozen = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
+                    if frozen and is_closed_order(frozen[0]):
+                        preserve_closed_order(obj, frozen[0])
+                    else:
+                        # Uma fila offline antiga não pode desfazer a correção autorizada.
+                        if entity_id == '858c6713-4712-4873-b716-8f5e76425468' and obj.get('date') == '2026-11-30':
+                            obj['date'] = '2026-09-29'
+                            obj['dateCorrection'] = {'original':'2026-11-30','corrected':'2026-09-29','reason':'Correção autorizada preservada na sincronização'}
+                        if not isinstance(obj.get('items'), list) or not obj['items']:
+                            raise HTTPException(400, 'Novo pedido exige itens e tabela de preços por UF; registros antigos permanecem somente para consulta')
+                        if not isinstance(obj.get('brand'), str) or not obj['brand'].strip():
+                            raise HTTPException(400, 'Marca obrigatória')
+                        if not isinstance(obj.get('clientId'), str):
+                            raise HTTPException(400, 'Cliente obrigatório')
+                        customer = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (obj.get('clientId'),)).fetchone()
+                        if not customer:
+                            raise HTTPException(400, 'Cliente não cadastrado')
+                        client_uf = normalize_uf(customer[0].get('state'))
+                        price_table = normalize_uf(obj.get('priceTable'))
+                        if not price_table:
+                            raise HTTPException(400, 'Escolha a tabela de preços PA ou AP')
+                        if not price_table_matches_client(customer[0].get('state'), obj.get('priceTable')):
+                            raise HTTPException(400, 'Cliente do Pará usa PA; cliente do Amapá pode usar PA ou AP')
+                        total = Decimal('0')
+                        brands=set()
+                        for item in obj['items']:
+                            if not isinstance(item, dict) or not isinstance(item.get('sku'), str) or not item['sku'].strip():
+                                raise HTTPException(400, 'SKU inválido')
+                            item_brand=str(item.get('brand') or obj.get('brand') or '').strip()
+                            if not item_brand or item_brand=='Multimarcas': raise HTTPException(400,'Indústria do item obrigatória')
+                            brands.add(item_brand)
+                            table=validate_table(con,{**item,'brand':item_brand,'state':price_table},item_brand,price_table,allowed_states=['AP','PA'] if client_uf=='AP' else ['PA'])
+                            item['tableId']=table['id']
+                            price_key = price_id({**item,'brand':item_brand,'sku':item['sku'].strip()})
+                            price_row = con.execute("SELECT payload FROM entities WHERE kind='price' AND id=%s", (price_key,)).fetchone()
+                            if not price_row:
+                                raise HTTPException(400, f"Preço não cadastrado na tabela {price_table}: {item['sku']}")
+                            try:
+                                qty = Decimal(str(item['quantity']))
+                                unit = Decimal(str(price_row[0]['price']))
+                            except (KeyError, TypeError, ValueError, InvalidOperation):
+                                raise HTTPException(400, 'Quantidade ou preço inválido')
+                            if not qty.is_finite() or not unit.is_finite() or qty != qty.to_integral_value() or qty <= 0 or qty > 100000 or unit <= 0:
+                                raise HTTPException(400, 'Quantidade ou preço inválido')
+                            item['unitPrice'] = str(unit)
+                            item['subtotal'] = str((qty * unit).quantize(Decimal('0.01')))
+                            item['brand']=item_brand
+                            total += qty * unit
+                        obj['brand']='Multimarcas' if len(brands)>1 else next(iter(brands))
+                        obj['clientState'] = client_uf
+                        obj['priceTable'] = price_table
+                        obj['state'] = price_table
+                        obj['amount'] = float(total.quantize(Decimal('0.01')))
+                        validate_bella_order(con,obj,client_uf,user)
+                        existing_order = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
+                        attribute_order(con,user,obj,existing_order[0] if existing_order else None)
+                        rate_row=con.execute('SELECT seller_commission_rate FROM app_users WHERE username=%s',(obj['sellerResponsible'],)).fetchone()
+                        apply_seller_commission(obj,rate_row[0] if rate_row else None,existing_order[0] if existing_order else None)
+                        if not existing_order and con.execute("SELECT 1 FROM archived_entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone():
+                            raise HTTPException(409, 'Pedido arquivado não pode ser recriado; restaure o original')
+                        obj['orderNumber'] = existing_order[0].get('orderNumber') if existing_order and existing_order[0].get('orderNumber') else next_order_number(con)
                 if kind == 'order':
                     try: amount = float(obj.get('amount',0))
                     except (TypeError, ValueError): raise HTTPException(400,'Valor inválido')

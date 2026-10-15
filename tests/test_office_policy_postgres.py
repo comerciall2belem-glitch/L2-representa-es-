@@ -75,3 +75,67 @@ class PostgreSQLPolicyTests(unittest.TestCase):
         self.assertEqual(self.client.get('/api/office-policy/bonus?month=2026-10',headers=headers).status_code,403)
         self.assertEqual(self.client.put('/api/office-policy/promoters/QA%20Promoter/clients',headers=headers,json={'clientIds':['c2']}).status_code,403)
         with self.connection() as con:self.assertEqual(con.execute('SELECT count(*) FROM client_seller_authorizations').fetchone()[0],0)
+
+    def enable_and_finish_month(self):
+        self.client.put('/api/office-policy/bonus/eligibility',headers=self.headers,
+                        json={'month':'2026-10','user':'QA Seller','eligible':True}).raise_for_status()
+        p._services['today']=lambda:date(2026,11,1)
+
+    def test_closing_is_atomic_idempotent_and_does_not_modify_orders(self):
+        self.enable_and_finish_month()
+        with self.connection() as con:
+            original=con.execute("SELECT id,payload FROM entities WHERE kind='order' ORDER BY id").fetchall()
+        from concurrent.futures import ThreadPoolExecutor
+        def close():
+            return self.client.post('/api/office-policy/bonus/close',headers=self.headers,json={'month':'2026-10'})
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            responses=list(pool.map(lambda _:close(),range(2)))
+        self.assertEqual([r.status_code for r in responses],[200,200])
+        first=responses[0].json()
+        self.assertEqual(first,responses[1].json())
+        self.assertTrue(first['meta_escritorio_atingida'])
+        self.assertEqual(first['members'][0]['bonusCents'],400)
+        with self.connection() as con:
+            self.assertEqual(con.execute("SELECT id,payload FROM entities WHERE kind='order' ORDER BY id").fetchall(),original)
+            self.assertEqual(con.execute("SELECT count(*) FROM entities WHERE kind='bonus_cycle'").fetchone()[0],1)
+            rows=con.execute("SELECT payload FROM entities WHERE kind='bonus_accrual'").fetchall()
+            self.assertEqual(len(rows),1)
+            self.assertEqual(rows[0][0]['orderId'],'o2')
+            self.assertEqual(rows[0][0]['bonusCents'],400)
+            self.assertEqual(con.execute("SELECT count(*) FROM audit_log WHERE kind='bonus_cycle'").fetchone()[0],1)
+            con.execute("UPDATE entities SET payload=jsonb_set(payload,'{amount}','1') WHERE kind='goal'")
+        self.assertEqual(close().json(),first)
+        self.assertEqual(self.client.get('/api/office-policy/bonus/closing?month=2026-10',headers=self.headers).json()['closing'],first)
+
+    def test_closing_denies_open_month_unmet_goal_and_forged_flag(self):
+        url='/api/office-policy/bonus/close'
+        self.assertEqual(self.client.post(url,headers=self.headers,json={'month':'2026-10'}).status_code,409)
+        self.enable_and_finish_month()
+        self.assertEqual(self.client.post(url,headers=self.headers,json={'month':'2026-10','meta_escritorio_atingida':True}).status_code,422)
+        with self.connection() as con:
+            con.execute("UPDATE entities SET payload=jsonb_set(payload,'{amount}','2000') WHERE kind='goal'")
+        self.assertEqual(self.client.post(url,headers=self.headers,json={'month':'2026-10'}).status_code,409)
+        with self.connection() as con:
+            self.assertEqual(con.execute("SELECT count(*) FROM entities WHERE kind IN ('bonus_cycle','bonus_accrual')").fetchone()[0],0)
+
+    def test_non_admin_cannot_close_or_change_eligibility(self):
+        self.enable_and_finish_month()
+        headers={'Authorization':'Bearer qa-promoter'}
+        self.assertEqual(self.client.post('/api/office-policy/bonus/close',headers=headers,json={'month':'2026-10'}).status_code,403)
+        self.assertEqual(self.client.put('/api/office-policy/bonus/eligibility',headers=headers,json={'month':'2026-10','user':'QA Seller','eligible':True}).status_code,403)
+
+    def test_rounding_allocation_matches_office_total(self):
+        self.enable_and_finish_month()
+        with self.connection() as con:
+            con.execute("DELETE FROM entities WHERE kind='order'")
+            con.execute("UPDATE entities SET payload=jsonb_set(payload,'{amount}','1') WHERE kind='goal'")
+            for i in range(3):
+                obj={'id':'round-'+str(i),'status':'concluído','date':'2026-10-03','amount':'0.50'}
+                con.execute("INSERT INTO entities(kind,id,payload) VALUES('order',%s,%s)",(obj['id'],Jsonb(obj)))
+        response=self.client.post('/api/office-policy/bonus/close',headers=self.headers,json={'month':'2026-10'})
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(response.json()['members'][0]['bonusCents'],2)
+        with self.connection() as con:
+            rows=[r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='bonus_accrual'")]
+        self.assertEqual(sum(r['bonusCents'] for r in rows),2)
+        self.assertEqual(sorted(r['bonusCents'] for r in rows),[0,1,1])

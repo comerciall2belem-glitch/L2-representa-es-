@@ -1,0 +1,34 @@
+name: Monthly office bonus closing
+on:
+  schedule:
+    - cron: '0 6 1,2 * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: office-bonus-monthly
+  cancel-in-progress: false
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Close previous month using server-side goal validation
+        env:
+          L2_BONUS_JOB_URL: ${{ vars.L2_BONUS_JOB_URL }}
+          L2_BONUS_JOB_TOKEN: ${{ secrets.L2_BONUS_JOB_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os, json, urllib.request, urllib.parse
+          url=os.environ.get('L2_BONUS_JOB_URL','')
+          token=os.environ.get('L2_BONUS_JOB_TOKEN','')
+          parsed=urllib.parse.urlsplit(url)
+          if parsed.scheme!='https' or parsed.hostname!='l2-one.onrender.com' or parsed.path!='/api/office-policy/bonus/close-due' or parsed.query or parsed.fragment or parsed.username:
+              raise SystemExit('Configure the production HTTPS bonus endpoint')
+          if len(token)<32:
+              raise SystemExit('Configure the dedicated scheduler secret in both secure panels')
+          request=urllib.request.Request(url,data=b'{}',method='POST',headers={'X-L2-Bonus-Job-Token':token,'Content-Type':'application/json'})
+          with urllib.request.urlopen(request,timeout=60) as response:
+              result=json.load(response)
+          print('Closing verified:',result['month'],result['rule'],result['accrualCount'])
+          PY

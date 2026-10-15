@@ -1229,13 +1229,15 @@ function promoterHTML(html){
 }
 function officeBonusPanelHTML(){
  if(!financeAllowed())return '';
- return '<section class="box" id="officeBonusPanel"><h3>Bônus por meta do escritório</h3><label>Mês<input id="officeBonusMonth" type="month" value="'+esc(window.officeBonusMonth||window.reportMonth||today().slice(0,7))+'" onchange="window.officeBonusMonth=this.value;loadOfficeBonus()"></label><button type="button" class="secondary" onclick="loadOfficeBonus()">Atualizar apuração</button><div id="officeBonusResult" role="status">Consultando prévia na nuvem…</div><p class="muted">1% da base faturada, somente para elegíveis, quando a meta comercial geral for atingida. A elegibilidade vale a partir do mês selecionado, até nova alteração. Não lança pagamentos.</p></section>';
+ return '<section class="box" id="officeBonusPanel"><h3>Bônus por meta do escritório</h3><label>Mês<input id="officeBonusMonth" type="month" value="'+esc(window.officeBonusMonth||window.reportMonth||today().slice(0,7))+'" onchange="window.officeBonusMonth=this.value;loadOfficeBonus()"></label><button type="button" class="secondary" onclick="loadOfficeBonus()">Atualizar apuração</button><button type="button" class="secondary" id="officeBonusClose" onclick="closeOfficeBonus()">Encerrar apuração do mês</button><div id="officeBonusClosing" role="status"></div><div id="officeBonusResult" role="status">Consultando prévia na nuvem…</div><p class="muted">1% da base faturada, somente para elegíveis, quando a meta comercial geral for atingida. A elegibilidade vale a partir do mês selecionado, até nova alteração. Não lança pagamentos.</p></section>';
 }
 async function loadOfficeBonus(){
  const box=$('officeBonusResult'),month=$('officeBonusMonth')?.value;
  if(!box||!financeAllowed())return;
  if(!navigator.onLine||!s.token){box.textContent='Conecte-se para apurar o bônus com os dados atuais da nuvem.';return;}
  const token=s.token;
+ const closeButton=$('officeBonusClose');if(closeButton)closeButton.hidden=!hasSector('admin');
+ loadOfficeBonusClosing(month,token);
  try{
   const r=await fetch(s.server+'/api/office-policy/bonus?month='+encodeURIComponent(month),{headers:{Authorization:'Bearer '+token},cache:'no-store'}),data=await r.json();
   if(!r.ok)throw Error(memberError(data));
@@ -1268,4 +1270,26 @@ async function loadPromoterPortfolio(member){
   };
   host.scrollIntoView({block:'start'});
  }catch(error){host.textContent=error.message;}
+}
+
+async function loadOfficeBonusClosing(month,token){
+ const host=$('officeBonusClosing');if(!host)return;
+ try{
+  const r=await fetch(s.server+'/api/office-policy/bonus/closing?month='+encodeURIComponent(month),{headers:{Authorization:'Bearer '+token},cache:'no-store'}),data=await r.json();
+  if(!r.ok)throw Error(memberError(data));
+  if(host!==$('officeBonusClosing')||token!==s.token||month!==$('officeBonusMonth')?.value)return;
+  const c=data.closing;
+  host.textContent=c?'Apuração encerrada por '+c.closedBy+'. Bônus registrado separadamente: '+(c.members||[]).filter(x=>x.eligible).map(x=>x.user+' '+money(x.bonusCents/100)).join('; '):'Mês ainda não encerrado.';
+  const button=$('officeBonusClose');if(button)button.disabled=!!c;
+ }catch(error){if(host===$('officeBonusClosing'))host.textContent=error.message;}
+}
+async function closeOfficeBonus(){
+ if(!financeAllowed()||!hasSector('admin')||!navigator.onLine||!s.token)return;
+ const month=$('officeBonusMonth')?.value,button=$('officeBonusClose');
+ if(!month)return;if(button)button.disabled=true;
+ try{
+  const r=await fetch(s.server+'/api/office-policy/bonus/close',{method:'POST',headers:{Authorization:'Bearer '+s.token,'Content-Type':'application/json'},body:JSON.stringify({month})}),data=await r.json();
+  if(!r.ok)throw Error(memberError(data));
+  await loadOfficeBonus();
+ }catch(error){alert(error.message);if(button)button.disabled=false;}
 }
