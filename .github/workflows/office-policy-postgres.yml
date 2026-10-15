@@ -1,0 +1,36 @@
+name: Office policy PostgreSQL integration
+on:
+  pull_request:
+    branches: [main]
+    paths: ['office_policy.py', 'server.py', 'access_policy.py', 'tests/test_office_policy_postgres.py', '.github/workflows/office-policy-postgres.yml']
+  push:
+    branches: [feature/cloud-mobile-touch]
+permissions:
+  contents: read
+jobs:
+  postgres-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: fixture-only-transient
+          POSTGRES_DB: l2_policy_qa
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements-dev.txt
+      - name: Verify persisted bonus policy and promoter scope
+        env:
+          L2_POLICY_QA_DB: postgresql://postgres:fixture-only-transient@127.0.0.1:5432/l2_policy_qa
+        run: python -m unittest discover -s tests -p test_office_policy_postgres.py -v
