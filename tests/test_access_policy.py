@@ -64,3 +64,13 @@ class NamedFinanceRestrictions(unittest.TestCase):
     def test_marlene_and_erika_cannot_gain_finance(self):
         for name in ('Marlene','Erika'):
             self.assertNotIn('finance',effective_sectors(name,'Administrativo',['office','finance','management','admin']))
+
+class PromoterRestrictions(unittest.TestCase):
+    def test_role_cannot_escalate_stored_sectors(self):
+        self.assertEqual(effective_sectors('Promo','Promotora',['promotion','routes','finance','commercial','admin']),{'promotion','routes'})
+    def test_promoter_cannot_issue_orders(self):
+        class PromoterMembers(Members):
+            roles={**Members.roles,'Promo':'Promotora'}
+        with self.assertRaises(HTTPException) as error:
+            attribute_order(PromoterMembers(),'Promo',{'sellerResponsible':'Erika'})
+        self.assertEqual(error.exception.status_code,403)

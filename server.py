@@ -4,7 +4,7 @@ import os, json, time, hashlib, secrets, re, base64, gzip, unicodedata, io, zipf
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Header, UploadFile, File, Form, Request
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse, JSONResponse
 from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
 from pydantic import BaseModel, Field
@@ -30,6 +30,7 @@ from access_policy import effective_sectors, attribute_order, COMMERCIAL_SECTORS
 from seller_commission import validate_rate, apply_seller_commission
 from financial_visibility import hide_industry_commissions, preserve_industry_commissions
 
+import office_policy
 import zara
 import webchat
 import strategic_crm
@@ -40,7 +41,7 @@ import geo_prospecting
 
 BASE = Path(__file__).resolve().parent
 USERS = ['Ana Paula', 'Euler', 'Laís', 'Marlene']
-SECTORS = {'commercial','clients_edit','routes','office','management','finance','catalog','admin'}
+SECTORS = {'commercial','clients_edit','routes','office','management','finance','catalog','admin','promotion'}
 DEFAULT_SECTORS = {
  'Ana Paula':sorted(SECTORS),
  'Euler':['commercial','routes','management','finance','catalog'],
@@ -441,7 +442,7 @@ def require_sector(user, *allowed):
 
 def is_seller(con, user):
     row=con.execute('SELECT role FROM app_users WHERE username=%s AND active',(user,)).fetchone()
-    return bool(row and row[0]=='Vendedor' and user!='Euler')
+    return bool(row and ((row[0]=='Vendedor' and user!='Euler') or row[0]=='Promotora'))
 
 def check_client_scope(con, user, client_id):
     """A carteira de um vendedor é definida no servidor, inclusive para anexos."""
@@ -781,8 +782,10 @@ def assign_portfolio(data: AssignPortfolio, authorization: str | None = Header(d
 
 def validate_member(user, role, sectors):
     name = unicodedata.normalize('NFC', user).strip()
-    if not re.fullmatch(r"[\wÀ-ÿ .'-]{2,80}",name) or role not in ('Vendedor','Administrativo','Gestão') or set(sectors)-SECTORS or len(set(sectors))!=len(sectors):
+    if not re.fullmatch(r"[\wÀ-ÿ .'-]{2,80}",name) or role not in ('Vendedor','Administrativo','Gestão','Promotora') or set(sectors)-SECTORS or len(set(sectors))!=len(sectors):
         raise HTTPException(400,'Nome, função ou setores inválidos')
+    if role=='Promotora' and ('promotion' not in sectors or set(sectors)-{'promotion','routes'}):
+        raise HTTPException(400,'Promotora pode acessar somente Promoção e Rotas')
     if role=='Vendedor' and 'commercial' not in sectors:
         raise HTTPException(400,'Vendedor precisa de acesso Comercial')
     if name=='Laís' and (role!='Administrativo' or 'admin' not in sectors):
@@ -1021,6 +1024,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
             try:
                 kind, obj = change.type, dict(change.data)
                 entity_id = obj.get('id')
+                if account and account[0]=='Promotora':
+                    office_policy.validate_promoter_change(con,user,kind,obj)
                 deletable = {'delete_industry':'industry','delete_price_table':'price_table','delete_fulfillment':'fulfillment','delete_settlement':'settlement','delete_opportunity':'opportunity','delete_lead':'lead','delete_interaction':'interaction','delete_whatsapp_template':'whatsapp_template','delete_client':'client','delete_visit':'visit','delete_task':'task','delete_goal':'goal','delete_route':'route','delete_order':'order','delete_price':'price','delete_cash_entry':'cash_entry','delete_commission_rate':'commission_rate','delete_commission_receipt':'commission_receipt','delete_office_process':'office_process','delete_office_action':'office_action','delete_office_commercial':'office_commercial','delete_office_administrative':'office_administrative','delete_office_ritual':'office_ritual','delete_office_role':'office_role','delete_office_finance':'office_finance','delete_office_budget':'office_budget','delete_office_monthly_close':'office_monthly_close'}
                 if kind not in ('industry','price_table','fulfillment','settlement','opportunity','interaction','lead','whatsapp_template','client','visit','order','task','route','goal','price','commission_rate','commission_receipt','office_action','office_commercial','office_administrative','office_ritual','office_role','office_finance','office_budget','office_monthly_close','office_process','cash_day','cash_entry',*deletable) or not isinstance(entity_id,str) or not 1 <= len(entity_id) <= 128:
                     raise HTTPException(400, 'Alteração inválida')
@@ -1107,7 +1112,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     con.execute('INSERT INTO applied_changes(change_id) VALUES(%s)',(change.changeId,))
                     con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,target,entity_id,'delete'))
                     continue
-                if kind in ('opportunity','interaction','lead','visit','order','task','goal','whatsapp_template','client') and 'commercial' not in permissions and 'office' not in permissions:
+                if kind in ('opportunity','interaction','lead','visit','order','task','goal','whatsapp_template','client') and 'commercial' not in permissions and 'office' not in permissions and not ('promotion' in permissions and kind in ('visit','interaction','task')):
                     raise HTTPException(403,'Setor comercial sem permissão')
                 if kind in ('fulfillment',) and not ({'office','commercial'} & permissions): raise HTTPException(403,'Setor operacional sem permissão')
                 if kind.startswith('office_') and kind not in ('office_finance','office_budget','office_monthly_close') and 'office' not in permissions: raise HTTPException(403,'Setor escritório sem permissão')
@@ -1525,11 +1530,11 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 result[name]=[];continue
             if kind=='fulfillment' and not ({'office','commercial'} & permissions):
                 result[name]=[];continue
-            if kind in ('client','visit','order','task','goal','opportunity','interaction','lead','whatsapp_template') and not ({'commercial','office','finance','management'} & permissions):
+            if kind in ('client','visit','order','task','goal','opportunity','interaction','lead','whatsapp_template') and not ({'commercial','office','finance','management'} & permissions) and not ('promotion' in permissions and kind in ('client','visit','task','interaction')):
                 result[name]=[];continue
             if kind == 'route' and 'routes' not in permissions:
                 result[name]=[];continue
-            if kind in ('price','industry','price_table') and not ({'catalog','commercial'} & permissions):
+            if kind in ('price','industry','price_table') and not ({'catalog','commercial','promotion'} & permissions):
                 result[name]=[];continue
             if kind == 'office_process' and 'finance' not in permissions:
                 result[name] = [row[0] for row in con.execute("SELECT payload FROM entities WHERE kind=%s AND coalesce(payload->>'Área','')<>'Financeiro' ORDER BY updated_at,id", (kind,))]
@@ -1564,6 +1569,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
             result['crmTeam']['at'] = datetime.now(TZ).isoformat()
         for kind, name in [('settlement','settlements'),('office_finance','officeFinance'),('office_budget','officeBudget'),('office_monthly_close','officeMonthlyClose'),('cash_day','cashDays'),('cash_entry','cashEntries'),('commission_rate','commissionRates'),('commission_receipt','commissionReceipts')]:
             result[name] = scoped_rows(con,kind,user) if 'finance' in permissions else []
+        if account and account[0]=='Promotora': result=office_policy.promoter_snapshot(result,user)
         return result if 'finance' in permissions else hide_industry_commissions(result)
 
 def order_exists(con, order_id: str):
@@ -2394,3 +2400,20 @@ def add_inventory_movement(data: InventoryMovement, authorization: str | None = 
         result = inventory_apply(con, data, user)
         con.execute("SELECT pg_notify('l2_records_changed','')")
         return result
+
+# No background payment processing: bonus is a fresh, server-authoritative preview.
+office_policy.configure(db=lambda: db(), auth=lambda header: auth(header), sectors_for=lambda user: sectors_for(user), admin_access=lambda user: admin_access(user), today=lambda: datetime.now(TZ).date())
+app.include_router(office_policy.router)
+
+@app.middleware('http')
+async def restrict_promoter_api(request: Request, call_next):
+    path=request.url.path
+    authorization=request.headers.get('authorization')
+    if path.startswith('/api/') and path not in ('/api/login','/api/leads/webhook') and authorization and authorization.startswith('Bearer ') and not office_policy.promoter_route_allowed(request.method,path):
+        try:
+            restricted=await asyncio.to_thread(office_policy.restricted_promoter_request,authorization)
+        except HTTPException as error:
+            return JSONResponse({'detail':error.detail},status_code=error.status_code)
+        if restricted:
+            return JSONResponse({'detail':'Operação fora do perfil Promotora'},status_code=403)
+    return await call_next(request)

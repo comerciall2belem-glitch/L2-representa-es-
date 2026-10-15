@@ -5,6 +5,8 @@ COMMERCIAL_SECTORS = {'commercial', 'clients_edit', 'routes'}
 
 def effective_sectors(username, role, sectors):
     allowed = set(sectors or [])
+    if role == 'Promotora':
+        return allowed & {'promotion','routes'}
     if role == 'Vendedor' and username != 'Euler':
         allowed &= COMMERCIAL_SECTORS
     if username in ('Marlene','Erika'):
@@ -16,6 +18,8 @@ def attribute_order(con, actor, order, previous=None):
     previous = previous or {}
     member = con.execute('SELECT role FROM app_users WHERE username=%s AND active', (actor,)).fetchone()
     role = member[0] if member else ''
+    if role == 'Promotora':
+        raise HTTPException(403, 'Promotora não pode emitir ou atribuir pedidos')
     administrative = actor == 'Laís' or role in ('Administrativo', 'Administradora', 'Gestão')
     seller = str(order.get('sellerResponsible') or previous.get('sellerResponsible') or '').strip()
     if not administrative and actor != 'Euler':
