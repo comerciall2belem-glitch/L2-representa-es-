@@ -1035,6 +1035,13 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 if con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s',(change.changeId,)).fetchone():
                     continue
                 target_kind=deletable.get(kind,kind)
+                if target_kind == 'commission_rate' and not admin_access(user):
+                    raise HTTPException(403, 'Parâmetros globais de comissão restritos à administração')
+                if target_kind == 'goal':
+                    prior_goal = con.execute("SELECT payload FROM entities WHERE kind='goal' AND id=%s",(entity_id,)).fetchone()
+                    candidates = [obj] + ([prior_goal[0]] if prior_goal else [])
+                    if any(str(g.get('user','')).strip().casefold() == 'equipe' and not g.get('brand') for g in candidates) and not admin_access(user):
+                        raise HTTPException(403, 'Meta geral que libera bônus restrita à administração')
                 if target_kind=='client':
                     previous_client=con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s",(entity_id,)).fetchone()
                     if not admin_access(user) and previous_client and obj.get('owner',previous_client[0].get('owner'))!=previous_client[0].get('owner'):

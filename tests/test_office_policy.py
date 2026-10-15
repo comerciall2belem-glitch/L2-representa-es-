@@ -165,3 +165,27 @@ class PromoterMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(blocked.status_code,403)
         request.url.path='/api/sync';request.method='POST'
         self.assertEqual(await namespace['restrict_promoter_api'](request,next_handler),'next')
+
+
+class SchedulerSecurityTests(unittest.TestCase):
+    def test_missing_or_wrong_job_secret_fails_closed(self):
+        from unittest.mock import patch
+        import os
+        with patch.dict(os.environ, {'L2_BONUS_JOB_TOKEN':''}):
+            with self.assertRaises(HTTPException) as e:p.close_due_bonus('anything')
+            self.assertEqual(e.exception.status_code,503)
+        with patch.dict(os.environ, {'L2_BONUS_JOB_TOKEN':'x'*40}):
+            for token in (None,'wrong'):
+                with self.assertRaises(HTTPException) as e:p.close_due_bonus(token)
+                self.assertEqual(e.exception.status_code,401)
+
+    def test_job_identity_requires_admin_and_finance(self):
+        from unittest.mock import patch
+        import os
+        previous=dict(p._services)
+        try:
+            p.configure(admin_access=lambda user:False,sectors_for=lambda user:{'finance'})
+            with patch.dict(os.environ, {'L2_BONUS_JOB_TOKEN':'x'*40,'L2_BONUS_JOB_ADMIN':'NoAdmin'}):
+                with self.assertRaises(HTTPException) as e:p.close_due_bonus('x'*40)
+                self.assertEqual(e.exception.status_code,403)
+        finally:p._services.clear();p._services.update(previous)
