@@ -5,17 +5,14 @@ from pathlib import Path
 import unittest
 from types import SimpleNamespace
 from financial_visibility import hide_industry_commissions
+from seller_commission import is_closed_order, preserve_closed_order
+from fastapi import HTTPException
 
 source=ast.parse(Path(__file__).resolve().parents[1].joinpath('server.py').read_text())
 function=next(n for n in source.body if isinstance(n,ast.FunctionDef) and n.name=='restore_archived_order')
 function.decorator_list=[]
 sync_function=next(n for n in source.body if isinstance(n,ast.FunctionDef) and n.name=='sync')
 sync_function.decorator_list=[]
-
-class HTTPException(Exception):
-    def __init__(self,status_code,detail):
-        self.status_code=status_code
-        self.detail=detail
 
 def Header(*args,**kwargs): return None
 
@@ -37,19 +34,20 @@ class FakeDB:
     def __enter__(self):return self.con
     def __exit__(self,*args):return False
 
-namespace={'strategic_crm':SimpleNamespace(event=lambda *a:None,refresh_client=lambda *a:None,changed=lambda *a:None),'hide_industry_commissions':hide_industry_commissions,'HTTPException':HTTPException,'Header':Header,'Jsonb':lambda x:x,'Sync':object,'FINANCE_USERS':{'Ana Paula','Euler','Laís'},'admin_access':lambda user:user in ('Ana Paula','Marlene')}
+namespace={'is_closed_order':is_closed_order,'preserve_closed_order':preserve_closed_order,'strategic_crm':SimpleNamespace(event=lambda *a:None,refresh_client=lambda *a:None,changed=lambda *a:None),'hide_industry_commissions':hide_industry_commissions,'HTTPException':HTTPException,'Header':Header,'Jsonb':lambda x:x,'Sync':object,'FINANCE_USERS':{'Ana Paula','Euler','Laís'},'admin_access':lambda user:user in ('Ana Paula','Marlene')}
 exec(compile(ast.Module(body=[function,sync_function],type_ignores=[]),'<archive>','exec'),namespace)
 
 class ArchiveCon(FakeCon):
+    def __init__(self,status='Faturado'):super().__init__();self.status=status
     def execute(self,sql,params=None):
         self.queries.append((sql,params))
         if "SELECT payload FROM entities WHERE kind='order'" in sql:
-            return Cursor(({'id':'p1','status':'Faturado','amount':53.55},))
+            return Cursor(({'id':'p1','status':self.status,'amount':53.55},))
         return Cursor()
 
 class ArchiveTests(unittest.TestCase):
-    def test_admin_delete_archives_order_without_removing_attachments(self):
-        con=ArchiveCon();namespace['db']=lambda:FakeDB(con);namespace['auth']=lambda _: 'Ana Paula'
+    def test_admin_delete_archives_unbilled_order_without_removing_attachments(self):
+        con=ArchiveCon('Confirmado');namespace['db']=lambda:FakeDB(con);namespace['auth']=lambda _: 'Ana Paula'
         change=type('Change',(),{'type':'delete_order','data':{'id':'p1'},'changeId':'delete-1'})()
         namespace['sync'](type('Sync',(),{'changes':[change]})(),'token')
         statements='\n'.join(sql for sql,_ in con.queries)
@@ -62,7 +60,7 @@ class ArchiveTests(unittest.TestCase):
         change=type('Change',(),{'type':'delete_order','data':{'id':'p1'},'changeId':'delete-2'})()
         with self.assertRaises(HTTPException) as caught:
             namespace['sync'](type('Sync',(),{'changes':[change]})(),'token')
-        self.assertEqual(caught.exception.status_code,403)
+        self.assertEqual(caught.exception.status_code,409)
         self.assertFalse(any(sql.startswith('DELETE FROM entities') for sql,_ in con.queries))
 
     def test_admin_can_restore_order_without_deleting_attachments(self):
@@ -84,3 +82,12 @@ class ArchiveTests(unittest.TestCase):
             namespace['restore_archived_order']('p1','token')
         self.assertEqual(caught.exception.status_code,403)
 
+
+    def test_even_admin_cannot_archive_closed_orders(self):
+        for status in ('Faturado','faturado','concluído','Concluido'):
+            con=ArchiveCon(status);namespace['db']=lambda:FakeDB(con);namespace['auth']=lambda _: 'Ana Paula'
+            change=type('Change',(),{'type':'delete_order','data':{'id':'p1'},'changeId':'closed-'+status})()
+            with self.subTest(status=status),self.assertRaises(HTTPException) as caught:
+                namespace['sync'](type('Sync',(),{'changes':[change]})(),'token')
+            self.assertEqual(caught.exception.status_code,409)
+            self.assertFalse(any(sql.startswith(('DELETE FROM entities','INSERT INTO archived_entities')) for sql,_ in con.queries))
