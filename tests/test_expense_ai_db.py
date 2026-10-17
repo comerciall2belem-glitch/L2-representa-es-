@@ -1,5 +1,5 @@
 """Run only against an explicitly marked disposable PostgreSQL database."""
-import hashlib
+import base64
 import os
 from contextlib import contextmanager
 from datetime import datetime
@@ -18,7 +18,8 @@ DSN=os.getenv('PERSONAL_TEST_DSN','')
 pytestmark=pytest.mark.skipif(not DSN or os.getenv('L2_EXPENSE_TEST_DISPOSABLE')!='yes',reason='Requires explicitly disposable PostgreSQL database')
 
 def db(): return psycopg.connect(DSN)
-def headers(user='Ana Paula'): return {'Authorization':user}
+def headers(user='Ana Paula'): return {'Authorization':base64.urlsafe_b64encode(user.encode()).decode()}
+def auth(header): return base64.urlsafe_b64decode(header).decode() if header else ''
 def today(): return datetime.now(ZoneInfo('America/Belem')).date().isoformat()
 
 @pytest.fixture
@@ -31,7 +32,7 @@ def client():
         setup(con)
         con.execute("INSERT INTO entities(kind,id,payload) VALUES('cash_day','test-day',%s)",(Jsonb(dict(date=today(),status='Aberto',opening=0)),))
     initialize_personal(db)
-    app=FastAPI();install(app,db,lambda h: h or '',lambda u: {'finance'} if u in ('Ana Paula','Euler','Laís') else set())
+    app=FastAPI();install(app,db,auth,lambda u: {'finance'} if u in ('Ana Paula','Euler','Laís') else set())
     return TestClient(app)
 
 def upload(client,scope='empresa',content=b'receipt-a',user='Ana Paula',**extra):
@@ -132,3 +133,16 @@ def test_invalid_personal_account_rolls_back(client):
         assert count(con,'expense_receipts')==0
         con.execute("SELECT set_config('l2.personal_actor','Ana Paula',true)")
         assert count(con,'personal_finance.transactions')==0
+
+
+def test_concurrent_duplicate_creates_only_one_expense(client):
+    from concurrent.futures import ThreadPoolExecutor
+    def send():
+        return client.post('/api/expense-ai/receipts',headers=headers(),data={'scope':'empresa'},files={'file':('teste.png',b'same-concurrent-receipt','image/png')}).status_code
+    with patch('expense_ai.extract',return_value=(dict(supplier='LOJA CONCORRENTE',date=today(),amount='15.10',category='Outros'),'image/png')):
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            statuses=sorted(pool.map(lambda _:send(),range(2)))
+    assert statuses==[200,409]
+    with db() as con:
+        assert count(con,'expense_receipts')==1
+        assert con.execute("SELECT count(*) FROM entities WHERE kind='cash_entry'").fetchone()[0]==1
