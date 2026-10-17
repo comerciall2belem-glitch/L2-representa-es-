@@ -153,6 +153,7 @@ def send_daily(con, report_day=None):
 
 if __name__=='__main__':
     import psycopg
-    with psycopg.connect(os.environ['DATABASE_URL']) as connection:
+    from database_connection import connection_options
+    with psycopg.connect(os.environ['DATABASE_URL'], **connection_options(os.environ['DATABASE_URL'])) as connection:
         count=send_daily(connection)
         print(f'Relatório entregue via SMTP ({count} bytes)')

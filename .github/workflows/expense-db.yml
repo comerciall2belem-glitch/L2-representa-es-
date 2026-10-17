@@ -2,7 +2,7 @@ name: Expense AI PostgreSQL
 on:
   pull_request:
     branches: [main]
-    paths: ['expense_ai.py', 'personal_finance.py', 'test_personal_finance.py', 'tests/test_expense_ai*.py', '.github/workflows/expense-db.yml']
+    paths: ['database_connection.py', 'tests/test_database_connection.py', 'expense_ai.py', 'personal_finance.py', 'test_personal_finance.py', 'tests/test_expense_ai*.py', '.github/workflows/expense-db.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -36,4 +36,4 @@ jobs:
           psql -h 127.0.0.1 -U postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE l2test LOGIN NOSUPERUSER PASSWORD 'disposable-ci-password';"
           psql -h 127.0.0.1 -U postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE l2expense OWNER l2test;'
       - name: Validar isolamento, rollback, estorno, anexos e financeiro pessoal
-        run: python -m pytest tests/test_expense_ai.py tests/test_expense_ai_db.py test_personal_finance.py -q
+        run: python -m pytest tests/test_database_connection.py tests/test_expense_ai.py tests/test_expense_ai_db.py test_personal_finance.py -q

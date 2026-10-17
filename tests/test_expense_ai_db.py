@@ -11,13 +11,14 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from psycopg.types.json import Jsonb
+from database_connection import connection_options
 from expense_ai import install, setup
 from personal_finance import initialize_personal
 
 DSN=os.getenv('PERSONAL_TEST_DSN','')
 pytestmark=pytest.mark.skipif(not DSN or os.getenv('L2_EXPENSE_TEST_DISPOSABLE')!='yes',reason='Requires explicitly disposable PostgreSQL database')
 
-def db(): return psycopg.connect(DSN)
+def db(): return psycopg.connect(DSN, **connection_options(DSN, {}))
 def headers(user='Ana Paula'): return {'Authorization':base64.urlsafe_b64encode(user.encode()).decode()}
 def auth(header): return base64.urlsafe_b64decode(header).decode() if header else ''
 def today(): return datetime.now(ZoneInfo('America/Belem')).date().isoformat()

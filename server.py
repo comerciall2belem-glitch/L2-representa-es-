@@ -9,6 +9,7 @@ from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
 from pydantic import BaseModel, Field
 import psycopg
+from database_connection import connection_options
 from psycopg.types.json import Jsonb
 from client_cleanup import plan as client_cleanup_plan
 from daily_report import build_pdf, read_data, TZ
@@ -64,7 +65,7 @@ if config_errors:
     raise RuntimeError('Configuracao invalida: ' + '; '.join(config_errors))
 
 def db():
-    return psycopg.connect(DATABASE_URL)
+    return psycopg.connect(DATABASE_URL, **connection_options(DATABASE_URL))
 
 def next_order_number(con):
     return con.execute('UPDATE order_counter SET value=value+1 WHERE id=1 RETURNING value').fetchone()[0]
@@ -2362,7 +2363,7 @@ async def records_events(request: Request, authorization: str | None = Header(de
     # The channel carries only an invalidation signal, never customer data or secrets.
     await asyncio.to_thread(auth, authorization)
     async def messages():
-        async with await psycopg.AsyncConnection.connect(DATABASE_URL, autocommit=True) as con:
+        async with await psycopg.AsyncConnection.connect(DATABASE_URL, autocommit=True, **connection_options(DATABASE_URL)) as con:
             await con.execute('LISTEN l2_records_changed')
             yield 'event: ready\ndata: {}\n\n'
             while not await request.is_disconnected():
