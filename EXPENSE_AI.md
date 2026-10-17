@@ -25,3 +25,9 @@ Downloads Meta têm URL permitida, limite de bytes e timeout; processamento OCR 
 25 testes do módulo: seleção e acesso a destinos, valores brasileiros, data, total ambíguo, PDF selecionável real, limites de arquivos, não duplicação e roteamento exclusivo das gravações. As gravações SQL são testadas com conexão simulada. Mais 9 testes de regressão do financeiro pessoal passaram; 63 testes que exigem banco foram ignorados por falta de banco de testes. Sintaxe Python e JS conferida.
 
 Antes de publicar: validar transações/rollback/RLS/concorrência em PostgreSQL de homologação; OCR de fotos reais JPG/PNG/PDF escaneado; categorias e revisão; upload e edição em celular/tablet; saldos após estorno e caixa fechado; permissões e não exposição pessoal; entrega/reenvio do webhook Meta. Nenhuma despesa real foi lançada pelos testes.
+
+## Restrição: preservar tabelas e catálogo
+
+Esta versão não cria nem altera tabelas, colunas ou índices. Não requer migração de OCR. Usa entities existente para o anexo empresarial (registro privado fora do snapshot de sincronização) e para marcador de não duplicação. Originais pessoais ficam exclusivamente em personal_finance.attachments existente, sob RLS. Nenhum preço, SKU ou indústria é editado pelo módulo. As estruturas financeiras existentes devem estar disponíveis; ausência gera erro sem tentar criá-las. A checagem interna não exige uma tabela expense_receipts. Não altera o comando de início.
+
+Os testes de integração usam somente banco descartável, com schema de teste. Incluem comparação do catálogo PostgreSQL e sentinelas de preços/SKUs antes e depois dos lançamentos. Não executar fixtures de teste contra homologação ou produção.

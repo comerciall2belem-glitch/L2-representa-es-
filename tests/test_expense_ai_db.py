@@ -27,7 +27,7 @@ def today(): return datetime.now(ZoneInfo('America/Belem')).date().isoformat()
 def client():
     with db() as con:
         con.execute('DROP SCHEMA IF EXISTS personal_finance CASCADE')
-        con.execute('DROP TABLE IF EXISTS expense_receipts,entities,audit_log CASCADE')
+        con.execute('DROP TABLE IF EXISTS entities,audit_log CASCADE')
         con.execute('CREATE TABLE entities(kind TEXT,id TEXT,payload JSONB,updated_at TIMESTAMPTZ DEFAULT now(),created_at TIMESTAMPTZ DEFAULT now(),PRIMARY KEY(kind,id))')
         con.execute('CREATE TABLE audit_log(username TEXT,kind TEXT,entity_id TEXT,action TEXT)')
         setup(con)
@@ -40,7 +40,9 @@ def upload(client,scope='empresa',content=b'receipt-a',user='Ana Paula',**extra)
     with patch('expense_ai.extract',return_value=(dict(supplier='POSTO TESTE',date=today(),amount='186.40',category='Combustível'),'image/png')):
         return client.post('/api/expense-ai/receipts',headers=headers(user),data=dict(scope=scope,**extra),files={'file':('teste.png',content,'image/png')})
 
-def count(con,table): return con.execute('SELECT count(*) FROM '+table).fetchone()[0]
+def count(con,table):
+    if table=='expense_receipts': return con.execute("SELECT count(*) FROM entities WHERE kind='expense_receipt'").fetchone()[0]
+    return con.execute('SELECT count(*) FROM '+table).fetchone()[0]
 
 def test_corporate_amount_attachment_and_audit_are_atomic(client):
     response=upload(client);assert response.status_code==200,response.text
@@ -49,7 +51,9 @@ def test_corporate_amount_attachment_and_audit_are_atomic(client):
         payload=con.execute("SELECT payload FROM entities WHERE kind='cash_entry' AND id=%s",(eid,)).fetchone()[0]
         assert Decimal(str(payload['amount']))==Decimal('186.40')
         assert payload['type']=='Saída'
-        assert con.execute('SELECT content FROM expense_receipts WHERE id=%s',(eid,)).fetchone()[0]==b'receipt-a'
+        import base64
+        saved=con.execute("SELECT payload FROM entities WHERE kind='expense_receipt' AND id=%s",(eid,)).fetchone()[0]
+        assert base64.b64decode(saved['content'])==b'receipt-a'
         assert count(con,'audit_log')==1
         con.execute("SELECT set_config('l2.personal_actor','Ana Paula',true)")
         assert count(con,'personal_finance.transactions')==0
@@ -80,9 +84,8 @@ def test_closed_day_rolls_back_everything(client):
         assert con.execute("SELECT count(*) FROM entities WHERE kind='cash_entry'").fetchone()[0]==0
 
 def test_forced_late_failure_rolls_back_expense_and_attachment(client):
-    with db() as con:
-        con.execute("ALTER TABLE expense_receipts ADD CONSTRAINT fail_test CHECK(filename<>'teste.png')")
-    with pytest.raises(psycopg.errors.CheckViolation): upload(client,'pessoal')
+    with patch('expense_ai.store_receipt',side_effect=RuntimeError('Injected storage failure')):
+        with pytest.raises(RuntimeError): upload(client,'pessoal')
     with db() as con:
         con.execute("SELECT set_config('l2.personal_actor','Ana Paula',true)")
         assert count(con,'personal_finance.transactions')==0
@@ -147,3 +150,34 @@ def test_concurrent_duplicate_creates_only_one_expense(client):
     with db() as con:
         assert count(con,'expense_receipts')==1
         assert con.execute("SELECT count(*) FROM entities WHERE kind='cash_entry'").fetchone()[0]==1
+
+
+def schema_signature(con):
+    return con.execute("""SELECT n.nspname,c.relname,c.relrowsecurity,c.relforcerowsecurity,
+        a.attname,format_type(a.atttypid,a.atttypmod),a.attnotnull
+        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        JOIN pg_attribute a ON a.attrelid=c.oid
+        WHERE n.nspname IN ('public','personal_finance') AND c.relkind='r'
+        AND a.attnum>0 AND NOT a.attisdropped ORDER BY 1,2,a.attnum""").fetchall()
+
+
+def test_receipt_processing_preserves_schema_prices_and_skus(client):
+    with db() as con:
+        for kind in ('price','price_table','industry'):
+            con.execute('INSERT INTO entities(kind,id,payload) VALUES(%s,%s,%s)',(kind,'preserved',Jsonb({'name':'Tabela original','sku':'ABC','price':99.90})))
+        before=schema_signature(con)
+        prices=con.execute("SELECT kind,id,payload FROM entities WHERE kind IN ('price','price_table','industry') ORDER BY kind,id").fetchall()
+    assert upload(client).status_code==200
+    assert upload(client,'pessoal',content=b'personal-receipt').status_code==200
+    with db() as con:
+        assert schema_signature(con)==before
+        assert con.execute("SELECT kind,id,payload FROM entities WHERE kind IN ('price','price_table','industry') ORDER BY kind,id").fetchall()==prices
+        assert con.execute("SELECT to_regclass('public.expense_receipts')").fetchone()[0] is None
+
+
+def test_personal_original_not_stored_in_corporate_entities(client):
+    response=upload(client,'pessoal');assert response.status_code==200,response.text
+    with db() as con:
+        marker=con.execute("SELECT payload FROM entities WHERE kind='expense_receipt' AND id=%s",(response.json()['id'],)).fetchone()[0]
+        assert set(marker)=={'scope','entryId','createdBy'}
+        assert 'content' not in marker and 'amount' not in marker

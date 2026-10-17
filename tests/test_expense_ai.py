@@ -48,7 +48,7 @@ class Connection:
     def __init__(self,duplicate=False): self.sql=[];self.duplicate=duplicate
     def execute(self,sql,args=None):
         self.sql.append((sql,args))
-        if 'SELECT 1 FROM expense_receipts' in sql: return Cursor((1,) if self.duplicate else None)
+        if "SELECT 1 FROM entities WHERE kind='expense_receipt'" in sql: return Cursor((1,) if self.duplicate else None)
         if "SELECT payload FROM entities WHERE kind='cash_day'" in sql: return Cursor(({'status':'Aberto'},))
         if 'SELECT 1 FROM personal_finance.accounts' in sql: return Cursor((1,))
         if 'SELECT id FROM personal_finance.categories' in sql: return Cursor(('cat',))

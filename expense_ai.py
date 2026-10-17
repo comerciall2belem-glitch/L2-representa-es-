@@ -1,8 +1,8 @@
 """Receipt intake with explicit ledger selection and atomic attachment/posting."""
+import base64
 import hashlib
 import re
 import unicodedata
-import uuid
 from datetime import datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
@@ -49,7 +49,7 @@ def parse_receipt(text, sent_at=None):
         if any(word in normalize(text) for word in words): category = name; break
     return dict(supplier=supplier, date=when.isoformat(), amount=str(next(iter(totals))), category=category, dateSource='comprovante' if dates else 'envio')
 
-def extract(content):
+def extract(content, sent_at=None):
     import pymupdf
     from pdf_price_import import _OCR_LOCK, ocr_page
     kind = 'pdf' if content.startswith(b'%PDF-') else 'png' if content.startswith(b'\x89PNG\r\n\x1a\n') else 'jpeg' if content.startswith(b'\xff\xd8\xff') else None
@@ -68,23 +68,28 @@ def extract(content):
                     if any(score < .90 for _, score in rows): raise ValueError('Leitura de baixa confiança; nenhum lançamento foi criado')
                     value = '\n'.join(row for row, _ in rows)
                 text.append(value)
-        return parse_receipt('\n'.join(text)), {'pdf':'application/pdf','png':'image/png','jpeg':'image/jpeg'}[kind]
+        return parse_receipt('\n'.join(text),sent_at), {'pdf':'application/pdf','png':'image/png','jpeg':'image/jpeg'}[kind]
     finally: _OCR_LOCK.release()
 
 def setup(con):
-    con.execute('''CREATE TABLE IF NOT EXISTS expense_receipts (
-        id TEXT PRIMARY KEY, scope TEXT NOT NULL CHECK(scope IN ('empresa','pessoal')),
-        digest TEXT UNIQUE NOT NULL, entry_id TEXT NOT NULL, filename TEXT NOT NULL,
-        content_type TEXT NOT NULL, content BYTEA NOT NULL, created_by TEXT NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now())''')
+    # Readiness only: the OCR module never creates or changes tables.
+    if con.execute("SELECT to_regclass('public.entities') IS NOT NULL").fetchone()[0] is not True:
+        raise HTTPException(503, 'Estrutura financeira existente indisponível')
+
+def store_receipt(con, eid, scope, content, filename, mime, user):
+    # Personal originals remain exclusively in the existing, RLS-protected attachments.
+    payload=dict(scope=scope,entryId=eid,createdBy=user)
+    if scope=='empresa':
+        payload.update(filename=filename,contentType=mime,content=base64.b64encode(content).decode('ascii'))
+    con.execute("INSERT INTO entities(kind,id,payload) VALUES('expense_receipt',%s,%s)",(eid,Jsonb(payload)))
 
 def post_receipt(con, user, scope, content, filename, extracted, mime, account='', cost_center=''):
     digest = hashlib.sha256(content).hexdigest()
     # One document cannot silently create expenses in both ledgers, including concurrent retries.
     con.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,0))', ('receipt:'+digest,))
-    if con.execute('SELECT 1 FROM expense_receipts WHERE digest=%s', (digest,)).fetchone():
+    eid = 'expense-'+digest
+    if con.execute("SELECT 1 FROM entities WHERE kind='expense_receipt' AND id=%s", (eid,)).fetchone():
         raise HTTPException(409, 'Este comprovante já foi recebido; nenhum lançamento duplicado foi criado')
-    eid = 'expense-'+uuid.uuid4().hex
     if scope == 'empresa':
         historical=con.execute("SELECT payload->>'category' FROM entities WHERE kind='cash_entry' AND payload->>'type'='Saída' AND lower(payload->>'description')=lower(%s) ORDER BY updated_at DESC LIMIT 1",(extracted['supplier'],)).fetchone()
         if historical and historical[0]: extracted=dict(extracted,category=historical[0])
@@ -110,7 +115,7 @@ def post_receipt(con, user, scope, content, filename, extracted, mime, account='
             VALUES(%s,%s,%s,'Despesa Pessoal',%s,%s,%s,'Pago',%s,'Casal',%s,%s,%s)''', (eid,HOUSEHOLD,extracted['date'],category_row[0],account,Decimal(extracted['amount']),extracted['date'],extracted['supplier'],user,user))
         con.execute('INSERT INTO personal_finance.attachments(id,household_id,transaction_id,filename,content_type,content,uploaded_by) VALUES(%s,%s,%s,%s,%s,%s,%s)', (eid,HOUSEHOLD,eid,filename,mime,content,user))
         con.execute("INSERT INTO personal_finance.audit_events(household_id,actor,entity_id,action) VALUES(%s,%s,%s,'expense_ocr')", (HOUSEHOLD,user,eid))
-    con.execute('INSERT INTO expense_receipts(id,scope,digest,entry_id,filename,content_type,content,created_by) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)', (eid,scope,digest,eid,filename,mime,content,user))
+    store_receipt(con,eid,scope,content,filename,mime,user)
     return dict(extracted,id=eid,scope=scope,message='Despesa lançada automaticamente no '+('fluxo de caixa da empresa!' if scope=='empresa' else 'financeiro pessoal!'))
 
 def install(app, db, auth, sectors):
@@ -118,8 +123,9 @@ def install(app, db, auth, sectors):
     @router.post('/receipts')
     def upload(scope: str = Form(...), file: UploadFile = File(...), account: str = Form(''), cost_center: str = Form(''), authorization: str | None = Header(None)):
         user = auth(authorization); authorize_scope(user,scope,sectors)
+        received_at=datetime.now(ZoneInfo('America/Belem'))
         content = file.file.read(MAX_BYTES+1)
-        try: extracted,mime = extract(content)
+        try: extracted,mime = extract(content,received_at)
         except (ValueError, RuntimeError) as exc: raise HTTPException(422,str(exc)) from None
         user = auth(authorization)
         authorize_scope(user,scope,sectors)
@@ -131,18 +137,25 @@ def install(app, db, auth, sectors):
         user=auth(authorization)
         with db() as con:
             setup(con)
-            row=con.execute('SELECT scope,content,content_type FROM expense_receipts WHERE id=%s',(receipt_id,)).fetchone()
+            row=con.execute("SELECT payload FROM entities WHERE kind='expense_receipt' AND id=%s",(receipt_id,)).fetchone()
             if not row: raise HTTPException(404,'Comprovante não encontrado')
-            authorize_scope(user,row[0],sectors)
-            return Response(bytes(row[1]),media_type=row[2],headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
+            payload=row[0];authorize_scope(user,payload['scope'],sectors)
+            if payload['scope']=='pessoal':
+                con.execute("SELECT set_config('l2.personal_actor',%s,true)",(user,))
+                attachment=con.execute('SELECT content,content_type FROM personal_finance.attachments WHERE id=%s AND household_id=%s',(receipt_id,HOUSEHOLD)).fetchone()
+                if not attachment: raise HTTPException(404,'Comprovante não encontrado')
+                content,mime=bytes(attachment[0]),attachment[1]
+            else:
+                content,mime=base64.b64decode(payload['content']),payload['contentType']
+            return Response(content,media_type=mime,headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
     @router.post('/receipts/{receipt_id}/reverse')
     def reverse(receipt_id: str, authorization: str | None = Header(None)):
         user=auth(authorization)
         with db() as con:
             setup(con)
-            row=con.execute('SELECT scope,entry_id FROM expense_receipts WHERE id=%s FOR UPDATE',(receipt_id,)).fetchone()
+            row=con.execute("SELECT payload FROM entities WHERE kind='expense_receipt' AND id=%s FOR UPDATE",(receipt_id,)).fetchone()
             if not row: raise HTTPException(404,'Comprovante não encontrado')
-            scope,eid=row; authorize_scope(user,scope,sectors)
+            scope,eid=row[0]['scope'],row[0]['entryId']; authorize_scope(user,scope,sectors)
             if scope=='pessoal':
                 con.execute("SELECT set_config('l2.personal_actor',%s,true)",(user,))
                 changed=con.execute('UPDATE personal_finance.transactions SET deleted_at=now(),updated_by=%s,updated_at=now(),version=version+1 WHERE id=%s AND household_id=%s AND deleted_at IS NULL RETURNING id',(user,eid,HOUSEHOLD)).fetchone()
@@ -195,7 +208,8 @@ async def whatsapp_receipt(msg, phone, db, setting, sectors):
                 async for chunk in response.aiter_bytes():
                     content.extend(chunk)
                     if len(content)>MAX_BYTES: raise ValueError('Comprovante acima de 5 MB')
-        extracted,mime=await run_in_threadpool(extract,bytes(content))
+        received_at=datetime.fromtimestamp(int(msg.get('timestamp') or datetime.now().timestamp()),ZoneInfo('America/Belem'))
+        extracted,mime=await run_in_threadpool(extract,bytes(content),received_at)
         def persist():
             # Recheck permissions after download/OCR, before committing a financial change.
             authorize_scope(user,scope,sectors)

@@ -22,7 +22,7 @@ def main():
             if name!=expected:
                 print(json.dumps({'ok':False,'error':'Banco conectado difere do banco esperado'}));return 2
             tables={}
-            for table in ('public.entities','public.audit_log','public.expense_receipts','personal_finance.transactions','personal_finance.attachments','personal_finance.audit_events'):
+            for table in ('public.entities','public.audit_log','personal_finance.transactions','personal_finance.attachments','personal_finance.audit_events'):
                 tables[table]=con.execute('SELECT to_regclass(%s) IS NOT NULL',(table,)).fetchone()[0]
             rls=con.execute("SELECT bool_and(relrowsecurity AND relforcerowsecurity) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='personal_finance' AND c.relname IN ('transactions','attachments','audit_events')").fetchone()[0]
             encrypted_required=os.getenv('DB_SSLMODE') in ('require','verify-ca','verify-full')
