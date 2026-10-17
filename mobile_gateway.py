@@ -44,6 +44,10 @@ class Batch(BaseModel):
     changes: list[Change] = Field(min_length=1,max_length=25)
 
 def setup(con):
+    if os.getenv('L2_EXPECTED_DATABASE'):
+        if not con.execute("SELECT to_regclass('public.mobile_receipts') IS NOT NULL AND to_regclass('public.mobile_closings') IS NOT NULL").fetchone()[0]:
+            raise HTTPException(503,'Estrutura mobile existente indisponível')
+        return
     con.execute('''CREATE TABLE IF NOT EXISTS mobile_receipts(
       username TEXT NOT NULL, change_id TEXT NOT NULL, payload_hash TEXT NOT NULL,
       result JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
