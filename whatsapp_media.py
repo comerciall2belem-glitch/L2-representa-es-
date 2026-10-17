@@ -5,6 +5,7 @@ import re
 import secrets
 import urllib.error
 import urllib.request
+from meta_configuration import value as meta_value
 
 
 class MediaError(ValueError):
@@ -16,9 +17,11 @@ LIMITS = {'image/jpeg': 5 * 1024 * 1024, 'image/png': 5 * 1024 * 1024,
 
 
 def provider_config():
-    token = os.getenv('WHATSAPP_ACCESS_TOKEN', '')
-    phone_id = os.getenv('WHATSAPP_PHONE_NUMBER_ID', '')
-    version = os.getenv('WHATSAPP_GRAPH_VERSION', '')
+    try:
+        token=meta_value('WA_ACCESS_TOKEN')
+        phone_id=meta_value('WA_PHONE_NUMBER_ID')
+        version=meta_value('WA_GRAPH_VERSION')
+    except ValueError: return None
     if not token or not re.fullmatch(r'\d+', phone_id) or not re.fullmatch(r'v\d+\.\d+', version):
         return None
     return token, phone_id, version

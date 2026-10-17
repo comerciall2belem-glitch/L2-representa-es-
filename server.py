@@ -9,7 +9,7 @@ from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
 from pydantic import BaseModel, Field
 import psycopg
-from database_connection import connection_options, validate_staging_database
+from database_connection import connection_options, validate_staging_database, validate_staging_configuration
 from psycopg.types.json import Jsonb
 from client_cleanup import plan as client_cleanup_plan
 from daily_report import build_pdf, read_data, TZ
@@ -359,11 +359,12 @@ def initialize():
 
 @asynccontextmanager
 async def lifespan(app):
-    if os.getenv('L2_EXPECTED_DATABASE'):
+    if os.getenv('L2_EXPECTED_DATABASE') or os.getenv('RENDER_SERVICE_NAME')=='l2-one-homologacao':
+        validate_staging_configuration()
         result=validate_staging_database(DATABASE_URL,os.environ['L2_EXPECTED_DATABASE'])
         if not result['ok']: raise RuntimeError('Homologação: confira SSL e estrutura financeira existente; nenhuma tabela foi alterada')
         app.state.expense_database_check=result
-        logging.getLogger('uvicorn.error').info('expense_database_validated ssl=%s read_only=%s schema_preserved=true',result['ssl'],result['readOnly'])
+        logging.getLogger('uvicorn.error').info('expense_database_validated %s',json.dumps(result))
     else:
         initialize()
         initialize_personal(db)
@@ -372,6 +373,8 @@ async def lifespan(app):
         zara.log_configuration()
         zara.verify_database_schema()
         correct_order_18_date()
+    from meta_configuration import status as meta_status
+    logging.getLogger('uvicorn.error').info('meta_configuration_checked %s',json.dumps(meta_status()))
     with db() as con:
         provisional = con.execute('SELECT count(*) FROM app_users WHERE active AND must_change_password').fetchone()[0]
     logging.getLogger('uvicorn.error').info('homologation_checks provisional_accounts=%s whatsapp_documents_configured=%s', provisional, bool(provider_config()))
@@ -1874,7 +1877,7 @@ def health():
         users = con.execute('SELECT count(*) FROM app_users WHERE active').fetchone()[0]
         counts = {kind: con.execute('SELECT count(*) FROM entities WHERE kind=%s',(kind,)).fetchone()[0]
                   for kind in ('client','visit','order','task','route','goal','price','office_process','office_budget','office_ritual','office_role')}
-    return {'status':'ok', 'users':users, **counts, 'expenseAI': getattr(app.state,'expense_database_check',{})}
+    return {'status':'ok', 'users':users, **counts, 'expenseAI': getattr(app.state,'expense_database_check',{}), 'whatsappConfigured': __import__('meta_configuration').status()['ready']}
 
 @app.post('/api/self-test')
 def self_test(authorization: str | None = Header(default=None)):

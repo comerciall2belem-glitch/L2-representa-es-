@@ -7,6 +7,7 @@ import json
 import logging
 import time
 import uuid
+from meta_configuration import value as meta_value, status as meta_status
 
 from starlette.concurrency import run_in_threadpool
 from fastapi.responses import PlainTextResponse
@@ -54,12 +55,12 @@ SETTING_ALIASES = {
 
 
 def configured_value(key):
-    value = os.getenv(key, '').strip()
-    return value or os.getenv(SETTING_ALIASES.get(key, key), '').strip()
+    return meta_value(key)
 
 
 def setting(key):
-    value = configured_value(key)
+    try: value = configured_value(key)
+    except ValueError: raise HTTPException(503,'Configuração Meta inválida') from None
     if not value.strip():
         log_event(logging.ERROR, 'configuration_missing', setting=key)
         raise HTTPException(503, 'Integração WhatsApp ainda não configurada')
