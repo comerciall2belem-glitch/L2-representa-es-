@@ -195,7 +195,7 @@ async def send(phone, body):
     request_id = uuid.uuid4().hex
     try:
         token, phone_id = setting('WA_ACCESS_TOKEN'), setting('WA_PHONE_NUMBER_ID')
-        version = configured_value('WA_GRAPH_VERSION') or 'v23.0'
+        version = setting('WA_GRAPH_VERSION')
         if not re.fullmatch(r'v\d+\.\d+', version) or not phone_id.isascii() or not phone_id.isdigit():
             raise ValueError('Invalid Graph configuration')
         async with httpx.AsyncClient(timeout=httpx.Timeout(12, connect=4),
