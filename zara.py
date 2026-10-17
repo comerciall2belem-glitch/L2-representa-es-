@@ -319,6 +319,10 @@ async def receive_webhook(request: Request, x_hub_signature_256: str | None = He
                 phone, mid = str(msg.get('from', '')), str(msg.get('id', ''))
                 if not re.fullmatch(r'\d{8,16}', phone) or not mid or len(mid) > 256:
                     continue
+                expense_reply=None
+                if msg.get('type') in ('image','document') and globals().get('expense_sectors'):
+                    from expense_ai import whatsapp_receipt
+                    expense_reply=await whatsapp_receipt(msg,phone,db,setting,expense_sectors)
                 body = (msg.get('text', {}).get('body', '') if msg.get('type') == 'text' else '')[:4000]
                 if not body:
                     body = '[Mensagem não textual recebida]'
@@ -332,6 +336,7 @@ async def receive_webhook(request: Request, x_hub_signature_256: str | None = He
                             VALUES(%s,%s,'in',%s,%s) ON CONFLICT DO NOTHING RETURNING message_id''', (mid, phone, body, reply_to)).fetchone()
                         if not inserted:
                             return None
+                        if expense_reply is not None: return 'bot',expense_reply
                         mode = con.execute('SELECT mode FROM zara_conversations WHERE phone=%s FOR UPDATE', (phone,)).fetchone()[0]
                         first = con.execute("SELECT count(*) FROM zara_messages WHERE phone=%s AND direction='in'", (phone,)).fetchone()[0] == 1
                         rule, handoff = response_rule(body, name, first)
@@ -367,7 +372,7 @@ async def receive_webhook(request: Request, x_hub_signature_256: str | None = He
                 def persist_outbound():
                     with db() as con:
                         con.execute('''INSERT INTO zara_messages(message_id,phone,direction,body,delivered)
-                            VALUES(%s,%s,'out',%s,false) ON CONFLICT DO NOTHING''', (out_id, phone, answer))
+                            VALUES(%s,%s,'out',%s,false) ON CONFLICT DO NOTHING''', (out_id,phone,'[Confirmação de comprovante enviada ao operador autorizado]' if expense_reply is not None else answer))
                         con.execute('UPDATE zara_conversations SET updated_at=now() WHERE phone=%s', (phone,))
                 try:
                     await run_in_threadpool(persist_outbound)

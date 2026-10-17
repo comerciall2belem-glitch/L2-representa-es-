@@ -1,0 +1,39 @@
+name: Expense AI PostgreSQL
+on:
+  pull_request:
+    branches: [main, feature/precos-uf-cliente]
+    paths: ['database_connection.py', 'tests/test_database_connection.py', 'expense_ai.py', 'personal_finance.py', 'test_personal_finance.py', 'tests/test_expense_ai*.py', '.github/workflows/expense-db.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  expense-database:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: disposable-ci-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PERSONAL_TEST_DSN: postgresql://l2test:disposable-ci-password@127.0.0.1:5432/l2expense
+      L2_EXPENSE_TEST_DISPOSABLE: 'yes'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install fastapi 'psycopg[binary]' python-multipart pymupdf pytest pypdf httpx rapidocr-onnxruntime==1.4.4
+      - name: Criar banco descartável e usuário sem superpoderes para verificar RLS
+        env:
+          PGPASSWORD: disposable-ci-password
+        run: |
+          psql -h 127.0.0.1 -U postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE l2test LOGIN NOSUPERUSER PASSWORD 'disposable-ci-password';"
+          psql -h 127.0.0.1 -U postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE l2expense OWNER l2test;'
+      - name: Validar isolamento, rollback, estorno, anexos e financeiro pessoal
+        run: python -m pytest tests/test_database_connection.py tests/test_expense_ai.py tests/test_expense_ai_db.py test_personal_finance.py -q

@@ -9,6 +9,7 @@ from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
 from pydantic import BaseModel, Field
 import psycopg
+from database_connection import connection_options, validate_staging_database
 from psycopg.types.json import Jsonb
 from client_cleanup import plan as client_cleanup_plan
 from daily_report import build_pdf, read_data, TZ
@@ -53,7 +54,7 @@ if config_errors:
     raise RuntimeError('Configuracao invalida: ' + '; '.join(config_errors))
 
 def db():
-    return psycopg.connect(DATABASE_URL)
+    return psycopg.connect(DATABASE_URL, **connection_options(DATABASE_URL))
 
 def next_order_number(con):
     return con.execute('UPDATE order_counter SET value=value+1 WHERE id=1 RETURNING value').fetchone()[0]
@@ -358,13 +359,19 @@ def initialize():
 
 @asynccontextmanager
 async def lifespan(app):
-    initialize()
-    initialize_personal(db)
-    from homologation_access import recover
-    recover(db, password_hash)
-    zara.log_configuration()
-    zara.verify_database_schema()
-    correct_order_18_date()
+    if os.getenv('L2_EXPECTED_DATABASE'):
+        result=validate_staging_database(DATABASE_URL,os.environ['L2_EXPECTED_DATABASE'])
+        if not result['ok']: raise RuntimeError('Homologação: confira SSL e estrutura financeira existente; nenhuma tabela foi alterada')
+        app.state.expense_database_check=result
+        logging.getLogger('uvicorn.error').info('expense_database_validated ssl=%s read_only=%s schema_preserved=true',result['ssl'],result['readOnly'])
+    else:
+        initialize()
+        initialize_personal(db)
+        from homologation_access import recover
+        recover(db, password_hash)
+        zara.log_configuration()
+        zara.verify_database_schema()
+        correct_order_18_date()
     with db() as con:
         provisional = con.execute('SELECT count(*) FROM app_users WHERE active AND must_change_password').fetchone()[0]
     logging.getLogger('uvicorn.error').info('homologation_checks provisional_accounts=%s whatsapp_documents_configured=%s', provisional, bool(provider_config()))
@@ -971,7 +978,10 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 if target in ('office_finance','office_budget','office_monthly_close','cash_entry','commission_rate','commission_receipt','settlement') and 'finance' not in permissions:
                     raise HTTPException(403, 'Acesso financeiro restrito')
                 if target == 'cash_entry':
+                    con.execute("SELECT pg_advisory_xact_lock(hashtextextended('l2-cash',0))")
                     previous = con.execute("SELECT payload FROM entities WHERE kind='cash_entry' AND id=%s",(entity_id,)).fetchone()
+                    if previous and previous[0].get('receiptId'):
+                        raise HTTPException(409,'Use Estornar para preservar o comprovante')
                     if previous:
                         day = con.execute("SELECT payload FROM entities WHERE kind='cash_day' AND payload->>'date'=%s",(previous[0].get('date'),)).fetchone()
                         if not day or day[0].get('status') != 'Aberto':
@@ -1197,6 +1207,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 if previous_process and str(previous_process[0].get('Área','')) == 'Financeiro':
                     raise HTTPException(403, 'Acesso financeiro restrito')
             if kind in ('cash_day','cash_entry'):
+                con.execute("SELECT pg_advisory_xact_lock(hashtextextended('l2-cash',0))")
                 from datetime import date as _date
                 from decimal import Decimal as _Decimal
                 try:
@@ -1239,6 +1250,11 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     except (KeyError, ValueError, InvalidOperation):
                         raise HTTPException(400, 'Valor da movimentação inválido')
                     existing_entry = con.execute("SELECT payload FROM entities WHERE kind='cash_entry' AND id=%s",(entity_id,)).fetchone()
+                    if existing_entry and existing_entry[0].get('receiptId'):
+                        if existing_entry[0].get('reversalOf') or con.execute("SELECT 1 FROM entities WHERE kind='cash_entry' AND id=%s",(entity_id+'-reversal',)).fetchone():
+                            raise HTTPException(409,'Lançamento estornado não pode ser editado')
+                        if obj.get('type')!='Saída': raise HTTPException(409,'Comprovante deve permanecer como saída')
+                        obj['receiptId']=existing_entry[0]['receiptId']
                     if existing_entry and existing_entry[0].get('date') != obj['date']:
                         raise HTTPException(409, 'Movimentação não pode mudar de data')
                     day_record = con.execute("SELECT payload FROM entities WHERE kind='cash_day' AND payload->>'date'=%s",(obj['date'],)).fetchone()
@@ -1858,7 +1874,7 @@ def health():
         users = con.execute('SELECT count(*) FROM app_users WHERE active').fetchone()[0]
         counts = {kind: con.execute('SELECT count(*) FROM entities WHERE kind=%s',(kind,)).fetchone()[0]
                   for kind in ('client','visit','order','task','route','goal','price','office_process','office_budget','office_ritual','office_role')}
-    return {'status':'ok', 'users':users, **counts}
+    return {'status':'ok', 'users':users, **counts, 'expenseAI': getattr(app.state,'expense_database_check',{})}
 
 @app.post('/api/self-test')
 def self_test(authorization: str | None = Header(default=None)):
@@ -1999,3 +2015,7 @@ from mobile_gateway import install as _install_mobile
 _install_mobile(_mobile_sys.modules[__name__])
 from staging_mobile_qa import install as _install_mobile_qa
 _install_mobile_qa(_mobile_sys.modules[__name__])
+
+from expense_ai import install as install_expense_ai
+install_expense_ai(app,db,auth,sectors_for)
+zara.expense_sectors=sectors_for
