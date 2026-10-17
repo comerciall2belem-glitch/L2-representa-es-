@@ -29,3 +29,18 @@ def test_ssl_policy_cannot_allow_plaintext(mode):
 def test_invalid_dsn_error_does_not_leak_secret():
     with pytest.raises(ValueError) as exc: connection_options('password=secret-value invalidkey=value',{})
     assert 'secret-value' not in str(exc.value)
+
+
+def staging_env():
+    return {'L2_EXPECTED_DATABASE':'l2one_homologacao','DB_SSLMODE':'require','DB_TIMEOUT':'30000','DATABASE_URL':'postgresql://test:dummy@localhost/l2one_homologacao'}
+
+
+def test_staging_boot_policy_accepts_only_expected_database_and_ssl():
+    from database_connection import validate_staging_configuration
+    assert validate_staging_configuration(staging_env()) is None
+
+@pytest.mark.parametrize('key,value',[('L2_EXPECTED_DATABASE','production'),('DB_SSLMODE','disable'),('DB_TIMEOUT','30'),('DATABASE_URL','postgresql://test:dummy@localhost/production')])
+def test_staging_boot_policy_rejects_mismatch(key,value):
+    from database_connection import validate_staging_configuration
+    env=staging_env();env[key]=value
+    with pytest.raises(ValueError): validate_staging_configuration(env)

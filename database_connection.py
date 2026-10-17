@@ -48,3 +48,21 @@ def validate_staging_database(dsn,expected,environ=None):
         encrypted_required=env.get('DB_SSLMODE') in ('require','verify-ca','verify-full')
         ok=all(tables.values()) and readonly=='on' and rls is True and (ssl or not encrypted_required)
         return dict(ok=ok,readOnly=readonly=='on',ssl=ssl,tables=tables,personalRls=rls)
+
+
+def validate_staging_configuration(environ=None):
+    env=os.environ if environ is None else environ
+    if env.get('L2_EXPECTED_DATABASE')!='l2one_homologacao':
+        raise ValueError('L2_EXPECTED_DATABASE deve identificar a homologação')
+    if env.get('DB_SSLMODE')!='require':
+        raise ValueError('DB_SSLMODE=require obrigatório na homologação')
+    if env.get('DB_TIMEOUT')!='30000':
+        raise ValueError('DB_TIMEOUT=30000 obrigatório na homologação')
+    dsn=env.get('DATABASE_URL','')
+    if not dsn.startswith(('postgres://','postgresql://')):
+        raise ValueError('DATABASE_URL PostgreSQL obrigatória')
+    try: parsed=conninfo_to_dict(dsn)
+    except Exception: raise ValueError('DATABASE_URL inválida') from None
+    if parsed.get('dbname')!=env['L2_EXPECTED_DATABASE']:
+        raise ValueError('DATABASE_URL aponta para outro banco')
+    connection_options(dsn,env)
