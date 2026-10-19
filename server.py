@@ -1,5 +1,6 @@
 """L2 ONE: secure FastAPI/PostgreSQL application for Render."""
 import logging
+import drive_backup
 import os, json, time, hashlib, secrets, re, base64, gzip, unicodedata, io, zipfile, asyncio
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -121,6 +122,7 @@ def project_order(con,entity_id,payload,created_at=None,updated_at=None):
 def initialize():
     with db() as con:
         zara.setup(con)
+        drive_backup.setup(con)
         webchat.setup(con)
         con.execute('CREATE TABLE IF NOT EXISTS entities (kind TEXT NOT NULL, id TEXT NOT NULL, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(kind,id))')
         con.execute('ALTER TABLE entities ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ')
@@ -408,9 +410,13 @@ async def lifespan(app):
     logging.getLogger('uvicorn.error').info('homologation_checks provisional_accounts=%s whatsapp_documents_configured=%s', provisional, bool(provider_config()))
     strategic_crm.configure(db=db, auth=auth, require_sector=require_sector, valid_cnpj=valid_cnpj, check_client_scope=check_client_scope, scoped_rows=scoped_rows, project_attendance=project_attendance, is_seller=is_seller)
     strategic_worker = asyncio.create_task(strategic_crm.worker())
+    drive_worker = asyncio.create_task(drive_backup.worker())
     try:
         yield
     finally:
+        drive_worker.cancel()
+        try: await drive_worker
+        except asyncio.CancelledError: pass
         strategic_worker.cancel()
         try: await strategic_worker
         except asyncio.CancelledError: pass
@@ -2394,3 +2400,43 @@ def add_inventory_movement(data: InventoryMovement, authorization: str | None = 
         result = inventory_apply(con, data, user)
         con.execute("SELECT pg_notify('l2_records_changed','')")
         return result
+
+def google_drive_snapshot(user):
+    """Only export records currently visible to the authenticated manager."""
+    if user != 'Ana Paula':
+        raise HTTPException(403, 'Acesso restrito à gestora')
+    permissions = sectors_for(user)
+    with db() as con:
+        con.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        active = con.execute('SELECT active,must_change_password FROM app_users WHERE username=%s', (user,)).fetchone()
+        if not active or not active[0] or active[1]:
+            raise HTTPException(403, 'Conta indisponível para envio ao Drive')
+        result = {'schemaVersion': 1, 'owner': user, 'records': {}}
+        groups = {
+            'commercial': ['client','visit','order','task','goal','opportunity','interaction','lead','fulfillment','whatsapp_template'],
+            'catalog': ['industry','price_table','price'],
+            'routes': ['route'],
+            'office': ['office_process','office_action','office_commercial','office_administrative','office_ritual','office_role'],
+            'finance': ['settlement','office_finance','office_budget','office_monthly_close','cash_day','cash_entry','commission_rate','commission_receipt']
+        }
+        for sector,kinds in groups.items():
+            allowed = sector in permissions or (sector in ('commercial','catalog') and 'commercial' in permissions)
+            if sector == 'commercial':
+                allowed = bool({'commercial','office','finance','management'} & permissions)
+            if not allowed: continue
+            for kind in kinds:
+                rows = scoped_rows(con,kind,user)
+                if kind == 'office_process' and 'finance' not in permissions:
+                    rows = [r for r in rows if r.get('Área') != 'Financeiro']
+                result['records'][kind] = rows
+        if 'finance' not in permissions:
+            result = hide_industry_commissions(result)
+        result['drafts'] = [{'key':r[0],'payload':r[1],'updatedAt':r[2]} for r in con.execute('SELECT draft_key,payload,client_timestamp FROM commercial_drafts WHERE username=%s ORDER BY draft_key', (user,))]
+        result['personalFinance'] = {}
+        con.execute("SELECT set_config('l2.personal_actor',%s,true)", (user,))
+        for table in ('categories','accounts','transactions'):
+            result['personalFinance'][table] = [r[0] for r in con.execute('SELECT row_to_json(t) FROM personal_finance.'+table+' t WHERE household_id=%s ORDER BY id', ('ana-paula-euler',))]
+        result['personalFinance']['attachments'] = [r[0] for r in con.execute("SELECT json_build_object('id',id,'transactionId',transaction_id,'name',filename,'contentType',content_type) FROM personal_finance.attachments WHERE household_id=%s ORDER BY id", ('ana-paula-euler',))]
+        return result
+
+drive_backup.configure(app, db, auth, google_drive_snapshot)
