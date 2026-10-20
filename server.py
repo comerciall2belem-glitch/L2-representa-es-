@@ -1,5 +1,6 @@
 """L2 ONE: secure FastAPI/PostgreSQL application for Render."""
 import logging
+from portfolio_transfer_20261020 import transfer as transfer_portfolio_20261020
 import drive_backup
 import os, json, time, hashlib, secrets, re, base64, gzip, unicodedata, io, zipfile, asyncio
 from pathlib import Path
@@ -374,6 +375,10 @@ def initialize():
                 project_attendance(con,kind,entity_id,payload,created_at,updated_at)
         for entity_id,payload,created_at,updated_at in con.execute("SELECT id,payload,created_at,updated_at FROM entities WHERE kind='order'").fetchall():
             project_order(con,entity_id,payload,created_at,updated_at)
+
+        transferred = transfer_portfolio_20261020(con)
+        if transferred:
+            logging.getLogger('uvicorn.error').info('portfolio_transfer_20261020 transferred=%s destination=Erika', transferred)
 
         # Nunca excluir clientes automaticamente por divergência de UF.
         # O cadastro permanece disponível para correção; pedidos exigem PA/AP.
