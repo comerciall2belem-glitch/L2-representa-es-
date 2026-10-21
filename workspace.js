@@ -3,7 +3,7 @@ const WORKSPACE_GROUPS=[
  {id:'inicio',label:'Hoje',sections:[['hoje','Prioridades'],['rota','Rota e visitas'],['registro','Registrar atividade']]},
  {id:'vendas',label:'Vendas',sections:[['pedidos','Pedidos'],['marcas','Marcas e preços'],['whatsapp','Mensagens e tabelas']]},
  {id:'clientes',label:'Clientes',sections:[['clientes','Carteira e acompanhamento']]},
- {id:'crescimento',label:'Crescimento',sections:[['crescimento','Desempenho'],['gestao','Metas e gestão']]},
+ {id:'crescimento',label:'Crescimento',sections:[['crescimento','Desempenho'],['gestao','Metas e gestão'],['reports','Relatórios estratégicos']]},
  {id:'escritorio',label:'Escritório',sections:[['office','Processos'],['operations','Operações'],['admin','Equipe'],['finance','Financeiro'],['cash','Caixa'],['personal','Pessoal'],['config','Configurações']]}
 ];
 function workspaceGroup(t){return WORKSPACE_GROUPS.find(g=>g.sections.some(x=>x[0]===t))||WORKSPACE_GROUPS.find(g=>g.id===(t==='crm'?'clientes':'inicio'))}

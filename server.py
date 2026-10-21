@@ -378,6 +378,10 @@ async def lifespan(app):
     with db() as con:
         provisional = con.execute('SELECT count(*) FROM app_users WHERE active AND must_change_password').fetchone()[0]
     logging.getLogger('uvicorn.error').info('homologation_checks provisional_accounts=%s whatsapp_documents_configured=%s', provisional, bool(provider_config()))
+    if os.getenv('L2_REPORTS_STAGING_CHECK')=='1':
+        from reports_staging_validation import validate
+        app.state.strategic_report_validation=validate(__import__(__name__))
+        logging.getLogger('uvicorn.error').info('strategic_reports_validated %s',json.dumps(app.state.strategic_report_validation))
     yield
 
 app = FastAPI(title='L2 ONE API', lifespan=lifespan, docs_url=None, redoc_url=None)
@@ -1863,6 +1867,59 @@ def apply_client_cleanup(data: CleanupConfirmation, authorization: str | None = 
     return {'archivedOutside':len(proposal['outside']),'mergedDuplicates':len(proposal['duplicates']),
             'remaining':total-len(proposal['outside'])-len(proposal['duplicates'])}
 
+# Strategic reports share authentication and entity storage; never mutate source records.
+@app.get('/api/reports/strategic/catalog')
+def strategic_report_catalog(authorization: str | None = Header(default=None)):
+    import strategic_reports as reports
+    user=auth(authorization)
+    permissions=sectors_for(user)
+    if not permissions & {'commercial','office','management','finance'}:
+        raise HTTPException(403,'Sem acesso aos relatórios')
+    return {pillar:[{'id':key,'title':title} for key,title in entries
+                    if ((key not in reports.FINANCIAL and bool(permissions & {'commercial','office','management'})) or
+                        (key in reports.FINANCIAL and ('management' in permissions if key=='commissions' else 'finance' in permissions)))]
+            for pillar,entries in reports.CATALOG.items()}
+
+@app.get('/api/reports/strategic/{report}')
+def strategic_report(report: str, start: date, end: date, as_of: date | None = None,
+                     inactive_days: int = 60, format: str = 'json',
+                     authorization: str | None = Header(default=None)):
+    import strategic_reports as reports
+    user=auth(authorization)
+    permissions=sectors_for(user)
+    keys={key for entries in reports.CATALOG.values() for key,_ in entries}
+    if report not in keys: raise HTTPException(404,'Relatório inexistente')
+    if not permissions & {'commercial','office','management','finance'}:
+        raise HTTPException(403,'Sem acesso aos relatórios')
+    if report in reports.FINANCIAL:
+        require_sector(user,'management' if report=='commissions' else 'finance')
+    elif not permissions & {'commercial','office','management'}:
+        raise HTTPException(403,'Sem acesso comercial')
+    if end<start or (end-start).days>731 or not 1<=inactive_days<=3650:
+        raise HTTPException(422,'Período inválido: máximo 732 dias; inatividade de 1 a 3650 dias')
+    if format not in ('json','csv','pdf'):raise HTTPException(422,'Formato inválido')
+    reference=as_of or datetime.now(TZ).date()
+    if reference>datetime.now(TZ).date():raise HTTPException(422,'A referência não pode estar no futuro')
+    with db() as con:
+        data={kind:scoped_rows(con,kind,user) for kind in reports.KINDS
+              if kind not in ('office_finance','financial_input') or 'finance' in permissions}
+        # A non-management account sees only its portfolio, even if its role is not Vendedor.
+        if 'management' not in permissions and report not in reports.FINANCIAL:
+            allowed={c.get('id') for c in data['client'] if c.get('owner')==user}
+            allowed.update(r[0] for r in con.execute('SELECT client_id FROM client_seller_authorizations WHERE seller_username=%s AND active',(user,)))
+            data['client']=[c for c in data['client'] if c.get('id') in allowed]
+            for kind in ('order','opportunity','interaction','visit','fulfillment','lead'):
+                data[kind]=[r for r in data[kind] if r.get('clientId') in allowed or (kind=='lead' and r.get('owner')==user)]
+            data['settlement']=[]
+            data['goal']=[]
+    result=reports.build(data,report,start,end,reference,inactive_days)
+    result['scope']='Equipe' if 'management' in permissions or report in reports.FINANCIAL else 'Carteira autorizada'
+    headers={'Cache-Control':'no-store'}
+    if format=='json':return Response(json.dumps(result,ensure_ascii=False),media_type='application/json',headers=headers)
+    content=reports.export_csv(result) if format=='csv' else reports.export_pdf(result)
+    headers['Content-Disposition']=f'attachment; filename="L2_ONE_{report}_{start}_{end}.{format}"'
+    return Response(content,media_type='text/csv; charset=utf-8' if format=='csv' else 'application/pdf',headers=headers)
+
 @app.get('/api/reports/daily.pdf')
 def daily_pdf(authorization: str | None = Header(default=None)):
     user=auth(authorization)
@@ -1920,7 +1977,7 @@ def zara_page():
 
 @app.get('/{filename}')
 def asset(filename: str):
-    if filename not in ('app.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
+    if filename not in ('strategic_reports.js','app.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
         raise HTTPException(404)
     if filename in ('logo-l2-light.jpg','logo-l2-dark.jpg'):
         source={'logo-l2-light.jpg':'logo-light.jpg.b64','logo-l2-dark.jpg':'logo-dark.jpg.b64'}[filename]
