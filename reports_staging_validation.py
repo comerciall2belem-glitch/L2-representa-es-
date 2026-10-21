@@ -9,12 +9,20 @@ from fastapi import HTTPException
 import strategic_reports as reports
 
 
+@contextmanager
+def readonly_connection(module):
+    # Mobile's db wrapper already runs a SELECT; isolation must be set on a fresh connection.
+    with module.psycopg.connect(module.DATABASE_URL,**module.connection_options(module.DATABASE_URL)) as con:
+        con.read_only=True
+        con.isolation_level=module.psycopg.IsolationLevel.REPEATABLE_READ
+        yield con
+
+
 def validate(module):
     if os.getenv('L2_EXPECTED_DATABASE')!='l2one_homologacao':
         raise RuntimeError('Report validation requires explicitly isolated staging')
     started=perf_counter()
-    with module.db() as con:
-        con.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY')
+    with readonly_connection(module) as con:
         database,readonly=con.execute("SELECT current_database(),current_setting('transaction_read_only')").fetchone()
         if database!='l2one_homologacao' or readonly!='on':
             raise RuntimeError('Reports validation refused database or writable transaction')
@@ -88,8 +96,7 @@ def validate(module):
         manager=next(u for u in selected if 'management' in u[1])
         @contextmanager
         def isolated_read_db():
-            with module.db() as read_con:
-                read_con.execute('SET TRANSACTION READ ONLY')
+            with readonly_connection(module) as read_con:
                 yield read_con
         def concurrent_read(report):
             username,permissions=manager

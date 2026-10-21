@@ -79,3 +79,17 @@ class StrategicEndpointAccessTest(unittest.TestCase):
         with self.assertRaises(self.error) as error:
             self.env['strategic_report']('brands',date(2026,10,31),date(2026,10,1))
         self.assertEqual(error.exception.status,422)
+
+class ValidationConnectionTest(unittest.TestCase):
+    def test_policy_is_set_before_first_query(self):
+        from reports_staging_validation import readonly_connection
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        connection=Mock();connection.__enter__=Mock(return_value=connection);connection.__exit__=Mock(return_value=False)
+        module=SimpleNamespace(DATABASE_URL='postgresql://example/test',connection_options=lambda d:{'sslmode':'require'},psycopg=SimpleNamespace(connect=Mock(return_value=connection),IsolationLevel=SimpleNamespace(REPEATABLE_READ='repeatable read')))
+        with readonly_connection(module) as con:
+            self.assertIs(con,connection)
+            self.assertIs(con.read_only,True)
+            self.assertEqual(con.isolation_level,'repeatable read')
+            con.execute.assert_not_called()
+        module.psycopg.connect.assert_called_once_with(module.DATABASE_URL,sslmode='require')
