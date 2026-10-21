@@ -37,6 +37,14 @@ class StrategicReportsTest(unittest.TestCase):
     def test_aging_liquidation_history(self):
         data={'office_finance':[{'Tipo':'Receita','Vencimento':'2026-10-01','Liquidação':'2026-10-05','Valor':25,'Situação':'Pago/Recebido'}]}
         self.assertEqual(self.report('aging',data)['rows'][0][2:4],['Liquidado',4])
+    def test_legacy_activity_type_is_channel(self):
+        data={'interaction':[{'owner':'Erika','type':'WhatsApp','at':'2026-10-20T12:00:00Z'}]}
+        self.assertEqual(self.report('activities',data)['rows'],[['Erika','WhatsApp',1]])
+    def test_post_sale_not_delayed_and_fiscal_release_not_retention(self):
+        data={'order':[{'id':'o','date':'2026-10-01','status':'Confirmado'}], 'fulfillment':[{'orderId':'o','due':'2026-10-02','stage':'Pós-venda concluído'}]}
+        self.assertEqual(self.report('deliveries',data)['rows'][0][-1],'')
+        data['fulfillment'][0].update(stage='Ocorrência',notes='Retido na fiscalização')
+        self.assertEqual(self.report('deliveries',data)['rows'][0][-1],'Retenção fiscal')
     def test_csv_formula_injection_and_utf8(self):
         raw=export_csv({'columns':['Nome'],'rows':[['=HYPERLINK("x")'],[' normal'],[None]]}).decode('utf-8-sig')
         self.assertTrue(list(csv.reader(io.StringIO(raw),delimiter=';'))[1][0].startswith("'="))

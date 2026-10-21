@@ -125,13 +125,16 @@ def build(data, report, start, end, asof, inactive_days=60):
         for o in orders:
             events=[f for f in data.get('fulfillment',[]) if f.get('orderId')==o.get('id')]
             f=max(events,key=lambda x:str(x.get('at','')),default={});due=day(f.get('due'));stage=f.get('stage','Sem registro')
-            alert='Retenção fiscal' if 'fiscal' in str(stage).lower() or 'retid' in str(stage).lower() else 'Atrasado' if due and due<asof and 'entreg' not in str(stage).lower() else ''
+            closed=stage in ('Entregue','Pós-venda concluído') or o.get('status')=='Entregue'
+            occurrence=(str(stage)+' '+str(f.get('notes') or '')).lower()
+            retention=any(term in occurrence for term in ('retido','retida','retenção fiscal','retencao fiscal','aguardando fiscalização','aguardando fiscalizacao'))
+            alert='Retenção fiscal' if retention and not closed else 'Atrasado' if due and due<asof and not closed else ''
             rows.append([o.get('id'),client_name(o.get('clientId')),o.get('status'),stage,f.get('due'),alert])
     elif report=='activities':
         columns=['Responsável','Canal','Interações registradas'];counts=defaultdict(int)
         for kind in ('visit','interaction'):
             for r in data.get(kind,[]):
-                if within(r.get('date') or r.get('at') or r.get('createdAt')):counts[(seller(r),'Visita' if kind=='visit' else r.get('channel') or 'Não informado')]+=1
+                if within(r.get('date') or r.get('at') or r.get('createdAt')):counts[(seller(r),'Visita' if kind=='visit' else r.get('channel') or r.get('type') or 'Não informado')]+=1
         rows=[[a,b,n] for (a,b),n in sorted(counts.items())]
         notes.append('Somente atividades persistidas; chamadas e WhatsApp sem eventos integrados não são estimados.')
     elif report=='prospecting':
