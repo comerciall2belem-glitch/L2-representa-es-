@@ -57,6 +57,27 @@ class DANFETests(unittest.TestCase):
         for text in [(HEADER+ROWS).replace('2,0000','3,0000'),(HEADER+ROWS).replace('VALOR TOTAL DOS PRODUTOS','TOTAL ILEGÍVEL')]:
             with self.assertRaises(InvoiceError):self.compare(text)
 
+    def test_plural_header_sp_and_wrapped_cst(self):
+        header=HEADER.replace('DO PRODUTO','DOS PRODUTOS').replace('NCM/SH','NCM / SP')
+        rows=ROWS.replace('500 6102','2 6102').replace('0500 6.102','1 6.102').replace('20,00 0,00','20,00 0,00\n          00')
+        r=self.compare(header+rows+'\nPed. Nº. 049613/01')
+        self.assertEqual(r['invoiceNumber'],'46131')
+        self.assertEqual(r['extractedItemCount'],2)
+        self.assertEqual(r['cutTotal'],'35.00')
+
+    def test_other_establishment_is_visible_review_only(self):
+        r=self.compare(recipient='22222222000376')
+        self.assertTrue(r['requiresRecipientReview'])
+        self.assertTrue(r['billingBlocked'])
+        self.assertEqual(r['status'],'Revisar')
+        self.assertIn('mesma raiz',r['warnings'][0])
+        self.assertEqual(len(r['cuts']),2)
+
+    def test_different_recipient_on_second_page_is_rejected(self):
+        text=HEADER+ROWS+HEADER.replace('22.222.222/0001-22','33.333.333/0001-33')
+        with self.assertRaisesRegex(InvoiceError,'divergente entre páginas'):
+            self.compare(text)
+
     def test_full_billing_and_extra_item(self):
         order={'items':[{'sku':'97640','brand':'A','quantity':2,'unitPrice':'10.00'},{'sku':'97306','brand':'B','quantity':1,'unitPrice':'20.00'}]}
         r=self.compare(order=order)

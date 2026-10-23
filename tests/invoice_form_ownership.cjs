@@ -34,5 +34,20 @@ const {JSDOM}=require(process.env.L2_JSDOM||'jsdom');
  rejectPDF=true;button.click();await new Promise(r=>setTimeout(r,20));
  assert.equal(w.invoiceComparisonReport,null,'Falha não pode deixar o confronto anterior disponível');
  assert.equal(result.textContent,'');assert(w.document.getElementById('invoicePDFNotice').textContent.includes('Extração incompleta'));
+ if(process.env.L2_INVOICE_REPORT){
+  const actual=JSON.parse(fs.readFileSync(process.env.L2_INVOICE_REPORT,'utf8'));
+  w.fetch=async()=>({ok:true,json:async()=>({report:actual})});
+  button.click();await new Promise(r=>setTimeout(r,20));
+  assert(result.textContent.includes(actual.invoiceNumber));
+  assert(result.textContent.includes('Baixar PDF dos cortes'));
+  assert.equal(result.querySelectorAll('table tr').length,actual.items.length+1);
+  assert.equal(w.document.getElementById('invoicePastedForm').elements.invoiceText.value,'');
+  printed.length=0;w.downloadInvoiceComparisonPDF(true);
+  assert.equal(saved,'Cortes_NF_'+actual.invoiceNumber+'.pdf');
+  for(const item of actual.cuts)assert(printed.includes('Produto '+item.sku));
+  for(const item of actual.items.filter(i=>Number(i.cutQuantity)===0))assert(!printed.includes('Produto '+item.sku));
+  for(const warning of actual.warnings)assert(printed.includes('Revisar: '+warning));
+  console.log('Documento fornecido: resultado completo e PDF contendo apenas os cortes: OK');
+ }
  dom.window.close();console.log('PDF usa pedido 074 salvo, sem validar carrinho vazio nem criar pedido: OK');
 })().catch(e=>{console.error(e);process.exit(1)});
