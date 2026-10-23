@@ -16,7 +16,7 @@ def reconcile_invoice(order, xml_bytes, brand, expected_recipient_cnpj=None):
     except Exception as exc:
         raise InvoiceError('XML da NF-e inválido') from exc
     def local(tag): return tag.rsplit('}',1)[-1]
-    def child(node,name): return next((x for x in node if local(x.tag)==name),None)
+    def child(node,name): return next((x for x in (node if node is not None else []) if local(x.tag)==name),None)
     def value(node,name):
         element=child(node,name) if node is not None else None
         return (element.text or '').strip() if element is not None else ''
@@ -33,12 +33,18 @@ def reconcile_invoice(order, xml_bytes, brand, expected_recipient_cnpj=None):
         for det in (x for x in inf if local(x.tag)=='det'):
             prod=child(det,'prod');sku=value(prod,'cProd').upper()
             if not sku: raise InvoiceError('NF-e contém produto sem código')
-            qty=Decimal(value(prod,'qCom'));total=Decimal(value(prod,'vProd'))
+            qty=Decimal(value(prod,'qCom'));total=Decimal(value(prod,'vProd'))-Decimal(value(prod,'vDesc') or '0')
             if not qty.is_finite() or not total.is_finite() or qty<0 or total<0: raise ValueError()
             invoice_items[sku][0]+=qty;invoice_items[sku][1]+=total
     except (InvalidOperation,ValueError) as exc:
         raise InvoiceError('Quantidade ou valor inválido no XML') from exc
     if not invoice_items: raise InvoiceError('NF-e sem itens')
+    product_total=sum((v[1] for v in invoice_items.values()),Decimal(0)).quantize(Decimal('.01'))
+    fiscal_total=value(child(child(inf,'total'),'ICMSTot'),'vNF')
+    try:
+        invoice_total=Decimal(fiscal_total) if fiscal_total else product_total
+        if not invoice_total.is_finite() or invoice_total<0: raise ValueError()
+    except (InvalidOperation,ValueError) as exc: raise InvoiceError('Total da NF-e inválido') from exc
     expected=defaultdict(lambda:[Decimal(0),Decimal(0)])
     for item in order.get('items') or []:
         item_brand=item.get('brand') or order.get('brand')
@@ -46,22 +52,37 @@ def reconcile_invoice(order, xml_bytes, brand, expected_recipient_cnpj=None):
         sku=str(item.get('sku') or '').strip().upper()
         if not sku: continue
         try:
-            expected[sku][0]+=Decimal(str(item['quantity']))
-            expected[sku][1]+=Decimal(str(item['subtotal'])) if item.get('subtotal') is not None else Decimal(str(item['quantity']))*Decimal(str(item['unitPrice']))
+            qty=Decimal(str(item['quantity']))
+            total=Decimal(str(item['subtotal'])) if item.get('subtotal') is not None else qty*Decimal(str(item['unitPrice']))
+            if not qty.is_finite() or not total.is_finite() or qty<=0 or total<0: raise ValueError()
+            expected[sku][0]+=qty
+            expected[sku][1]+=total
         except (InvalidOperation,KeyError,ValueError) as exc:
             raise InvoiceError('Pedido contém item inválido') from exc
     if not expected: raise InvoiceError('Indústria não corresponde aos itens do pedido')
     differences=[]
+    descriptions={str(i.get('sku','')).strip().upper():str(i.get('description') or i.get('name') or i.get('sku') or '') for i in order.get('items',[]) if (i.get('brand') or order.get('brand'))==brand}
+    lines=[]
     for sku in sorted(set(expected)|set(invoice_items)):
         eq,ev=expected[sku];iq,iv=invoice_items[sku]
+        cut=max(Decimal(0),eq-iq)
+        lines.append({'sku':sku,'description':descriptions.get(sku,sku),
+                      'orderedQuantity':str(eq),'invoicedQuantity':str(iq),'cutQuantity':str(cut),
+                      'cutValue':str((ev*cut/eq if eq else Decimal(0)).quantize(Decimal('.01'))),
+                      'invoiceValue':str(iv.quantize(Decimal('.01'))),
+                      'classification':('Item extra' if not eq else 'Excesso faturado' if iq>eq else 'Faturamento Completo' if iq==eq else 'Corte Parcial' if iq>0 else 'Corte Total')})
         if eq!=iq or abs(ev-iv)>Decimal('0.01'):
             differences.append({'sku':sku,'pedidoQuantidade':str(eq),'notaQuantidade':str(iq),
                                 'pedidoValor':str(ev.quantize(Decimal('.01'))),
                                 'notaValor':str(iv.quantize(Decimal('.01')))})
     return {'invoiceNumber':number,'brand':brand,'issuerCnpj':issuer,'recipientCnpj':recipient,
+            'invoiceKey':inf.get('Id','').removeprefix('NFe'),'series':value(child(inf,'ide'),'serie'),
+            'invoiceDate':(value(child(inf,'ide'),'dhEmi') or value(child(inf,'ide'),'dEmi'))[:10],
             'status':'Conferido' if not differences else 'Divergente',
             'orderTotal':str(sum((v[1] for v in expected.values()),Decimal(0)).quantize(Decimal('.01'))),
-            'invoiceTotal':str(sum((v[1] for v in invoice_items.values()),Decimal(0)).quantize(Decimal('.01'))),
+            'invoiceTotal':str(invoice_total.quantize(Decimal('.01'))),
+            'invoiceProductTotal':str(product_total),'totalBasis':'Total da NF-e' if fiscal_total else 'Soma dos itens extraídos',
+            'items':lines,'cuts':[line for line in lines if Decimal(line['cutQuantity'])>0],
             'differences':differences}
 
 def reconcile_invoice_text(order, text, brand, expected_recipient_cnpj=None):
@@ -134,6 +155,10 @@ def reconcile_invoice_text(order, text, brand, expected_recipient_cnpj=None):
     details = ''.join('<det><prod><cProd>'+escape(code)+'</cProd><qCom>'+str(qty)+'</qCom><vProd>'+str(total)+'</vProd></prod></det>' for code,qty,total in items)
     xml = ('<nfeProc><NFe><infNFe><ide><nNF>'+invoice_number+'</nNF></ide><emit><CNPJ>'+issuer+'</CNPJ></emit><dest><CNPJ>'+recipient+'</CNPJ></dest>'+details+'</infNFe></NFe></nfeProc>').encode()
     report = reconcile_invoice(order, xml, brand)
+    total_match=re.search(r'(?:valor\s*total\s*(?:da\s*)?(?:nota|nf(?:-?e)?)|total\s*da\s*nota|vNF)\s*[:=]\s*(?:R\$\s*)?([\d.,]+)',text,re.I)
+    if total_match:
+        report['invoiceTotal']=str(number(total_match.group(1)).quantize(Decimal('.01')))
+        report['totalBasis']='Total da NF-e extraído do texto'
     report['source'] = 'texto colado'
     report['cnpjs'] = cnpjs
     report['warnings'] = []
@@ -168,3 +193,30 @@ def extract_invoice_pdf_text(content):
     text = '\n'.join(pages).strip()
     if not text: raise InvoiceError('PDF sem texto legível')
     return text, scanned
+
+
+def consolidated_billing(order, reports):
+    """Rebuild totals from confirmed invoices, never add to a mutable running total."""
+    from xml.sax.saxutils import escape
+    items=[]
+    by_brand={}
+    for brand in sorted({i.get('brand') or order.get('brand') for i in order.get('items',[])}):
+        totals=defaultdict(lambda:[Decimal(0),Decimal(0)])
+        for report in reports:
+            if report['brand']!=brand: continue
+            for item in report['items']:
+                totals[item['sku']][0]+=Decimal(item['invoicedQuantity'])
+                totals[item['sku']][1]+=Decimal(item['invoiceValue'])
+        details=''.join('<det><prod><cProd>'+escape(sku)+'</cProd><qCom>'+str(qty)+'</qCom><vProd>'+str(total)+'</vProd></prod></det>' for sku,(qty,total) in totals.items())
+        if not details:
+            # A zero row permits a report for an industry not invoiced yet.
+            first=next(i for i in order['items'] if (i.get('brand') or order.get('brand'))==brand)
+            details='<det><prod><cProd>'+escape(first['sku'])+'</cProd><qCom>0</qCom><vProd>0</vProd></prod></det>'
+        result=reconcile_invoice(order,('<NFe><infNFe><ide><nNF>0</nNF></ide>'+details+'</infNFe></NFe>').encode(),brand)
+        by_brand[brand]=str(sum((Decimal(r['invoiceTotal']) for r in reports if r['brand']==brand),Decimal(0)).quantize(Decimal('.01')))
+        items.extend(dict(i,brand=brand) for i in result['items'])
+    if any(i['classification'] in ('Item extra','Excesso faturado') for i in items):
+        raise InvoiceError('Há SKU não identificado ou quantidade acima do pedido. Revise antes de confirmar.')
+    return {'items':items,'cuts':[i for i in items if Decimal(i['cutQuantity'])>0],
+            'billedByBrand':by_brand,'billedAmount':str(sum(map(Decimal,by_brand.values()),Decimal(0)).quantize(Decimal('.01'))),
+            'cutTotal':str(sum((Decimal(i['cutValue']) for i in items),Decimal(0)).quantize(Decimal('.01')))}

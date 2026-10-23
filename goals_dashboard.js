@@ -6,6 +6,7 @@
  const dayAfter=(day,n)=>new Date(Date.parse(day+'T12:00:00Z')+n*864e5).toISOString().slice(0,10);
  function businessDays(month){const [y,m]=month.split('-').map(Number),out=[];for(let i=1;i<=31;i++){const d=new Date(Date.UTC(y,m-1,i,12));if(d.getUTCMonth()!==m-1)break;if(d.getUTCDay()>0&&d.getUTCDay()<6)out.push(d.toISOString().slice(0,10))}return out}
  function orderAmounts(order){
+  if(order.invoiceBilling)return new Map(Object.entries(order.billedByBrand||{}).map(([brand,value])=>[brand,cents(value)]));
   const raw=new Map();for(const item of order.items||[]){const brand=item.brand||order.brand||'Indústria não informada',amount=item.subtotal!==undefined?cents(item.subtotal):cents(item.unitPrice)*Number(item.quantity||0);raw.set(brand,(raw.get(brand)||0)+amount)}
   if(!raw.size)raw.set(order.brand&&order.brand!=='Multimarcas'?order.brand:'Indústria não informada',cents(order.amount));
   const total=cents(order.amount),gross=[...raw.values()].reduce((n,v)=>n+v,0);

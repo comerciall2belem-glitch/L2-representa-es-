@@ -21,6 +21,7 @@ from davines_seed import seed_davines
 from magic_beauty_seed import seed_magic_beauty
 from dalla_seed import seed_dalla
 from inventory import setup_inventory, snapshot as inventory_snapshot, apply_movement as inventory_apply, InventoryMovement
+from invoice_billing import confirm_invoice, order_fingerprint
 from order_reconciliation import reconcile_invoice, reconcile_invoice_text, extract_invoice_pdf_text, InvoiceError
 from lead_capture import LeadIntake, normalize_intake, ingest_lead, lead_sla
 from login_identity import resolve_identity
@@ -1057,6 +1058,11 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     if previous_entity and previous_entity[0].get('clientId'):
                         check_client_scope(con,user,previous_entity[0]['clientId'])
                     if obj.get('clientId'): check_client_scope(con,user,obj['clientId'])
+                    if target_kind=='order':
+                        if previous_entity and previous_entity[0].get('invoiceBilling'):
+                            raise HTTPException(409,'Pedido com NF-e confirmada é imutável. Atualize os dados pela conferência fiscal.')
+                        for field in ('originalAmount','billedAmount','billedByBrand','invoiceBilling'):
+                            obj.pop(field,None)
                     if kind=='task':field_assistant.validate_agenda_task(con,user,obj,previous_entity[0] if previous_entity else None)
                 if kind.startswith('delete_') and kind not in ('delete_industry','delete_price_table','delete_price','delete_client','delete_order'):
                     base=kind[7:]
@@ -1908,32 +1914,100 @@ def list_order_invoices(order_id: str, authorization: str | None = Header(defaul
         rows=con.execute('SELECT id,reconciliation,uploaded_by,created_at FROM order_invoices WHERE order_id=%s ORDER BY created_at DESC',(order_id,)).fetchall()
     return [dict(row[1],id=row[0],uploadedBy=row[2],createdAt=row[3].isoformat()) for row in rows]
 
-@app.post('/api/orders/{order_id}/invoices')
-async def upload_order_invoice(order_id: str, file: UploadFile = File(...), brand: str = Form(...), authorization: str | None = Header(default=None)):
-    user=auth(authorization);require_sector(user,'commercial','office')
-    name=Path(file.filename or '').name.strip()[:180]
-    if not name.lower().endswith('.xml'): raise HTTPException(400,'Envie o XML da NF-e para confronto automático')
-    content=await file.read(5*1024*1024+1)
-    if not content or len(content)>5*1024*1024: raise HTTPException(400,'XML vazio ou acima de 5 MB')
-    with db() as con:
-        check_order_scope(con,user,order_id)
-        order=con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(order_id,)).fetchone()[0]
-        customer=con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s",(order.get('clientId'),)).fetchone()
-        recipient=re.sub(r'\D','',str(customer[0].get('taxId') or '')) if customer else ''
-        try: report=reconcile_invoice(order,content,brand.strip(),recipient or None)
-        except InvoiceError as exc: raise HTTPException(400,str(exc)) from exc
-        if con.execute('SELECT 1 FROM order_invoices WHERE order_id=%s AND brand=%s AND invoice_number=%s',(order_id,report['brand'],report['invoiceNumber'])).fetchone():
-            raise HTTPException(409,'Esta NF-e já foi confrontada com o pedido')
+def save_invoice_preview(con, order_id, order, report, name, content, user):
+    report.update(confirmed=False,orderFingerprint=order_fingerprint(order))
+    existing=con.execute('SELECT id,reconciliation FROM order_invoices WHERE order_id=%s AND brand=%s AND invoice_number=%s',
+                         (order_id,report['brand'],report['invoiceNumber'])).fetchone()
+    if existing:
+        if existing[1].get('confirmed'): raise HTTPException(409,'Esta NF-e já foi contabilizada')
+        invoice_id=existing[0]
+        con.execute('UPDATE order_invoices SET filename=%s,content=%s,reconciliation=%s,uploaded_by=%s WHERE id=%s',
+                    (name,content,Jsonb(report),user,invoice_id))
+    else:
         invoice_id=secrets.token_hex(16)
         con.execute('INSERT INTO order_invoices(id,order_id,brand,invoice_number,filename,content,reconciliation,uploaded_by) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)',
                     (invoice_id,order_id,report['brand'],report['invoiceNumber'],name,content,Jsonb(report),user))
-        con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,'order_invoice',%s,'reconciled')",(user,invoice_id))
     return dict(report,id=invoice_id)
+
+
+@app.post('/api/orders/{order_id}/invoices')
+async def upload_order_invoice(order_id: str, file: UploadFile = File(...), brand: str = Form(...), authorization: str | None = Header(default=None)):
+    user=auth(authorization);require_sector(user,'commercial','office')
+    # Scope check precedes document processing, including OCR.
+    with db() as con: check_order_scope(con,user,order_id)
+    name=Path(file.filename or '').name.strip()[:180]
+    if not name.lower().endswith(('.xml','.pdf')): raise HTTPException(400,'Envie o PDF ou XML da NF-e')
+    content=await file.read(10*1024*1024+1)
+    text=None
+    scanned=[]
+    if name.lower().endswith('.pdf'):
+        try: text,scanned=await asyncio.to_thread(extract_invoice_pdf_text,content)
+        except InvoiceError as exc: raise HTTPException(400,str(exc)) from exc
+    with db() as con:
+        con.execute('SELECT pg_advisory_xact_lock(%s)',(8239020,))
+        check_order_scope(con,user,order_id)
+        row=con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(order_id,)).fetchone()
+        if not row: raise HTTPException(404,'Pedido não encontrado')
+        order=row[0]
+        customer=con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s",(order.get('clientId'),)).fetchone()
+        recipient=re.sub(r'\D','',str(customer[0].get('taxId') or '')) if customer else ''
+        try:
+            report=reconcile_invoice_text(order,text,brand.strip(),recipient or None) if text is not None else reconcile_invoice(order,content,brand.strip(),recipient or None)
+        except InvoiceError as exc: raise HTTPException(400,str(exc)) from exc
+        report['source']='PDF' if text is not None else 'XML'
+        if scanned: report.setdefault('warnings',[]).append('Confira os itens extraídos por OCR antes de confirmar.')
+        return save_invoice_preview(con,order_id,order,report,name,content,user)
+
+
+@app.post('/api/orders/{order_id}/invoices/{invoice_id}/confirm')
+def confirm_order_invoice(order_id: str, invoice_id: str, authorization: str | None = Header(default=None)):
+    user=auth(authorization);require_sector(user,'commercial','office')
+    with db() as con:
+        con.execute('SELECT pg_advisory_xact_lock(%s)',(8239020,))
+        check_order_scope(con,user,order_id)
+        row=con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(order_id,)).fetchone()
+        if not row: raise HTTPException(404,'Pedido não encontrado')
+        customer=con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s",(row[0].get('clientId'),)).fetchone()
+        recipient=re.sub(r'\D','',str(customer[0].get('taxId') or '')) if customer else ''
+        try: report,order=confirm_invoice(con,order_id,invoice_id,user,recipient,datetime.now(TZ).isoformat())
+        except InvoiceError as exc: raise HTTPException(409,str(exc)) from exc
+        project_order(con,order_id,order)
+        strategic_crm.event(con,'order',order)
+    return {'report':report,'order':order}
+
+
+@app.get('/api/orders/{order_id}/invoices/cuts.pdf')
+def order_cuts_pdf(order_id: str, authorization: str | None = Header(default=None)):
+    user=auth(authorization);require_sector(user,'commercial','office')
+    with db() as con:
+        check_order_scope(con,user,order_id)
+        row=con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(order_id,)).fetchone()
+        if not row or not row[0].get('invoiceBilling'): raise HTTPException(409,'Confirme o faturamento antes de emitir o relatório de cortes')
+        order=row[0]
+        customer=con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s",(order.get('clientId'),)).fetchone()
+    from invoice_cuts_pdf import build_cuts_pdf
+    return Response(build_cuts_pdf(order,customer[0] if customer else {}),media_type='application/pdf',
+                    headers={'Content-Disposition':'attachment; filename="Cortes_Pedido_'+str(order.get('orderNumber') or 'L2')+'.pdf"'})
 
 
 class InvoiceTextPreview(BaseModel):
     brand: str = Field(min_length=1, max_length=180)
     text: str = Field(min_length=1, max_length=200000)
+
+@app.post('/api/orders/{order_id}/invoices/text')
+def save_order_invoice_text(order_id: str, data: InvoiceTextPreview, authorization: str | None = Header(default=None)):
+    user=auth(authorization);require_sector(user,'commercial','office')
+    with db() as con:
+        con.execute('SELECT pg_advisory_xact_lock(%s)',(8239020,))
+        check_order_scope(con,user,order_id)
+        row=con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(order_id,)).fetchone()
+        if not row: raise HTTPException(404,'Pedido não encontrado')
+        customer=con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s",(row[0].get('clientId'),)).fetchone()
+        recipient=re.sub(r'\D','',str(customer[0].get('taxId') or '')) if customer else ''
+        try: report=reconcile_invoice_text(row[0],data.text,data.brand.strip(),recipient or None)
+        except InvoiceError as exc: raise HTTPException(400,str(exc)) from exc
+        return save_invoice_preview(con,order_id,row[0],report,'nota.txt',data.text.encode(),user)
+
 
 @app.post('/api/orders/{order_id}/invoices/text-preview')
 def preview_order_invoice_text(order_id: str, data: InvoiceTextPreview, authorization: str | None = Header(default=None)):
@@ -1962,7 +2036,7 @@ async def preview_order_invoice_pdf(order_id: str, file: UploadFile = File(...),
         row = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s", (order_id,)).fetchone()
         if not row: raise HTTPException(404, 'Pedido não encontrado')
         customer = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (row[0].get('clientId'),)).fetchone()
-        recipient = re.sub(r'\\D', '', str(customer[0].get('taxId') or '')) if customer else ''
+        recipient = re.sub(r'\D', '', str(customer[0].get('taxId') or '')) if customer else ''
         try: report = reconcile_invoice_text(row[0], text, brand.strip(), recipient or None)
         except InvoiceError as exc:
             return {'report':None,'extractedText':text,'ocrPages':scanned,'requiresReview':True,'warning':str(exc)}
