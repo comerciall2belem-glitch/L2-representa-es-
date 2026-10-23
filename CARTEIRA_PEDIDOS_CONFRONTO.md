@@ -16,9 +16,21 @@ O pedido tem uma UF e pode conter itens de várias indústrias. Cada item regist
 
 ## Confronto de NF-e
 
-Anexar um **XML da NF-e** ao pedido dispara automaticamente o confronto de código (`cProd`), quantidade (`qCom`) e valor do item (`vProd`) por indústria. O resultado é `Conferido` ou `Divergente`, com diferenças detalhadas. O destinatário é conferido com o CNPJ cadastrado do cliente quando o XML o informa. Cada nota e o relatório ficam persistidos em `order_invoices` com restrição de duplicação por pedido, indústria e número da nota. O PDF da nota pode ser mantido em Comprovantes, mas não é usado para calcular diferenças.
+O confronto aceita **PDF ou XML** em um único formulário; o texto colado é uma alternativa opcional. A extração salva a conferência sem faturar. O botão **Confirmar faturamento** grava a nota, recalcula o faturamento acumulado e atualiza a projeção de vendas e o CRM na mesma transação PostgreSQL. A operação compartilha o bloqueio transacional da sincronização offline.
 
-O campo `brand` é escolhido por quem envia o XML; enquanto o cadastro de indústria não tiver CNPJ fiscal validado, a correspondência do emitente com a indústria exige conferência humana. Descontos e frete podem gerar diferença entre valor de produtos e valor líquido da nota; o relatório não presume esses ajustes. Nenhum valor de faturamento é criado a partir de dados ausentes.
+O confronto compara SKU e quantidade por indústria e classifica atendimento completo, corte parcial e corte total. SKUs extras e quantidades cumulativas acima do pedido bloqueiam a confirmação para revisão; diferenças de preço permanecem visíveis. Não se presume equivalência entre códigos diferentes. CNPJ destinatário ausente ou divergente também bloqueia a gravação.
+
+`order_invoices.reconciliation.confirmed` diferencia documentos pendentes de confirmados. Repetir a confirmação do mesmo registro retorna o resultado sem somar novamente. Chave da NF-e, ou emitente/série/número/indústria na ausência de chave, impedem confirmação duplicada em outro registro. O esquema legado mantém a unicidade por pedido/indústria/número; documentos de séries diferentes com o mesmo número neste pedido exigem tratamento posterior, sem sobrescrever nota confirmada.
+
+O pedido preserva os itens e guarda seu total original em `originalAmount`. `amount` e `billedAmount` passam a refletir somente o total das notas confirmadas; `billedByBrand` alimenta as metas e os relatórios por indústria. O PDF comercial do pedido continua usando o total original. A sincronização comum não pode forjar os campos de faturamento nem reescrever pedidos com notas confirmadas. Os pedidos legados sem confirmação permanecem intactos.
+
+O total fiscal `vNF` é usado quando presente no XML; no texto/PDF, aceita-se um total explicitamente rotulado como total da nota. Na ausência desse total, usa-se a soma dos itens extraídos (no XML, descontando `vDesc`). A base é exibida para revisão. Não se infere valor a partir de dado ausente. PDF com estrutura de itens não reconhecida é recusado, sem atualizar o faturamento; deve-se fornecer XML ou texto estruturado revisado. OCR exige conferência humana antes da confirmação. A correspondência do emitente com a indústria selecionada ainda depende de conferência humana.
+
+**Baixar PDF de cortes** gera relatório consolidado com código, indústria, descrição, quantidade pedida, faturada, cortada e valor do corte. Quantidades somam todas as notas confirmadas; indústrias ainda não faturadas também aparecem como saldo pendente. Valor de corte usa o preço médio do SKU no pedido original, sem confundir corte com diferença de preço da nota. Notas complementares recalculam esse saldo. Nenhuma confirmação presume recebimento de dinheiro ou de comissão.
+
+## Homologação pendente
+
+Validar com pedido original e NF real, sessões de gestão/escritório/vendedor e banco de homologação. Conferir commit e rollback das transações PostgreSQL e duas confirmações concorrentes. Não publicar em produção antes desta validação. Os testes automatizados de persistência usam conexão simulada, sem documentos ou banco de clientes.
 
 ## Verificação
 
