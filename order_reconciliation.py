@@ -1,4 +1,4 @@
-"""Confronto de NF-e XML com itens de pedidos, sem inferir dados de PDFs."""
+"""Confronto de NF-e com itens originais do pedido e leitura validada de DANFE."""
 from collections import defaultdict
 from decimal import Decimal, InvalidOperation
 from defusedxml import ElementTree as SafeXML
@@ -42,7 +42,7 @@ def reconcile_invoice(order, xml_bytes, brand, expected_recipient_cnpj=None):
     expected=defaultdict(lambda:[Decimal(0),Decimal(0)])
     for item in order.get('items') or []:
         item_brand=item.get('brand') or order.get('brand')
-        if item_brand!=brand: continue
+        if brand!='__all__' and item_brand!=brand: continue
         sku=str(item.get('sku') or '').strip().upper()
         if not sku: continue
         try:
@@ -52,8 +52,12 @@ def reconcile_invoice(order, xml_bytes, brand, expected_recipient_cnpj=None):
             raise InvoiceError('Pedido contém item inválido') from exc
     if not expected: raise InvoiceError('Indústria não corresponde aos itens do pedido')
     differences=[]
+    lines=[]
+    descriptions={str(i.get('sku','')).strip().upper():i.get('description') or i.get('sku') for i in order.get('items',[]) if brand=='__all__' or (i.get('brand') or order.get('brand'))==brand}
     for sku in sorted(set(expected)|set(invoice_items)):
         eq,ev=expected[sku];iq,iv=invoice_items[sku]
+        cut=max(Decimal(0),eq-iq)
+        lines.append({'sku':sku,'description':descriptions.get(sku,sku),'orderedQuantity':str(eq),'invoicedQuantity':str(iq),'orderedValue':str(ev.quantize(Decimal('.01'))),'invoicedValue':str(iv.quantize(Decimal('.01'))),'cutQuantity':str(cut),'cutValue':str((ev*cut/eq if eq else Decimal(0)).quantize(Decimal('.01'))),'classification':'Item fora do pedido' if eq==0 else 'Excesso faturado' if iq>eq else 'Faturamento completo' if iq==eq else 'Corte parcial' if iq>0 else 'Corte total'})
         if eq!=iq or abs(ev-iv)>Decimal('0.01'):
             differences.append({'sku':sku,'pedidoQuantidade':str(eq),'notaQuantidade':str(iq),
                                 'pedidoValor':str(ev.quantize(Decimal('.01'))),
@@ -62,6 +66,8 @@ def reconcile_invoice(order, xml_bytes, brand, expected_recipient_cnpj=None):
             'status':'Conferido' if not differences else 'Divergente',
             'orderTotal':str(sum((v[1] for v in expected.values()),Decimal(0)).quantize(Decimal('.01'))),
             'invoiceTotal':str(sum((v[1] for v in invoice_items.values()),Decimal(0)).quantize(Decimal('.01'))),
+            'items':lines,'cuts':[i for i in lines if Decimal(i['cutQuantity'])>0],
+            'cutTotal':str(sum((Decimal(i['cutValue']) for i in lines),Decimal(0)).quantize(Decimal('.01'))),
             'differences':differences}
 
 def reconcile_invoice_text(order, text, brand, expected_recipient_cnpj=None):
@@ -71,6 +77,9 @@ def reconcile_invoice_text(order, text, brand, expected_recipient_cnpj=None):
     from xml.sax.saxutils import escape
     if not isinstance(text, str) or not text.strip() or len(text) > 200000:
         raise InvoiceError('Cole o texto da nota, até 200.000 caracteres')
+    if re.search(r'DANFE|DADOS\s+DO\s+PRODUTO',text,re.I):
+        from danfe_invoice import reconcile_danfe
+        return reconcile_danfe(order,text,brand,expected_recipient_cnpj)
     def norm(value):
         return ''.join(c for c in unicodedata.normalize('NFKD', value.lower()) if not unicodedata.combining(c)).strip()
     def number(value):

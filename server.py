@@ -1962,15 +1962,16 @@ async def preview_order_invoice_pdf(order_id: str, file: UploadFile = File(...),
         row = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s", (order_id,)).fetchone()
         if not row: raise HTTPException(404, 'Pedido não encontrado')
         customer = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (row[0].get('clientId'),)).fetchone()
-        recipient = re.sub(r'\\D', '', str(customer[0].get('taxId') or '')) if customer else ''
+        recipient = re.sub(r'\D', '', str(customer[0].get('taxId') or '')) if customer else ''
         try: report = reconcile_invoice_text(row[0], text, brand.strip(), recipient or None)
         except InvoiceError as exc:
-            return {'report':None,'extractedText':text,'ocrPages':scanned,'requiresReview':True,'warning':str(exc)}
+            raise HTTPException(400,str(exc)) from exc
         report['source'] = 'PDF'
+        report['orderNumber'] = row[0].get('orderNumber')
         if scanned:
             report['warnings'].append('PDF digitalizado: confira os dados obtidos por OCR')
             if report['status'] == 'Conferido': report['status'] = 'Revisar'
-        return {'report':report,'extractedText':text,'ocrPages':scanned,'requiresReview':True}
+        return {'report':report,'ocrPages':scanned,'requiresReview':True}
 
 @app.post('/api/orders/{order_id}/attachments')
 async def upload_order_attachment(order_id: str, file: UploadFile = File(...), authorization: str | None = Header(default=None)):
