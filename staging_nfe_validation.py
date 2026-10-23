@@ -17,6 +17,10 @@ def validate(module):
         raise RuntimeError('NF-e QA requires explicitly isolated staging')
     tag='nfe-qa-'+secrets.token_hex(8)
     client_id=tag+'-client';brand=tag+'-brand'
+    cnpj='99'+str(secrets.randbelow(10**10)).zfill(10)
+    for weights in ([5,4,3,2,9,8,7,6,5,4,3,2],[6,5,4,3,2,9,8,7,6,5,4,3,2]):
+        remainder=sum(int(n)*w for n,w in zip(cnpj,weights))%11
+        cnpj+=str(0 if remainder<2 else 11-remainder)
     orders=[tag+'-order-'+str(i) for i in range(3)]
     profiles=[(tag+'-manager','Gestão',['commercial','management']),
               (tag+'-office','Administrativo',['commercial','office']),
@@ -32,13 +36,14 @@ def validate(module):
         before=fingerprint(con)
     def get_order(oid):
         with module.db() as con:return con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(oid,)).fetchone()[0]
-    def xml(qty=4,number='990001',recipient='11222333000181'):
+    def xml(qty=4,number='990001',recipient=None):
+        recipient=recipient or cnpj
         return ('<NFe><infNFe Id="NFe'+tag+number+'"><ide><nNF>'+number+'</nNF><serie>999</serie><dhEmi>'+date.today().isoformat()+'T12:00:00-03:00</dhEmi></ide><emit><CNPJ>99999999000199</CNPJ></emit><dest><CNPJ>'+recipient+'</CNPJ></dest><det><prod><cProd>QA01</cProd><qCom>'+str(qty)+'</qCom><vProd>'+str(qty*20)+'</vProd></prod></det><total><ICMSTot><vNF>'+str(qty*20)+'</vNF></ICMSTot></total></infNFe></NFe>').encode()
     try:
         with module.db() as con:
             for user,role,sectors in profiles:
                 con.execute('INSERT INTO app_users(username,password_hash,active,must_change_password,sectors,role) VALUES(%s,%s,true,false,%s,%s)',(user,module.password_hash(passwords[user]),Jsonb(sectors),role))
-            customer={'id':client_id,'name':'HOMOLOGAÇÃO NF-e FICTÍCIA - NÃO ENVIAR','owner':profiles[2][0],'state':'PA','taxId':'11222333000181','active':True}
+            customer={'id':client_id,'name':'HOMOLOGAÇÃO NF-e FICTÍCIA - NÃO ENVIAR','owner':profiles[2][0],'state':'PA','taxId':cnpj,'active':True}
             con.execute("INSERT INTO entities(kind,id,payload) VALUES('client',%s,%s)",(client_id,Jsonb(customer)))
             con.execute('INSERT INTO clientes(id,razao_social,documento) VALUES(%s,%s,%s)',(client_id,customer['name'],customer['taxId']))
             for oid in orders:
@@ -99,7 +104,7 @@ def validate(module):
         checks.append('complementary_invoice_recalculates_remaining_cuts')
         # A real PDF is uploaded with no text form field.
         buf=io.BytesIO();doc=canvas.Canvas(buf)
-        for y,line in zip((800,780,760,740),('NF: 990004','CNPJ destinatário: 11222333000181','Código; Quantidade; Valor total','QA01; 4; 80,00')):doc.drawString(40,y,line)
+        for y,line in zip((800,780,760,740),('NF: 990004','CNPJ destinatário: '+cnpj,'Código; Quantidade; Valor total','QA01; 4; 80,00')):doc.drawString(40,y,line)
         doc.save();pdfroot='/api/orders/'+orders[1]+'/invoices'
         r=api.post(pdfroot,headers=office,data={'brand':brand},files={'file':('ficticia.pdf',buf.getvalue(),'application/pdf')})
         assert r.status_code==200,('pdf_upload',r.status_code,r.text[:180])
