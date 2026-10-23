@@ -77,6 +77,7 @@ def reconcile_invoice(order, xml_bytes, brand, expected_recipient_cnpj=None):
                                 'notaValor':str(iv.quantize(Decimal('.01')))})
     return {'invoiceNumber':number,'brand':brand,'issuerCnpj':issuer,'recipientCnpj':recipient,
             'invoiceKey':inf.get('Id','').removeprefix('NFe'),'series':value(child(inf,'ide'),'serie'),
+            'invoiceDate':(value(child(inf,'ide'),'dhEmi') or value(child(inf,'ide'),'dEmi'))[:10],
             'status':'Conferido' if not differences else 'Divergente',
             'orderTotal':str(sum((v[1] for v in expected.values()),Decimal(0)).quantize(Decimal('.01'))),
             'invoiceTotal':str(invoice_total.quantize(Decimal('.01'))),

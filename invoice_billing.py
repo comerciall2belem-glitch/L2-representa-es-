@@ -34,8 +34,10 @@ def confirm_invoice(con, order_id, invoice_id, user, recipient, now):
                        and report['invoiceNumber']==other['invoiceNumber'] and report['brand']==other['brand'])
         if same_key or same_document: raise InvoiceError('Esta NF-e já foi contabilizada. Não será lançado faturamento duplicado.')
     reports=[r for oid,r in confirmed if oid==order_id]+[report]
-    billing=consolidated_billing(order,reports)
     report.update(confirmed=True,confirmedBy=user,confirmedAt=now)
+    billing=consolidated_billing(order,reports)
+    billing['documents']=[{'orderId':order_id,'brand':r['brand'],'invoiceNumber':r['invoiceNumber'],
+        'billedDate':r.get('invoiceDate') or r.get('confirmedAt',now)[:10],'billed':r['invoiceTotal']} for r in reports]
     con.execute('UPDATE order_invoices SET reconciliation=%s WHERE id=%s',(Jsonb(report),invoice_id))
     order.setdefault('originalAmount',order.get('amount'))
     order.update(amount=billing['billedAmount'],billedAmount=billing['billedAmount'],

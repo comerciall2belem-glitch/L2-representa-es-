@@ -64,6 +64,8 @@ class BillingTests(unittest.TestCase):
         self.assertTrue(r['confirmed']);self.assertEqual(updated['amount'],'80.00')
         self.assertEqual(updated['originalAmount'],'300.00');self.assertEqual(updated['status'],'Faturado')
         self.assertEqual(updated['items'],o['items']);self.assertEqual(len(db.audit),1)
+        self.assertEqual(updated['invoiceBilling']['documents'][0]['billed'],'80.00')
+        self.assertEqual(updated['invoiceBilling']['documents'][0]['billedDate'],'2026-10-23')
         self.assertIn('FOR UPDATE',db.queries[1])
 
     def test_repeat_confirmation_is_idempotent(self):
