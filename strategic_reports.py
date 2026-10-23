@@ -59,10 +59,15 @@ def build(data, report, start, end, asof, inactive_days=60):
                 c=clients.get(o.get('clientId'),{})
                 label=' / '.join(str(c.get(k) or 'Não informado') for k in ('state','city','district')) if report=='regions' else client_name(o.get('clientId'))
                 values[label]+=number(o.get('amount'));qty[label]+=1
+            elif report=='brands' and o.get('invoiceBilling'):
+                for brand,value in o.get('billedByBrand',{}).items():
+                    label=brand+' / Não informado'
+                    values[label]+=number(value)
+                    qty[label]+=sum((number(i.get('invoicedQuantity')) for i in o['invoiceBilling']['items'] if i['brand']==brand),Decimal(0))
             else:
-                for item in o.get('items',[]):
+                for item in o.get('invoiceBilling',{}).get('items',o.get('items',[])):
                     label=' / '.join(str(x or 'Não informado') for x in ((item.get('brand') or o.get('brand')),item.get('category'))) if report=='brands' else ' / '.join(str(x or 'Não informado') for x in (item.get('brand') or o.get('brand'),item.get('sku'),item.get('description')))
-                    q=number(item.get('quantity'));values[label]+=number(item.get('unitPrice'))*q;qty[label]+=q
+                    q=number(item.get('invoicedQuantity',item.get('quantity')));values[label]+=number(item['invoiceValue']) if 'invoiceValue' in item else number(item.get('unitPrice'))*q;qty[label]+=q
         if report.startswith('abc_'):
             columns=['Cliente' if report=='abc_clients' else 'Marca / SKU / Produto','Valor R$','Participação %','Curva'];rows=abc(values)
             notes.append('ABC: A até cruzar 80%, B até cruzar 95%, C restante; pedido faturado ou entregue, pela data do pedido; não substitui conciliação de NF.')
@@ -71,7 +76,10 @@ def build(data, report, start, end, asof, inactive_days=60):
             rows=[[k,float(qty[k]),float(v)] for k,v in sorted(values.items())]
         notes.append('Volume comercial de pedidos, não receita própria da L2. Categoria/bairro ausentes são identificados.')
     elif report in ('billing','commissions'):
-        docs=[r for r in data.get('settlement',[]) if r.get('invoiceNumber') and within(r.get('billedDate'))]
+        fiscal=[r for o in data.get('order',[]) for r in o.get('invoiceBilling',{}).get('documents',[]) if r.get('invoiceNumber') and within(r.get('billedDate'))]
+        fiscal_keys={(r.get('orderId'),r.get('brand'),r['invoiceNumber']) for r in fiscal}
+        docs=fiscal+[r for r in data.get('settlement',[]) if r.get('invoiceNumber') and within(r.get('billedDate')) and (r.get('orderId'),r.get('brand'),r['invoiceNumber']) not in fiscal_keys]
+
         total=sum((number(r.get('billed')) for r in docs),Decimal(0))
         if report=='billing':
             columns=['Período','Faturamento documentado R$','Meta R$','Atingimento %']
@@ -80,7 +88,7 @@ def build(data, report, start, end, asof, inactive_days=60):
                 target=number(goals[0].get('amount')) if len(goals)==1 else None
                 billed=sum((number(r.get('billed')) for r in docs if str(r['billedDate']).startswith(month)),Decimal(0))
                 rows.append([month,float(billed),float(target) if target is not None else None,float(billed/target*100) if target else None])
-            notes.append('Faturamento usa liquidações com número de NF e data de faturamento; metas são mensais integrais, inclusive em período parcial.')
+            notes.append('Faturamento usa NF-e confirmada ou liquidação documentada sem repetir a mesma nota; metas são mensais integrais, inclusive em período parcial.')
         else:
             columns=['Pedido / Regra','Vendedor','Base faturada R$','Percentual histórico %','Comissão R$','Bônus coletivo R$']
             by_order=defaultdict(Decimal)
