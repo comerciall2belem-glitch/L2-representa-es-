@@ -1,0 +1,24 @@
+const fs=require('fs'),assert=require('node:assert/strict');
+const {JSDOM}=require(process.env.L2_JSDOM||'jsdom');
+(async()=>{
+ const html=fs.readFileSync('index.html','utf8').replace(/<script[\s\S]*?<\/script>/g,'');
+ const dom=new JSDOM(html,{url:'https://l2.test',runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window,alerts=[],requests=[];
+ w.structuredClone=structuredClone;w.matchMedia=()=>({matches:false});w.alert=x=>alerts.push(x);w.confirm=()=>true;w.setInterval=()=>0;w.HTMLElement.prototype.scrollIntoView=function(){};
+ w.fetch=async(url,options={})=>{requests.push({url,method:options.method,body:options.body});return {ok:true,json:async()=>url.endsWith('/pdf-preview')?{extractedText:'NF: 46131',report:{invoiceNumber:'46131',brand:'Celimax',status:'Conferido',orderTotal:'10',invoiceTotal:'10',differences:[]}}:[]}};
+ w.localStorage.setItem('l2one_state_v2',JSON.stringify({user:'Marlene',role:'Administrativo',token:'x'.repeat(40),server:'https://l2.test',sectors:['commercial','office','catalog','admin'],sellers:['Euler'],industries:[{name:'Celimax',active:true}],priceTables:[{id:'Celimax|PA',brand:'Celimax',state:'PA',title:'PA',active:true}],prices:[{id:'Celimax|PA|QA1',brand:'Celimax',tableId:'Celimax|PA',state:'PA',sku:'QA1',description:'Produto teste',price:'10.00'}],clients:[{id:'c1',name:'Cliente teste',state:'PA',city:'Belém'}],orders:[{id:'o1',orderNumber:74,clientId:'c1',brand:'Celimax',sellerResponsible:'Euler',status:'Confirmado',amount:10,date:'2026-10-23',items:[{sku:'QA1',brand:'Celimax',quantity:1,unitPrice:'10.00'}]}],pending:[]}));
+ const sources=['commercial_drafts.js','crm_operations.js','goals_dashboard.js','workspace.js','app.js'];w.eval(sources.map(p=>fs.readFileSync(p,'utf8')).join('\n'));
+ w.orderDraft().clientId='c1';w.orderDraft().priceTable='PA';w.show('pedidos');
+ await w.manageOrderInvoices('o1');
+ const button=[...w.document.querySelectorAll('#orderInvoices button')].find(b=>b.textContent==='Confrontar PDF');
+ assert(button,'Botão de confronto disponível');
+ assert.notEqual(button.form?.id,'orderForm','Confrontar PDF não pode pertencer ao formulário de novo pedido');
+ assert.equal(w.document.getElementById('orderForm').contains(button),false,'Confronto deve estar fora do pedido novo');
+ const form=button.form;assert(form&&form.dataset.order==='o1');
+ Object.defineProperty(form.elements.file,'files',{value:[new w.File(['%PDF-1.4'],'nota.pdf',{type:'application/pdf'})]});form.elements.file.required=false;
+ form.onsubmit=event=>w.previewPDFInvoice(event);
+ button.click();await new Promise(r=>setTimeout(r,20));
+ assert(requests.some(x=>x.url.endsWith('/api/orders/o1/invoices/pdf-preview')&&x.method==='POST'));
+ assert.equal(alerts.length,0,alerts.join('; '));
+ assert(!requests.some(x=>x.url.endsWith('/api/sync')&&x.method==='POST'&&JSON.parse(x.body).changes.some(c=>c.type==='order')),'Não cria ou envia novo pedido');
+ dom.window.close();console.log('PDF usa pedido 074 salvo, sem validar carrinho vazio nem criar pedido: OK');
+})().catch(e=>{console.error(e);process.exit(1)});
