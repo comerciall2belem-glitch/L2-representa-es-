@@ -31,6 +31,20 @@ def local_date(value):
 def put(con, kind, item):
     con.execute('INSERT INTO entities(kind,id,payload) VALUES(%s,%s,%s) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,updated_at=now()', (kind, item['id'], Jsonb(item)))
 
+def validate_route_record(con, item):
+    value = item.get('date')
+    try:
+        if not isinstance(value, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+            raise ValueError()
+        date.fromisoformat(value)
+    except (TypeError, ValueError):
+        raise HTTPException(422, 'Data da rota inválida. Escolha a data correta antes de salvar.')
+    member = con.execute('SELECT username FROM app_users WHERE username=%s AND active', (item.get('user'),)).fetchone()
+    if not member:
+        raise HTTPException(422, 'Responsável da rota precisa ser um usuário ativo')
+    if item.get('clientId'):
+        _services['check_client_scope'](con, item['user'], item['clientId'])
+
 def changed(con):
     con.execute("SELECT pg_notify('l2_records_changed', '')")
 
@@ -136,7 +150,8 @@ def refresh_client(con, client_id):
     put(con, 'client', client)
     task_id = 'mcr-' + client_id
     previous = con.execute("SELECT payload FROM entities WHERE kind='task' AND id=%s", (task_id,)).fetchone()
-    task = {'id': task_id, 'clientId': client_id, 'user': client.get('owner',''), 'date': info['nextContact'],
+    member = con.execute('SELECT username FROM app_users WHERE username=%s AND active', (client.get('owner',''),)).fetchone()
+    task = {'responsibleNeedsReview': not bool(member), 'id': task_id, 'clientId': client_id, 'user': client.get('owner',''), 'date': info['nextContact'],
             'text': 'Reativar cliente' if info['status']=='Inativo' else 'Contato de acompanhamento',
             'notes': 'MCR · '+info['status'], 'status': 'Aberta', 'source':'MCR'}
     if previous and previous[0].get('date') == task['date']:

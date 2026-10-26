@@ -1,0 +1,12 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const code=fs.readFileSync('app.js','utf8');
+const s={routes:[{id:'r',date:'[object HTMLInputElement]',user:'Ana Paula',clientId:'c'}],tasks:[],pending:[{type:'route',data:{id:'r',date:'[object HTMLInputElement]'},changeId:'old'}],syncFaults:{old:'Data inválida'}};
+let queued,shown,alerts=[];
+const ctx={s,window:{},Date,Number,structuredClone,teamNames:()=>['Euler'],uid:()=> 'new',queue:(type,data)=>queued=data,show:tab=>shown=tab,alert:msg=>alerts.push(msg)};
+vm.createContext(ctx);vm.runInContext(code.slice(code.indexOf('function validRouteDate(value)')),ctx);
+for(const v of ['[object HTMLInputElement]',{},null,'2026-02-30','2026-10-26T12:00:00'])assert(!ctx.validRouteDate(v));
+assert(ctx.validRouteDate('2028-02-29'));assert(!ctx.validRouteDate('2026-02-29'));
+const event={preventDefault(){},target:{elements:{date:{value:'2026-10-27'},user:{value:'Euler'}}}};
+ctx.repairRouteDate(event,'r');assert.equal(queued.date,'2026-10-27');assert.equal(s.routes[0].user,'Euler');assert.equal(s.routes[0].clientId,'c');assert.equal(s.pending[0].data.date,'2026-10-27');assert.equal(s.syncFaults.old,undefined);assert.equal(shown,'rota');
+let codeAuto=code.slice(code.indexOf('function autoRoute('),code.indexOf('function changeOrder('));vm.runInContext(codeAuto,ctx);ctx.autoRoute({value:'2026-10-26'});assert.equal(alerts.length,1);
+console.log('Route integrity: invalid date rejected before mutation; repair preserves identity and fixes offline replays. OK');

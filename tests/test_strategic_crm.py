@@ -204,3 +204,30 @@ class WorkerTests(unittest.TestCase):
         self.con.entities[('client','c')]['mcrConsent']['enabled']=True
         self.con.entities[('strategy_settings','mcr')]['enabled']=False
         tick();self.send.assert_not_called()
+
+class RouteIntegrityTests(unittest.TestCase):
+    def test_invalid_dates_never_reach_database(self):
+        from strategic_crm import validate_route_record
+        from unittest.mock import Mock
+        con=Mock()
+        for value in ('[object HTMLInputElement]', '2026-02-30', '2026-10-26T00:00:00Z', '', None, {}):
+            with self.assertRaises(HTTPException) as raised:
+                validate_route_record(con, {'date':value,'user':'Erika'})
+            self.assertEqual(raised.exception.status_code,422)
+        con.execute.assert_not_called()
+
+    def test_route_assignee_must_be_active_and_authorized(self):
+        from strategic_crm import validate_route_record
+        from unittest.mock import Mock
+        con=Mock();con.execute.return_value.fetchone.return_value=None
+        with self.assertRaises(HTTPException):
+            validate_route_record(con, {'date':'2026-10-26','user':'BRUTAV'})
+        con.execute.return_value.fetchone.return_value=('Erika',)
+        with patch.dict('strategic_crm._services', {'check_client_scope':Mock(side_effect=HTTPException(403,'Carteira restrita'))}):
+            with self.assertRaises(HTTPException) as raised:
+                validate_route_record(con, {'date':'2026-10-26','user':'Erika','clientId':'outside'})
+            self.assertEqual(raised.exception.status_code,403)
+        check=Mock()
+        with patch.dict('strategic_crm._services', {'check_client_scope':check}):
+            validate_route_record(con, {'date':'2026-10-26','user':'Erika','clientId':'allowed'})
+        check.assert_called_once_with(con,'Erika','allowed')
