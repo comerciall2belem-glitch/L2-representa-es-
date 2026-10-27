@@ -30,4 +30,31 @@ class DailyRecommendationsTests(unittest.TestCase):
         self.assertEqual(self.calc()['actual'],'100.00')
     def test_identity_separates_user_and_day(self):
         self.assertNotEqual(identity('a','2026-10-01'),identity('b','2026-10-01'));self.assertNotEqual(identity('a','2026-10-01'),identity('a','2026-10-02'))
+
+class EndpointTests(unittest.TestCase):
+    def test_ack_is_per_user_and_shared_across_sessions(self):
+        from unittest.mock import patch
+        import daily_recommendations as m
+        from contextlib import contextmanager
+        from fastapi import HTTPException
+        from datetime import datetime
+        records={}
+        class Result:
+            def __init__(self, value): self.value=value
+            def fetchone(self): return self.value
+        class Connection:
+            def execute(self, sql, args):
+                return Result((1,) if args[0] in records else None)
+        @contextmanager
+        def db(): yield Connection()
+        def put(con,kind,item): records[item['id']]=item
+        current=datetime.now(m.crm.TZ).date().isoformat()
+        services={'auth':lambda h:h,'require_sector':lambda *args:None,'db':db}
+        with patch.dict(m.crm._services,services,clear=True), patch.object(m.crm,'put',side_effect=put):
+            self.assertFalse(m.status('Erika')['acknowledged'])
+            m.acknowledge(current,'Erika')
+            self.assertTrue(m.status('Erika')['acknowledged'])
+            self.assertFalse(m.status('Outro')['acknowledged'])
+            with self.assertRaises(HTTPException): m.acknowledge('2000-01-01','Erika')
+
 if __name__ == '__main__': unittest.main()
