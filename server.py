@@ -52,7 +52,9 @@ DEFAULT_SECTORS = {
 CATALOG_EDITORS = {'Ana Paula', 'Laís', 'Marlene'}
 INITIAL_PASSWORD = os.getenv('L2_INITIAL_PASSWORD', '')
 PASSWORDS = {u: os.getenv(f'L2_PASSWORD_{i}', '') or INITIAL_PASSWORD for i, u in enumerate(USERS, 1)}
+from staging_guard import validate_database_target
 DATABASE_URL = os.getenv('DATABASE_URL', '')
+validate_database_target(DATABASE_URL)
 SESSION_HOURS = int(os.getenv('L2_SESSION_HOURS', '24'))
 config_errors = []
 if not DATABASE_URL:
