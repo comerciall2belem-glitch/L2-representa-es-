@@ -1,5 +1,7 @@
 """L2 ONE: secure FastAPI/PostgreSQL application for Render."""
 import logging
+import global_search_server
+import next_staging_seed
 from portfolio_transfer_20261020 import transfer as transfer_portfolio_20261020
 import drive_backup
 import os, json, time, hashlib, secrets, re, base64, gzip, unicodedata, io, zipfile, asyncio
@@ -128,6 +130,9 @@ def initialize():
         drive_backup.setup(con)
         webchat.setup(con)
         con.execute('CREATE TABLE IF NOT EXISTS entities (kind TEXT NOT NULL, id TEXT NOT NULL, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(kind,id))')
+        # Índices criados apenas no banco isolado; demais ambientes exigem migração planejada.
+        if os.getenv('L2_EXPECTED_DATABASE') == 'l2_one_next_staging_db':
+            global_search_server.create_indexes(con)
         con.execute('ALTER TABLE entities ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ')
         con.execute('ALTER TABLE entities ALTER COLUMN created_at SET DEFAULT now()')
         con.execute('CREATE TABLE IF NOT EXISTS commercial_drafts (username TEXT NOT NULL, draft_key TEXT NOT NULL, payload JSONB, client_timestamp BIGINT NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(username,draft_key))')
@@ -366,6 +371,8 @@ def initialize():
         con.execute('CREATE INDEX IF NOT EXISTS idx_atendimentos_client_date ON atendimentos(cliente_id,data_atendimento DESC)')
         con.execute('CREATE INDEX IF NOT EXISTS idx_faturamento_client_date ON faturamento_pedidos(cliente_id,data_pedido DESC)')
         # Idempotent projection; legacy missing dates remain NULL (no backfilled business history).
+        if os.getenv('L2_NEXT_SEED') == 'yes':
+            next_staging_seed.seed(con)
         con.execute("""INSERT INTO clientes(id,razao_social,nome_fantasia,documento,curva_abc,created_at,updated_at)
             SELECT id,coalesce(nullif(payload->>'name',''),id),nullif(payload->>'tradeName',''),
                    nullif(payload->>'taxId',''),CASE WHEN payload->>'abc' IN ('A','B','C') THEN payload->>'abc' ELSE NULL END,
@@ -481,6 +488,16 @@ def scoped_rows(con, kind, user):
         client_ids={row[0] for row in con.execute("SELECT id FROM entities WHERE kind='client' AND payload->>'owner'=%s",(user,))}|allowed
         return [row[0] for row in con.execute("SELECT payload FROM entities WHERE kind='office_finance' ORDER BY updated_at,id") if row[0].get('clientId') in client_ids]
     return [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))]
+
+@app.get('/api/global-search')
+def global_search(q: str = '', authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    require_sector(user, 'commercial', 'office')
+    try:
+        with db() as con:
+            return global_search_server.search(con, q, user, is_seller(con, user))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 class PortfolioAuthorization(BaseModel):
     approved: bool

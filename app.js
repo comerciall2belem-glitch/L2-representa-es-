@@ -111,16 +111,31 @@ document.addEventListener('scroll',()=>document.querySelectorAll('.l2-visit-acti
 window.addEventListener('resize',()=>document.querySelectorAll('.l2-visit-actions[open]').forEach(d=>{d.open=false}));
 }
 
-/* Search only the collections already supplied to this authenticated session. */
+/* Consulta autenticada no servidor; nenhuma coleção local é usada na pesquisa. */
 function l2OpenSearch(){
  if(!s.token){alert('Entre no sistema para pesquisar.');return}
  if(document.getElementById('l2SearchDialog'))return;
  const d=document.createElement('dialog');d.id='l2SearchDialog';d.className='l2-dialog l2-search-dialog';
- d.innerHTML='<h2>Busca rápida</h2><p>Clientes e pedidos disponíveis para seu acesso.</p><label for="l2SearchInput">Nome, CNPJ ou número do pedido</label><input id="l2SearchInput" type="search" autocomplete="off" placeholder="Digite para pesquisar"><div id="l2SearchResults" aria-live="polite"></div><button type="button" class="secondary" data-close>Fechar</button>';
- const input=d.querySelector('input'),results=d.querySelector('#l2SearchResults');
- const normalize=x=>String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
- function search(){let q=normalize(input.value.trim());if(!q){results.textContent='Digite pelo menos dois caracteres.';return}if(q.length<2){results.textContent='Digite pelo menos dois caracteres.';return}const clients=(s.clients||[]).filter(c=>normalize([c.name,c.tradeName,c.cnpj,c.id].join(' ')).includes(q)).slice(0,8);const orders=(s.orders||[]).filter(o=>normalize([o.orderNumber,o.id,client(o.clientId).name].join(' ')).includes(q)).slice(0,8);results.replaceChildren();for(const c of clients){const b=document.createElement('button');b.type='button';b.className='l2-search-item';b.textContent='Cliente · '+(c.name||'Sem nome');b.onclick=()=>{d.close();if(sectionAllowed('crm'))openClient360(c.id);else if(sectionAllowed('clientes'))show('clientes')};results.append(b)}for(const o of orders){const b=document.createElement('button');b.type='button';b.className='l2-search-item';b.textContent='Pedido '+orderLabel(o.orderNumber)+' · '+(client(o.clientId).name||'Cliente')+' · '+(o.status||'Sem situação');b.onclick=()=>{results.replaceChildren();const title=document.createElement('h3');title.textContent=b.textContent;const info=document.createElement('p');info.textContent='Data: '+(o.date||'não informada')+' · Total: '+money(o.amount)+' · Indústria: '+(o.brand||'não informada');const back=document.createElement('button');back.textContent='Voltar aos resultados';back.className='secondary';back.onclick=search;results.append(title,info,back)};results.append(b)}if(!results.children.length)results.textContent='Nenhum resultado disponível.'}
- input.addEventListener('input',search);d.querySelector('[data-close]').onclick=()=>d.close();d.addEventListener('close',()=>d.remove(),{once:true});document.body.append(d);d.showModal();search();input.focus();
+ d.innerHTML='<h2>Busca rápida</h2><p>Clientes e pedidos disponíveis para seu acesso.</p><label for="l2SearchInput">Nome, CNPJ ou número do pedido</label><input id="l2SearchInput" type="search" autocomplete="off" maxlength="80" placeholder="Digite para pesquisar"><div id="l2SearchResults" aria-live="polite"></div><button type="button" class="secondary" data-close>Fechar</button>';
+ const input=d.querySelector('input'),results=d.querySelector('#l2SearchResults');let timer,controller,requestId=0;
+ async function search(){
+  const q=input.value.trim(),id=++requestId;clearTimeout(timer);controller?.abort();
+  if(q.length<2){results.textContent='Digite pelo menos dois caracteres.';return}
+  results.textContent='Pesquisando…';
+  timer=setTimeout(async()=>{
+   controller=new AbortController();
+   try{
+    const response=await fetch(s.server+'/api/global-search?q='+encodeURIComponent(q),{headers:{Authorization:'Bearer '+s.token},signal:controller.signal});
+    if(!response.ok)throw Error(response.status===401?'Sessão expirada. Entre novamente.':response.status===403?'Seu perfil não tem acesso à busca.':'Não foi possível consultar o servidor.');
+    const data=await response.json();if(id!==requestId||!d.isConnected)return;
+    results.replaceChildren();
+    for(const c of data.clients||[]){const b=document.createElement('button');b.type='button';b.className='l2-search-item';b.textContent='Cliente · '+(c.name||'Sem nome');b.onclick=()=>{if(!s.clients.some(x=>x.id===c.id))s.clients.push(c);d.close();if(sectionAllowed('crm'))openClient360(c.id);else if(sectionAllowed('clientes'))show('clientes')};results.append(b)}
+    for(const o of data.orders||[]){const b=document.createElement('button');b.type='button';b.className='l2-search-item';b.textContent='Pedido '+orderLabel(o.orderNumber)+' · '+(o.clientName||'Cliente')+' · '+(o.status||'Sem situação');b.onclick=()=>{results.replaceChildren();const title=document.createElement('h3');title.textContent=b.textContent;const info=document.createElement('p');info.textContent='Data: '+(o.date||'não informada')+' · Total: '+money(o.amount)+' · Indústria: '+(o.brand||'não informada');const back=document.createElement('button');back.textContent='Voltar aos resultados';back.className='secondary';back.onclick=search;results.append(title,info,back)};results.append(b)}
+    if(!results.children.length)results.textContent='Nenhum resultado disponível.';
+   }catch(error){if(error.name!=='AbortError'&&id===requestId&&d.isConnected)results.textContent=error.message||'Erro de conexão.'}
+  },250);
+ }
+ input.addEventListener('input',search);d.querySelector('[data-close]').onclick=()=>d.close();d.addEventListener('close',()=>{clearTimeout(timer);controller?.abort();d.remove()},{once:true});document.body.append(d);d.showModal();search();input.focus();
 }
 if(typeof document!=='undefined')document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();l2OpenSearch()}});
 
