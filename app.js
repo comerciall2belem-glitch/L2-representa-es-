@@ -1009,7 +1009,7 @@ workspaceNav();
 function checkTaskReminders(){if(!s.token||document.visibilityState!=='visible')return;const due=s.tasks.filter(x=>x.user===s.user&&x.status!=='Concluída'&&x.date&&x.date<=today());const badge=$('taskReminder');if(badge){badge.textContent=due.length?due.length+' tarefa(s) vencidas/hoje · abrir':'Minhas tarefas';badge.hidden=!sectionAllowed('crm')}}
 
 window.addEventListener('online',network);window.addEventListener('offline',network);
-(async()=>{if('serviceWorker'in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).catch(()=>{});if(!s.server&&location.protocol.startsWith('http'))s.server=location.origin;save();if(s.token&&navigator.onLine)await sync({automatic:true});show('hoje')})();
+(async()=>{if('serviceWorker'in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).catch(()=>{});if(!s.server&&location.protocol.startsWith('http'))s.server=location.origin;save();if(s.token&&navigator.onLine)await sync({automatic:true});if(tab==='hoje')show('hoje')})();
 
 function whatsappPhone(value){let phone=digits(value);if(phone.length===10||phone.length===11)phone='55'+phone;return /^55\d{10,11}$/.test(phone)?phone:''}
 function renderWhatsappBase(){
