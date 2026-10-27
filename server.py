@@ -28,7 +28,7 @@ from catalog_document import build_catalog_pdf
 from whatsapp_media import send_media, validate_media, provider_config, MediaError, send_text
 
 from commercial_tables import table_id, price_id, validate_table, seed_bella, validate_bella_order
-from access_policy import effective_sectors, attribute_order, COMMERCIAL_SECTORS
+from access_policy import effective_sectors, attribute_order, authorize_visit_change, COMMERCIAL_SECTORS
 from seller_commission import validate_rate, apply_seller_commission
 from financial_visibility import hide_industry_commissions, preserve_industry_commissions
 
@@ -1059,6 +1059,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     if previous_entity and previous_entity[0].get('clientId'):
                         check_client_scope(con,user,previous_entity[0]['clientId'])
                     if obj.get('clientId'): check_client_scope(con,user,obj['clientId'])
+                    if target_kind=='visit':
+                        authorize_visit_change(user,is_seller(con,user),obj,previous_entity[0] if previous_entity else None,kind=='delete_visit')
                     if kind=='route':strategic_crm.validate_route_record(con,obj)
                     if kind=='task':field_assistant.validate_agenda_task(con,user,obj,previous_entity[0] if previous_entity else None)
                 if kind.startswith('delete_') and kind not in ('delete_industry','delete_price_table','delete_price','delete_client','delete_order'):
