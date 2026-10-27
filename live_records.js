@@ -24,6 +24,13 @@
    }
    const currentKanban=app.querySelector('.l2-kanban'),nextKanban=preview.querySelector('.l2-kanban');
    if(currentKanban&&nextKanban&&!currentKanban.contains(document.activeElement)&&currentKanban.innerHTML!==nextKanban.innerHTML){const left=currentKanban.scrollLeft;currentKanban.innerHTML=nextKanban.innerHTML;currentKanban.scrollLeft=left;}
+   // Refresh only the visit results, leaving the editing form and filters intact.
+   const visits=app.querySelector('#visitResults'),nextVisits=preview.querySelector('#visitResults');
+   if(visits&&nextVisits&&!visits.contains(document.activeElement)&&!visits.querySelector('.l2-visit-actions[open]')&&visits.dataset.liveSignature!==nextVisits.innerHTML){
+    visits.dataset.liveSignature=nextVisits.innerHTML;
+    visits.innerHTML=nextVisits.innerHTML;
+    if(typeof visitLoadCounts==='function')visitLoadCounts();
+   }
    window.L2Modern?.bindReadOnly();
    for(const select of app.querySelectorAll('select[name="sellerResponsible"],select[name="user"],select[name="owner"],select[name="Responsável"]')){const names=select.name==='sellerResponsible'?s.sellers:teamNames();for(const name of names||[])if(![...select.options].some(o=>o.value===name)){const option=document.createElement('option');option.value=name;option.textContent=name;select.append(option);}}
    const feed=$('commercialActivity');if(feed)feed.innerHTML=commercialActivityHTML(activities());network();
