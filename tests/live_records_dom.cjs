@@ -38,7 +38,7 @@ const fs=require('fs'),assert=require('assert'),{JSDOM}=require(process.env.L2_J
  await w.createMember({preventDefault(){},target:sellerForm});assert.equal(request.profile.commissionRate,'2.50');assert(request.sectors.includes('commercial'));assert(!request.sectors.includes('finance'));assert(w.eval("testState.sellers.includes('Nova Vendedora')"));
  for(const user of ['Marlene','Euler']){
   w.eval("testState.user="+JSON.stringify(user)+";testState.pending=[{changeId:'blocked-order',type:'order',data:{id:'blocked',brand:'BT',priceTable:'AP',items:[{brand:'BT',sku:'missing',tableId:'removed'}]}}];testState.syncFaults={'blocked-order':'Tabela inativa'};");
-  w.show('hoje');await w.sync();assert.equal(w.eval('tab'),'hoje');assert(!w.document.getElementById('app').textContent.includes('Configuração e sincronização'));assert.equal(w.eval('testState.pending.length'),1);
+  w.show('hoje');await w.sync();assert.equal(w.document.querySelector('#tabs button[data-tab="hoje"]').getAttribute('aria-current'),'page');assert(!w.document.getElementById('app').textContent.includes('Configuração e sincronização'));assert.equal(w.eval('testState.pending.length'),1);
   w.show('clientes');assert(w.document.getElementById('clientForm'));w.show('pedidos');assert(w.document.getElementById('orderForm'));w.L2Live.pause();
  }
  dom.window.close();console.log('Atualização de números, preservação do formulário/foco, feed local, entrega no escritório e criação de vendedor: OK');
