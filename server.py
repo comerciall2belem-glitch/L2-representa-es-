@@ -1,5 +1,7 @@
 """L2 ONE: secure FastAPI/PostgreSQL application for Render."""
 import logging
+import global_search_server
+import next_staging_seed
 from portfolio_transfer_20261020 import transfer as transfer_portfolio_20261020
 import drive_backup
 import os, json, time, hashlib, secrets, re, base64, gzip, unicodedata, io, zipfile, asyncio
@@ -28,7 +30,7 @@ from catalog_document import build_catalog_pdf
 from whatsapp_media import send_media, validate_media, provider_config, MediaError, send_text
 
 from commercial_tables import table_id, price_id, validate_table, seed_bella, validate_bella_order
-from access_policy import effective_sectors, attribute_order, COMMERCIAL_SECTORS
+from access_policy import effective_sectors, attribute_order, authorize_visit_change, COMMERCIAL_SECTORS
 from seller_commission import validate_rate, apply_seller_commission
 from financial_visibility import hide_industry_commissions, preserve_industry_commissions
 
@@ -52,7 +54,9 @@ DEFAULT_SECTORS = {
 CATALOG_EDITORS = {'Ana Paula', 'Laís', 'Marlene'}
 INITIAL_PASSWORD = os.getenv('L2_INITIAL_PASSWORD', '')
 PASSWORDS = {u: os.getenv(f'L2_PASSWORD_{i}', '') or INITIAL_PASSWORD for i, u in enumerate(USERS, 1)}
+from staging_guard import validate_database_target
 DATABASE_URL = os.getenv('DATABASE_URL', '')
+validate_database_target(DATABASE_URL)
 SESSION_HOURS = int(os.getenv('L2_SESSION_HOURS', '24'))
 config_errors = []
 if not DATABASE_URL:
@@ -126,6 +130,9 @@ def initialize():
         drive_backup.setup(con)
         webchat.setup(con)
         con.execute('CREATE TABLE IF NOT EXISTS entities (kind TEXT NOT NULL, id TEXT NOT NULL, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(kind,id))')
+        # Índices criados apenas no banco isolado; demais ambientes exigem migração planejada.
+        if os.getenv('L2_EXPECTED_DATABASE') == 'l2_one_next_staging_db':
+            global_search_server.create_indexes(con)
         con.execute('ALTER TABLE entities ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ')
         con.execute('ALTER TABLE entities ALTER COLUMN created_at SET DEFAULT now()')
         con.execute('CREATE TABLE IF NOT EXISTS commercial_drafts (username TEXT NOT NULL, draft_key TEXT NOT NULL, payload JSONB, client_timestamp BIGINT NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(username,draft_key))')
@@ -364,6 +371,8 @@ def initialize():
         con.execute('CREATE INDEX IF NOT EXISTS idx_atendimentos_client_date ON atendimentos(cliente_id,data_atendimento DESC)')
         con.execute('CREATE INDEX IF NOT EXISTS idx_faturamento_client_date ON faturamento_pedidos(cliente_id,data_pedido DESC)')
         # Idempotent projection; legacy missing dates remain NULL (no backfilled business history).
+        if os.getenv('L2_NEXT_SEED') == 'yes':
+            next_staging_seed.seed(con)
         con.execute("""INSERT INTO clientes(id,razao_social,nome_fantasia,documento,curva_abc,created_at,updated_at)
             SELECT id,coalesce(nullif(payload->>'name',''),id),nullif(payload->>'tradeName',''),
                    nullif(payload->>'taxId',''),CASE WHEN payload->>'abc' IN ('A','B','C') THEN payload->>'abc' ELSE NULL END,
@@ -479,6 +488,16 @@ def scoped_rows(con, kind, user):
         client_ids={row[0] for row in con.execute("SELECT id FROM entities WHERE kind='client' AND payload->>'owner'=%s",(user,))}|allowed
         return [row[0] for row in con.execute("SELECT payload FROM entities WHERE kind='office_finance' ORDER BY updated_at,id") if row[0].get('clientId') in client_ids]
     return [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))]
+
+@app.get('/api/global-search')
+def global_search(q: str = '', authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    require_sector(user, 'commercial', 'office')
+    try:
+        with db() as con:
+            return global_search_server.search(con, q, user, is_seller(con, user))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 class PortfolioAuthorization(BaseModel):
     approved: bool
@@ -1057,6 +1076,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     if previous_entity and previous_entity[0].get('clientId'):
                         check_client_scope(con,user,previous_entity[0]['clientId'])
                     if obj.get('clientId'): check_client_scope(con,user,obj['clientId'])
+                    if target_kind=='visit':
+                        authorize_visit_change(user,is_seller(con,user),obj,previous_entity[0] if previous_entity else None,kind=='delete_visit')
                     if kind=='route':strategic_crm.validate_route_record(con,obj)
                     if kind=='task':field_assistant.validate_agenda_task(con,user,obj,previous_entity[0] if previous_entity else None)
                 if kind.startswith('delete_') and kind not in ('delete_industry','delete_price_table','delete_price','delete_client','delete_order'):
