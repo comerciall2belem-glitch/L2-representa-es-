@@ -54,6 +54,8 @@ class GlobalSearchPostgresTests(unittest.TestCase):
     def test_indexes_exist_and_are_usable(self):
         indexes = {r[0] for r in self.con.execute('SELECT indexname FROM pg_indexes WHERE schemaname=%s',(self.schema,))}
         self.assertTrue({'l2_search_client_v1','l2_search_order_v1'} <= indexes)
+        self.con.execute("INSERT INTO entities(kind,id,payload) SELECT 'client', 'bulk-' || i, jsonb_build_object('name', 'Loja comum ' || i) FROM generate_series(1,5000) i ON CONFLICT DO NOTHING")
+        self.con.execute('ANALYZE entities')
         self.con.execute('SET enable_seqscan=off')
         plan = '\n'.join(row[0] for row in self.con.execute(f"EXPLAIN SELECT * FROM entities c WHERE c.kind='client' AND {search.CLIENT_DOCUMENT} @@ to_tsquery('simple'::regconfig, 'sao:*')"))
         self.assertIn('l2_search_client_v1', plan)
