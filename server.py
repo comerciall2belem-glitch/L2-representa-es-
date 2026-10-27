@@ -39,6 +39,7 @@ import webchat
 import strategic_crm
 import field_assistant
 import routine_alerts
+import daily_recommendations
 import client_bases
 import geo_prospecting
 
@@ -442,6 +443,7 @@ app.include_router(strategic_crm.router)
 app.include_router(field_assistant.router)
 app.include_router(geo_prospecting.router)
 app.include_router(routine_alerts.router)
+app.include_router(daily_recommendations.router)
 
 def sectors_for(user):
     with db() as con:
