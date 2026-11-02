@@ -6,6 +6,7 @@ const fs=require('fs'),assert=require('assert'),{JSDOM}=require(process.env.L2_J
  let request;
  w.fetch=async(url,options)=>{if(url.includes('/team-access')&&options?.method==='POST'){request=JSON.parse(options.body);return {ok:true,json:async()=>({user:'Nova Vendedora',temporaryPassword:'only-test-value'})};}if(url.includes('/team-access'))return {ok:true,json:async()=>[{user:'Euler',active:true,role:'Vendedor'},{user:'Nova Vendedora',active:true,role:'Vendedor'}]};if(url.includes('lead-conversion'))return {ok:true,json:async()=>({leads:0,clients:0,buyers:0,conversion:null,undated:0})};return {ok:true,json:async()=>[]};};
  w.eval(['commercial_drafts.js','crm_operations.js','goals_dashboard.js','workspace.js','app.js','live_records.js'].map(p=>fs.readFileSync(p,'utf8')).join('\n')+'\nwindow.testState=s;');
+ await w.L2AppReady; // Complete initial cloud sync/navigation before simulating input.
 
  w.eval('L2Live.pause();');w.show('pedidos');
  const form=w.document.getElementById('orderForm'),notes=form.elements.namedItem('notes');notes.value='Texto não salvo';notes.focus();notes.setSelectionRange(3,8);
@@ -38,7 +39,7 @@ const fs=require('fs'),assert=require('assert'),{JSDOM}=require(process.env.L2_J
  await w.createMember({preventDefault(){},target:sellerForm});assert.equal(request.profile.commissionRate,'2.50');assert(request.sectors.includes('commercial'));assert(!request.sectors.includes('finance'));assert(w.eval("testState.sellers.includes('Nova Vendedora')"));
  for(const user of ['Marlene','Euler']){
   w.eval("testState.user="+JSON.stringify(user)+";testState.pending=[{changeId:'blocked-order',type:'order',data:{id:'blocked',brand:'BT',priceTable:'AP',items:[{brand:'BT',sku:'missing',tableId:'removed'}]}}];testState.syncFaults={'blocked-order':'Tabela inativa'};");
-  w.show('hoje');await w.sync();assert(w.document.getElementById('app').textContent.includes('Hoje'));assert(!w.document.getElementById('app').textContent.includes('Configuração e sincronização'));assert.equal(w.eval('testState.pending.length'),1);
+  w.show('hoje');await w.sync();assert.equal(w.document.querySelector('#tabs [data-tab=hoje]').getAttribute('aria-current'),'page','Sync validation must preserve the current screen');assert(!w.document.getElementById('app').textContent.includes('Configuração e sincronização'));assert.equal(w.eval('testState.pending.length'),1);
   w.show('clientes');assert(w.document.getElementById('clientForm'));w.show('pedidos');assert(w.document.getElementById('orderForm'));w.L2Live.pause();
  }
  dom.window.close();console.log('Atualização de números, preservação do formulário/foco, feed local, entrega no escritório e criação de vendedor: OK');

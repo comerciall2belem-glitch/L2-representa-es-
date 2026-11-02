@@ -1,0 +1,20 @@
+const fs=require('fs'),assert=require('node:assert/strict');
+const {JSDOM}=require(process.env.L2_JSDOM||'jsdom');
+(async()=>{
+ const html=fs.readFileSync('index.html','utf8').replace(/<script[\s\S]*?<\/script>/g,'');
+ const dom=new JSDOM(html,{url:'https://l2.test',runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window;
+ w.structuredClone=structuredClone;w.matchMedia=()=>({matches:false});w.alert=()=>{};w.setInterval=()=>0;w.Element.prototype.scrollIntoView=()=>{};
+ w.localStorage.setItem('l2one_state_v2',JSON.stringify({user:'Ana Paula',role:'Administrativo',token:'x'.repeat(48),server:'https://l2.test',sectors:['commercial','clients_edit','management','admin','catalog'],clients:[{id:'a',name:'Cliente A',state:'PA',owner:'Ana Paula'}],pending:[]}));
+ let release;
+ w.fetch=async(url)=>url.endsWith('/api/sync')?new Promise(resolve=>release=()=>resolve({ok:true,json:async()=>({})})):{ok:true,json:async()=>[]};
+ w.eval(['commercial_drafts.js','crm_operations.js','goals_dashboard.js','workspace.js','app.js','live_records.js'].map(f=>fs.readFileSync(f,'utf8')).join('\n'));
+ assert(release,'Initial sync must be in progress');
+ w.show('clientes');const form=w.document.getElementById('clientForm'),field=form.querySelector('#c_name');field.value='Edição durante conexão lenta';field.focus();field.setSelectionRange(3,9);
+ release();await w.L2AppReady;
+ assert.equal(w.document.querySelector('#tabs [data-tab=clientes]').getAttribute('aria-current'),'page');
+ assert.equal(w.document.getElementById('clientForm'),form);
+ assert.equal(field.value,'Edição durante conexão lenta');assert.equal(w.document.activeElement,field);
+ assert.equal(field.selectionStart,3);assert.equal(field.selectionEnd,9);
+ w.L2Live.pause();dom.window.close();
+ console.log('Slow startup sync preserves selected screen, editing form, text, focus and cursor: OK');
+})().catch(e=>{console.error(e);process.exit(1)});
