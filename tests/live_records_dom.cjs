@@ -6,6 +6,7 @@ const fs=require('fs'),assert=require('assert'),{JSDOM}=require(process.env.L2_J
  let request;
  w.fetch=async(url,options)=>{if(url.includes('/team-access')&&options?.method==='POST'){request=JSON.parse(options.body);return {ok:true,json:async()=>({user:'Nova Vendedora',temporaryPassword:'only-test-value'})};}if(url.includes('/team-access'))return {ok:true,json:async()=>[{user:'Euler',active:true,role:'Vendedor'},{user:'Nova Vendedora',active:true,role:'Vendedor'}]};if(url.includes('lead-conversion'))return {ok:true,json:async()=>({leads:0,clients:0,buyers:0,conversion:null,undated:0})};return {ok:true,json:async()=>[]};};
  w.eval(['commercial_drafts.js','crm_operations.js','goals_dashboard.js','workspace.js','app.js','live_records.js'].map(p=>fs.readFileSync(p,'utf8')).join('\n')+'\nwindow.testState=s;');
+ await w.L2AppReady; // Complete initial cloud sync/navigation before simulating input.
 
  w.eval('L2Live.pause();');w.show('pedidos');
  const form=w.document.getElementById('orderForm'),notes=form.elements.namedItem('notes');notes.value='Texto não salvo';notes.focus();notes.setSelectionRange(3,8);

@@ -1,5 +1,7 @@
 name: Busca indexada PostgreSQL
 on:
+  push:
+    branches: [codex/l2-next-staging-isolado]
   pull_request:
     branches: [main]
   workflow_dispatch:

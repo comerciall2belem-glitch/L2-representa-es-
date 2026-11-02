@@ -1,7 +1,7 @@
 name: Validacao L2 ONE
 on:
   push:
-    branches: [main, feature/precos-uf-cliente, feature/zara-whatsapp]
+    branches: [main, feature/precos-uf-cliente, feature/zara-whatsapp, codex/l2-next-staging-isolado]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -53,3 +53,5 @@ jobs:
           L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/workspace_audit_dom.cjs
           L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/daily_goals_ui.cjs
           L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/live_records_dom.cjs
+
+          L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/startup_sync_dom.cjs

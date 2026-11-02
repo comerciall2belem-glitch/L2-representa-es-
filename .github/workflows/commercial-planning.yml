@@ -1,0 +1,47 @@
+name: Planejamento comercial - PostgreSQL e interface
+on:
+  push:
+    branches: [feat/commercial-indicators-design, codex/l2-next-staging-isolado]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'commercial_*'
+      - 'server.py'
+      - 'app.js'
+      - 'tests/*commercial_planning*'
+      - '.github/workflows/commercial-planning.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: l2_planning_test
+          POSTGRES_USER: planning
+          POSTGRES_PASSWORD: ephemeral-test-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U planning -d l2_planning_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      L2_TEST_POSTGRES_DSN: postgresql://planning:ephemeral-test-only@localhost:5432/l2_planning_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q tests/test_commercial_indicators.py tests/test_commercial_planning.py tests/test_commercial_planning_postgres.py tests/test_commercial_homologation.py
+      - run: python -m py_compile commercial_planning.py server.py
+      - run: node --check commercial_planning.js
+      - run: npm install --prefix /tmp/l2-planning-dom jsdom --no-audit --no-fund
+      - run: L2_JSDOM=/tmp/l2-planning-dom/node_modules/jsdom node tests/commercial_planning_dom.cjs
