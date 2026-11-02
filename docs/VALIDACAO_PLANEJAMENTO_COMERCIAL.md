@@ -46,13 +46,26 @@ salvamento com versão e preservação de formulário ao atualizar indicadores.
 Sintaxe Python/JavaScript e `git diff --check` aprovados. Também aprovados:
 `test_commercial_workflow.cjs`, `commercial_tables_ui.cjs`, `admin_seller_ui.cjs`.
 
-Falhas existentes reproduzidas sem alterações em origin/main (8e6dfe4):
-- `strategic_crm_dom.cjs`: consulta botão ausente na rotina de descoberta;
-- `sales_workspace_dom.cjs`: espera texto “Vender e acompanhar”;
-- `live_records_dom.cjs`: espera preservar formulário que é substituído.
+## Revisão dos bloqueios de interface
 
-Essas falhas permanecem pendências para a liberação global; não foram mascaradas.
-A revisão do novo módulo não deve ser confundida com aprovação de toda a aplicação.
+Os bloqueios identificados na primeira rodada foram tratados nesta revisão:
+- O teste de multimarcas agora verifica catálogo recolhido e aberto, pesquisa,
+  seleção de marca e total do carrinho, sem abrir o catálogo automaticamente.
+- O boot expõe `L2AppReady`; os testes aguardam o término da sincronização inicial
+  antes de simular navegação. A conexão lenta não devolve o usuário ao início.
+- O sync não navega mais para Configurações quando há registros recusados.
+  A tela, o formulário em edição e os valores permanecem preservados.
+- Testes de cache seguem o modo nuvem: listas confirmadas não são persistidas no
+  aparelho; alterações ainda não reconhecidas permanecem na fila protegida.
+- A nova regressão `startup_sync_dom.cjs` verifica tela, formulário, texto, foco e
+  seleção do cursor durante uma sincronização inicial deliberadamente atrasada.
+
+Passaram localmente os testes completos: `order_multibrand_ui.cjs`,
+`strategic_crm_dom.cjs`, `sales_workspace_dom.cjs`, `modern_workspace_dom.cjs`,
+`central_operations_dom.cjs`, `workspace_audit_dom.cjs`, `daily_goals_ui.cjs`,
+`live_records_dom.cjs` e `startup_sync_dom.cjs`. A auditoria cobre 159 telas/seções
+permitidas e 2.728 ações inline em cinco perfis. Os workflows do PR devem confirmar
+esta revisão antes de liberar homologação.
 
 ## PostgreSQL e duas sessões
 
@@ -75,8 +88,8 @@ A validação foi então executada no GitHub Actions com PostgreSQL 16 real:
 Validação geral: https://github.com/comerciall2belem-glitch/L2-representa-es-/actions/runs/41478366897
 O workflow geral teve 251 testes unittest aprovados, mas falhou no teste
 `order_multibrand_ui.cjs:26` (0 produtos encontrados, 2 esperados). A mesma falha
-foi reproduzida em origin/main sem esta implementação. Esse bloqueio global
-permanece aberto. Navegador autenticado no Render e celular real seguem pendentes.
+foi reproduzida em origin/main sem esta implementação. Esse bloqueio foi tratado na revisão descrita acima; a nova rodada do CI precisa
+confirmar a correção. Navegador autenticado no Render e celular real seguem pendentes.
 
 ## Integrações e segurança ainda não ativadas
 
