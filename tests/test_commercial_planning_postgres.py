@@ -68,7 +68,7 @@ def api(monkeypatch):
 
 
 def payload(**updates):
-    return dict(source='erp',external_id='NF1',client_id='a',stage='sell_through',business_date='2026-10-01',items=[dict(brand='TRUSS',sku='SKU1',units='10',amount='100.00',portfolio='Estratégico')],**updates)
+    return dict(source='erp',external_id='NF1',client_id='a',stage='sell_through',business_date='2026-10-01',items=[dict(brand='TRUSS',sku='SKU1',units='10',amount='100.00',portfolio='Estratégico')]) | updates
 
 
 def post_doc(client,**updates):

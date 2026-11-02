@@ -808,26 +808,45 @@ def export_pdf(result):
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
     from xml.sax.saxutils import escape
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from pathlib import Path
+    import reportlab
+    font_dir=Path(reportlab.__file__).parent/'fonts'
+    if 'L2Planning' not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont('L2Planning',str(font_dir/'Vera.ttf')))
+        pdfmetrics.registerFont(TTFont('L2PlanningBold',str(font_dir/'VeraBd.ttf')))
     output = io.BytesIO(); styles = getSampleStyleSheet()
+    for style in styles.byName.values():
+        style.fontName='L2PlanningBold' if style.name in ('Title','Heading1') else 'L2Planning'
+    styles['Normal'].fontSize=9; styles['Normal'].leading=12
+    def display(value,currency=False):
+        if value is None:return '—'
+        if isinstance(value,(Decimal,int,float)) and not isinstance(value,bool):
+            text=f'{value:,.2f}'.replace(',','X').replace('.',',').replace('X','.')
+            return ('R$ ' if currency else '')+text
+        return str(value)
+    currency_metrics={'productivity_12m','average_order','average_unit_price','sell_through','sell_through_12m'}
+    filter_text='Marca: '+(result['filters'].get('brand') or 'Todas')+' | Canal: '+(result['filters'].get('channel') or 'Todos')+' | UF: '+(result['filters'].get('region') or 'Todas')
     story = [Paragraph('L2 One | Planejamento Comercial', styles['Title']),
              Paragraph(escape('Período: ' + result['period']['start'] + ' até ' + result['period']['end_exclusive'] + ' (fim exclusivo)'), styles['Normal']),
-             Paragraph(escape('Filtros: ' + str(result['filters']) + ' | Histórico completo: ' + str(result['coverage']['history_complete'])), styles['Normal']), Spacer(1,12)]
+             Paragraph(escape(filter_text + ' | Histórico completo: ' + ('Sim' if result['coverage']['history_complete'] else 'Não')), styles['Normal']), Spacer(1,12)]
     def table(headers, rows, widths):
         data = [[Paragraph(escape(str(x)), styles['Normal']) for x in headers]]
         data += [[Paragraph(escape('—' if x is None else str(x)), styles['Normal']) for x in row] for row in rows]
         t = Table(data, colWidths=widths, repeatRows=1, hAlign='LEFT')
         t.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#dce9ed')),('GRID',(0,0),(-1,-1),.3,colors.lightgrey),('VALIGN',(0,0),(-1,-1),'TOP'),('BOTTOMPADDING',(0,0),(-1,-1),7)]))
         story.append(t); story.append(Spacer(1,14))
-    table(['Indicador','Valor'], [(label, result['metrics'].get(key)) for key,label in METRIC_LABELS.items()], [360,380])
+    table(['Indicador','Valor'], [(label, display(result['metrics'].get(key), key in currency_metrics)) for key,label in METRIC_LABELS.items()], [360,380])
     for title, headers, rows, widths in [
         ('Drenagem e retenção', ['Porta','Última compra','Dias até cessar','Status'], [(x['name'],x['last_purchase'],x['days_to_cessation'],x['status']) for x in result['retention']], [310,140,140,150]),
-        ('Etapas por região e canal', ['Região','Canal','Sell In','Sell Through','Sell Out / GMV líquido'], [(x['region'],x['channel'],x['sell_in'],x['sell_through'],x['sell_out']) for x in result['regional']], [90,180,150,150,170]),
-        ('Portfólio', ['Marca / SKU','Receita','Unidades','ABC','Classe'], [(x['brand']+' / '+x['sku'],x['amount'],x['units'],x['abc'],x['portfolio']) for x in result['portfolio']], [280,110,110,70,170])]:
+        ('Etapas por região e canal', ['Região','Canal','Sell In','Sell Through','Sell Out / GMV líquido'], [(x['region'],x['channel'],display(x['sell_in'],True),display(x['sell_through'],True),display(x['sell_out'],True)) for x in result['regional']], [90,180,150,150,170]),
+        ('Portfólio', ['Marca / SKU','Receita','Unidades','ABC','Classe'], [(x['brand']+' / '+x['sku'],display(x['amount'],True),display(x['units']),x['abc'],x['portfolio']) for x in result['portfolio']], [280,110,110,70,170])]:
         story.append(PageBreak()); story.append(Paragraph(title, styles['Heading1']))
         table(headers, rows or [['Sem registros'] + [''] * (len(headers)-1)], widths)
     story.append(Paragraph(escape('Sell Out: ' + result['coverage']['sell_out'] + '. GMV líquido usa exclusivamente Sell Out; etapas da cadeia não são somadas. Versão: ' + result['formula_version']), styles['Normal']))
     def footer(canvas, document):
-        canvas.setFont('Helvetica',8); canvas.drawString(35,20, 'L2 One | ' + result['generated_at'][:19] + ' | Página ' + str(document.page))
+        canvas.setFont('L2Planning',8); canvas.drawString(35,20, 'L2 One | ' + result['generated_at'][:19] + ' | Página ' + str(document.page))
     SimpleDocTemplate(output, pagesize=landscape(A4), leftMargin=35, rightMargin=35, topMargin=30, bottomMargin=35).build(story,onFirstPage=footer,onLaterPages=footer)
     return output.getvalue()
 
