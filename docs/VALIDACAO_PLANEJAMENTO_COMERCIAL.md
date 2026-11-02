@@ -63,8 +63,20 @@ duplicação. A fixture exige nome de banco terminado em `_test` e elimina só o
 esquema de UUID que criou. Workflow próprio provisiona PostgreSQL 16 no CI.
 
 A execução local de PostgreSQL foi impedida pelo ambiente ao abrir socket Unix.
-Nenhuma afirmação de integração PostgreSQL aprovada pode ser feita até o workflow
-concluir. Navegador autenticado e teste em celular real também seguem pendentes.
+A validação foi então executada no GitHub Actions com PostgreSQL 16 real:
+- Commit validado: `8e0f77f89feeb48c2fa27dcfab28c671566ad751`.
+- Workflow do módulo: https://github.com/comerciall2belem-glitch/L2-representa-es-/actions/runs/41478366768
+- Resultado terminal: **success**, **45 testes aprovados**, sem skips nessa suíte,
+  incluindo os sete cenários de PostgreSQL. DOM: 12 asserções aprovadas.
+- Foram corrigidos dois erros na fixture de dados antes da rodada aprovada.
+- PDF renderizado e conferido visualmente nas páginas de indicadores, retenção
+  e portfólio; fontes incorporadas e valores monetários em Real.
+
+Validação geral: https://github.com/comerciall2belem-glitch/L2-representa-es-/actions/runs/41478366897
+O workflow geral teve 251 testes unittest aprovados, mas falhou no teste
+`order_multibrand_ui.cjs:26` (0 produtos encontrados, 2 esperados). A mesma falha
+foi reproduzida em origin/main sem esta implementação. Esse bloqueio global
+permanece aberto. Navegador autenticado no Render e celular real seguem pendentes.
 
 ## Integrações e segurança ainda não ativadas
 
@@ -90,7 +102,7 @@ supervisionada; não usar exclusão ou edição de fato financeiro para contorna
    O conector não tinha workspace selecionado e a seleção ainda não foi confirmada.
 2. Identificar serviços e banco de homologação e produção pelo ID e URL; validar
    isolamento antes de qualquer conexão com dados reais.
-3. Executar workflow PostgreSQL e resolver falhas; testar navegador autenticado,
+3. Manter o workflow PostgreSQL aprovado e resolver as falhas gerais; testar navegador autenticado,
    carteira/financeiro, duas sessões, PDF/Excel e fluxos bancários no sandbox.
 4. Configurar `L2_COMMERCIAL_MFA_KEY` (Fernet) e `L2_BANK_WEBHOOK_SECRET` (≥32
    caracteres) em armazenamento seguro. Não gravar valores em código ou logs.
