@@ -35,6 +35,7 @@ from financial_visibility import hide_industry_commissions, preserve_industry_co
 import zara
 import webchat
 import strategic_crm
+import commercial_planning
 import field_assistant
 import routine_alerts
 import client_bases
@@ -133,6 +134,8 @@ def initialize():
         con.execute('CREATE TABLE IF NOT EXISTS applied_changes (change_id TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE TABLE IF NOT EXISTS audit_log (id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, kind TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         strategic_crm.setup(con)
+        if commercial_planning.enabled():
+            commercial_planning.setup(con)
         field_assistant.setup(con)
         seed_bella(con, BASE)
         seed_senscience(con, BASE)
@@ -414,11 +417,16 @@ async def lifespan(app):
         provisional = con.execute('SELECT count(*) FROM app_users WHERE active AND must_change_password').fetchone()[0]
     logging.getLogger('uvicorn.error').info('homologation_checks provisional_accounts=%s whatsapp_documents_configured=%s', provisional, bool(provider_config()))
     strategic_crm.configure(db=db, auth=auth, require_sector=require_sector, valid_cnpj=valid_cnpj, check_client_scope=check_client_scope, scoped_rows=scoped_rows, project_attendance=project_attendance, is_seller=is_seller)
+    commercial_planning.configure(db=db, auth=auth, sectors_for=sectors_for, require_sector=require_sector, password_ok=password_ok)
+    commercial_worker = asyncio.create_task(commercial_planning.worker())
     strategic_worker = asyncio.create_task(strategic_crm.worker())
     drive_worker = asyncio.create_task(drive_backup.worker())
     try:
         yield
     finally:
+        commercial_worker.cancel()
+        try: await commercial_worker
+        except asyncio.CancelledError: pass
         drive_worker.cancel()
         try: await drive_worker
         except asyncio.CancelledError: pass
@@ -430,6 +438,7 @@ app = FastAPI(title='L2 ONE API', lifespan=lifespan, docs_url=None, redoc_url=No
 app.include_router(zara.router)
 app.include_router(webchat.router)
 app.include_router(strategic_crm.router)
+app.include_router(commercial_planning.router)
 app.include_router(field_assistant.router)
 app.include_router(geo_prospecting.router)
 app.include_router(routine_alerts.router)
@@ -1085,6 +1094,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         if previous and previous[0].get('Área') == 'Financeiro':
                             raise HTTPException(403, 'Acesso financeiro restrito')
                     if target == 'client':
+                        if commercial_planning.enabled() and con.execute('SELECT 1 FROM l2_commercial_documents WHERE client_id=%s LIMIT 1',(entity_id,)).fetchone():
+                            raise HTTPException(409,'Porta com histórico comercial deve ser preservada')
                         if con.execute('SELECT 1 FROM documentos_cliente WHERE client_id=%s LIMIT 1',(entity_id,)).fetchone():
                             raise HTTPException(409, 'Cliente possui documentos; preserve o cadastro')
                         for dependent in ('order','visit','route','task','opportunity','interaction','fulfillment','settlement'):
@@ -1407,8 +1418,11 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     if registration != 'ISENTO' and re.fullmatch(r'[\d.\-/\s]+', registration):
                         registration = re.sub(r'\D', '', registration)
                     if not existing or tax_id or registration:
-                        if not valid_cnpj(tax_id):
-                            raise HTTPException(400, 'CNPJ inválido; informe os 14 dígitos corretos')
+                        if not commercial_planning.valid_tax_id(tax_id):
+                            raise HTTPException(400, 'CPF/CNPJ inválido; revise os dígitos verificadores')
+                        if len(tax_id)==11 and not registration:
+                            registration='ISENTO'
+                        con.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,0))',('tax:'+tax_id,))
                         if registration != 'ISENTO' and not (registration.isdigit() and 7 <= len(registration) <= 14):
                             raise HTTPException(400, f"Cliente {obj['name'].strip()} ({entity_id}): informe inscrição estadual numérica de 7 a 14 dígitos ou ISENTO")
                         obj['taxId'] = tax_id
@@ -2144,7 +2158,7 @@ def zara_page():
 
 @app.get('/{filename}')
 def asset(filename: str):
-    if filename not in ('invoice_pdf.js','inventory.js','industry_workspace.js','jspdf.umd.min.js','central_operations.js','modern_workspace.js','modern_workspace.css','strategy_ui.css','leaflet.js','leaflet.css','strategic_crm.js','app.js','live_records.js','crm_operations.js','goals_dashboard.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
+    if filename not in ('commercial_planning.js','commercial_planning.css','invoice_pdf.js','inventory.js','industry_workspace.js','jspdf.umd.min.js','central_operations.js','modern_workspace.js','modern_workspace.css','strategy_ui.css','leaflet.js','leaflet.css','strategic_crm.js','app.js','live_records.js','crm_operations.js','goals_dashboard.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
         raise HTTPException(404)
     if filename in ('logo-l2-light.jpg','logo-l2-dark.jpg'):
         source={'logo-l2-light.jpg':'logo-light.jpg.b64','logo-l2-dark.jpg':'logo-dark.jpg.b64'}[filename]
