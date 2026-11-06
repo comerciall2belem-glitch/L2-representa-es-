@@ -1,5 +1,7 @@
 """L2 ONE: secure FastAPI/PostgreSQL application for Render."""
 import logging
+import global_search_server
+import next_staging_seed
 from portfolio_transfer_20261020 import transfer as transfer_portfolio_20261020
 import drive_backup
 import os, json, time, hashlib, secrets, re, base64, gzip, unicodedata, io, zipfile, asyncio
@@ -28,13 +30,14 @@ from catalog_document import build_catalog_pdf
 from whatsapp_media import send_media, validate_media, provider_config, MediaError, send_text
 
 from commercial_tables import table_id, price_id, validate_table, seed_bella, validate_bella_order
-from access_policy import effective_sectors, attribute_order, COMMERCIAL_SECTORS
+from access_policy import effective_sectors, attribute_order, authorize_visit_change, COMMERCIAL_SECTORS
 from seller_commission import validate_rate, apply_seller_commission
 from financial_visibility import hide_industry_commissions, preserve_industry_commissions
 
 import zara
 import webchat
 import strategic_crm
+import commercial_planning
 import field_assistant
 import routine_alerts
 import client_bases
@@ -52,7 +55,9 @@ DEFAULT_SECTORS = {
 CATALOG_EDITORS = {'Ana Paula', 'Laís', 'Marlene'}
 INITIAL_PASSWORD = os.getenv('L2_INITIAL_PASSWORD', '')
 PASSWORDS = {u: os.getenv(f'L2_PASSWORD_{i}', '') or INITIAL_PASSWORD for i, u in enumerate(USERS, 1)}
+from staging_guard import validate_database_target
 DATABASE_URL = os.getenv('DATABASE_URL', '')
+validate_database_target(DATABASE_URL)
 SESSION_HOURS = int(os.getenv('L2_SESSION_HOURS', '24'))
 config_errors = []
 if not DATABASE_URL:
@@ -122,10 +127,16 @@ def project_order(con,entity_id,payload,created_at=None,updated_at=None):
 
 def initialize():
     with db() as con:
+        expected_database=os.getenv('L2_EXPECTED_DATABASE','').strip()
+        if expected_database and con.execute('SELECT current_database()').fetchone()[0]!=expected_database:
+            raise RuntimeError('Banco conectado diverge do ambiente esperado; inicialização recusada')
         zara.setup(con)
         drive_backup.setup(con)
         webchat.setup(con)
         con.execute('CREATE TABLE IF NOT EXISTS entities (kind TEXT NOT NULL, id TEXT NOT NULL, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(kind,id))')
+        # Índices criados apenas no banco isolado; demais ambientes exigem migração planejada.
+        if os.getenv('L2_EXPECTED_DATABASE') == 'l2_one_next_staging_db':
+            global_search_server.create_indexes(con)
         con.execute('ALTER TABLE entities ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ')
         con.execute('ALTER TABLE entities ALTER COLUMN created_at SET DEFAULT now()')
         con.execute('CREATE TABLE IF NOT EXISTS commercial_drafts (username TEXT NOT NULL, draft_key TEXT NOT NULL, payload JSONB, client_timestamp BIGINT NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(username,draft_key))')
@@ -133,6 +144,8 @@ def initialize():
         con.execute('CREATE TABLE IF NOT EXISTS applied_changes (change_id TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE TABLE IF NOT EXISTS audit_log (id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, kind TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         strategic_crm.setup(con)
+        if commercial_planning.enabled():
+            commercial_planning.setup(con)
         field_assistant.setup(con)
         seed_bella(con, BASE)
         seed_senscience(con, BASE)
@@ -364,6 +377,8 @@ def initialize():
         con.execute('CREATE INDEX IF NOT EXISTS idx_atendimentos_client_date ON atendimentos(cliente_id,data_atendimento DESC)')
         con.execute('CREATE INDEX IF NOT EXISTS idx_faturamento_client_date ON faturamento_pedidos(cliente_id,data_pedido DESC)')
         # Idempotent projection; legacy missing dates remain NULL (no backfilled business history).
+        if os.getenv('L2_NEXT_SEED') == 'yes':
+            next_staging_seed.seed(con)
         con.execute("""INSERT INTO clientes(id,razao_social,nome_fantasia,documento,curva_abc,created_at,updated_at)
             SELECT id,coalesce(nullif(payload->>'name',''),id),nullif(payload->>'tradeName',''),
                    nullif(payload->>'taxId',''),CASE WHEN payload->>'abc' IN ('A','B','C') THEN payload->>'abc' ELSE NULL END,
@@ -414,11 +429,19 @@ async def lifespan(app):
         provisional = con.execute('SELECT count(*) FROM app_users WHERE active AND must_change_password').fetchone()[0]
     logging.getLogger('uvicorn.error').info('homologation_checks provisional_accounts=%s whatsapp_documents_configured=%s', provisional, bool(provider_config()))
     strategic_crm.configure(db=db, auth=auth, require_sector=require_sector, valid_cnpj=valid_cnpj, check_client_scope=check_client_scope, scoped_rows=scoped_rows, project_attendance=project_attendance, is_seller=is_seller)
+    commercial_planning.configure(db=db, auth=auth, sectors_for=sectors_for, require_sector=require_sector, password_ok=password_ok)
+    if commercial_planning.enabled():
+        from commercial_homologation import seed as seed_commercial_homologation
+        seed_commercial_homologation(db,password_hash)
+    commercial_worker = asyncio.create_task(commercial_planning.worker())
     strategic_worker = asyncio.create_task(strategic_crm.worker())
     drive_worker = asyncio.create_task(drive_backup.worker())
     try:
         yield
     finally:
+        commercial_worker.cancel()
+        try: await commercial_worker
+        except asyncio.CancelledError: pass
         drive_worker.cancel()
         try: await drive_worker
         except asyncio.CancelledError: pass
@@ -430,6 +453,7 @@ app = FastAPI(title='L2 ONE API', lifespan=lifespan, docs_url=None, redoc_url=No
 app.include_router(zara.router)
 app.include_router(webchat.router)
 app.include_router(strategic_crm.router)
+app.include_router(commercial_planning.router)
 app.include_router(field_assistant.router)
 app.include_router(geo_prospecting.router)
 app.include_router(routine_alerts.router)
@@ -479,6 +503,16 @@ def scoped_rows(con, kind, user):
         client_ids={row[0] for row in con.execute("SELECT id FROM entities WHERE kind='client' AND payload->>'owner'=%s",(user,))}|allowed
         return [row[0] for row in con.execute("SELECT payload FROM entities WHERE kind='office_finance' ORDER BY updated_at,id") if row[0].get('clientId') in client_ids]
     return [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))]
+
+@app.get('/api/global-search')
+def global_search(q: str = '', authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    require_sector(user, 'commercial', 'office')
+    try:
+        with db() as con:
+            return global_search_server.search(con, q, user, is_seller(con, user))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 class PortfolioAuthorization(BaseModel):
     approved: bool
@@ -1057,6 +1091,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     if previous_entity and previous_entity[0].get('clientId'):
                         check_client_scope(con,user,previous_entity[0]['clientId'])
                     if obj.get('clientId'): check_client_scope(con,user,obj['clientId'])
+                    if target_kind=='visit':
+                        authorize_visit_change(user,is_seller(con,user),obj,previous_entity[0] if previous_entity else None,kind=='delete_visit')
                     if kind=='route':strategic_crm.validate_route_record(con,obj)
                     if kind=='task':field_assistant.validate_agenda_task(con,user,obj,previous_entity[0] if previous_entity else None)
                 if kind.startswith('delete_') and kind not in ('delete_industry','delete_price_table','delete_price','delete_client','delete_order'):
@@ -1085,6 +1121,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         if previous and previous[0].get('Área') == 'Financeiro':
                             raise HTTPException(403, 'Acesso financeiro restrito')
                     if target == 'client':
+                        if commercial_planning.enabled() and con.execute('SELECT 1 FROM l2_commercial_documents WHERE client_id=%s LIMIT 1',(entity_id,)).fetchone():
+                            raise HTTPException(409,'Porta com histórico comercial deve ser preservada')
                         if con.execute('SELECT 1 FROM documentos_cliente WHERE client_id=%s LIMIT 1',(entity_id,)).fetchone():
                             raise HTTPException(409, 'Cliente possui documentos; preserve o cadastro')
                         for dependent in ('order','visit','route','task','opportunity','interaction','fulfillment','settlement'):
@@ -1407,8 +1445,11 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     if registration != 'ISENTO' and re.fullmatch(r'[\d.\-/\s]+', registration):
                         registration = re.sub(r'\D', '', registration)
                     if not existing or tax_id or registration:
-                        if not valid_cnpj(tax_id):
-                            raise HTTPException(400, 'CNPJ inválido; informe os 14 dígitos corretos')
+                        if not commercial_planning.valid_tax_id(tax_id):
+                            raise HTTPException(400, 'CPF/CNPJ inválido; revise os dígitos verificadores')
+                        if len(tax_id)==11 and not registration:
+                            registration='ISENTO'
+                        con.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,0))',('tax:'+tax_id,))
                         if registration != 'ISENTO' and not (registration.isdigit() and 7 <= len(registration) <= 14):
                             raise HTTPException(400, f"Cliente {obj['name'].strip()} ({entity_id}): informe inscrição estadual numérica de 7 a 14 dígitos ou ISENTO")
                         obj['taxId'] = tax_id
@@ -2144,7 +2185,7 @@ def zara_page():
 
 @app.get('/{filename}')
 def asset(filename: str):
-    if filename not in ('invoice_pdf.js','inventory.js','industry_workspace.js','jspdf.umd.min.js','central_operations.js','modern_workspace.js','modern_workspace.css','strategy_ui.css','leaflet.js','leaflet.css','strategic_crm.js','app.js','live_records.js','crm_operations.js','goals_dashboard.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
+    if filename not in ('commercial_planning.js','commercial_planning.css','bi_dashboard.js','bi_dashboard.css','invoice_pdf.js','inventory.js','industry_workspace.js','jspdf.umd.min.js','central_operations.js','modern_workspace.js','modern_workspace.css','strategy_ui.css','leaflet.js','leaflet.css','strategic_crm.js','app.js','live_records.js','crm_operations.js','goals_dashboard.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
         raise HTTPException(404)
     if filename in ('logo-l2-light.jpg','logo-l2-dark.jpg'):
         source={'logo-l2-light.jpg':'logo-light.jpg.b64','logo-l2-dark.jpg':'logo-dark.jpg.b64'}[filename]
@@ -2447,3 +2488,7 @@ def google_drive_snapshot(user):
         return result
 
 drive_backup.configure(app, db, auth, google_drive_snapshot)
+
+
+from bi_dashboard import install as install_bi_dashboard
+install_bi_dashboard(app, db, auth, sectors_for, scoped_rows, is_seller)

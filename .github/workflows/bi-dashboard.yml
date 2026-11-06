@@ -1,0 +1,21 @@
+name: BI integrado
+on:
+  push:
+    branches: [feat/bi-integrado-l2, codex/l2-next-staging-isolado]
+  pull_request:
+jobs:
+  bi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install 'fastapi>=0.115,<1' 'httpx>=0.28,<1'
+      - run: python -m unittest discover -s tests -p test_bi_dashboard.py -v
+      - run: node --check bi_dashboard.js && node --check app.js
+      - run: npm install --prefix /tmp/l2-bi-dom jsdom --no-audit --no-fund
+      - run: node tests/bi_dashboard_dom.cjs

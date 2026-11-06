@@ -1,0 +1,27 @@
+# Uso exclusivo para o L2 One Next, com banco de testes independente.
+services:
+  - type: web
+    name: l2-one-next-staging
+    runtime: python
+    plan: free
+    region: oregon
+    branch: codex/l2-next-staging-isolado
+    autoDeployTrigger: "off"
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: l2-one-next-staging-db
+          property: connectionString
+      - key: L2_EXPECTED_DATABASE
+        value: l2_one_next_staging_db
+      - key: L2_PASSWORD_1
+        generateValue: true
+      - key: L2_PASSWORD_2
+        generateValue: true
+      - key: L2_PASSWORD_3
+        generateValue: true
+      - key: L2_PASSWORD_4
+        generateValue: true
