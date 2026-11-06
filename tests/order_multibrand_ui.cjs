@@ -5,7 +5,7 @@ const source = fs.readFileSync('app.js', 'utf8');
 const snippet = source.slice(source.indexOf('function priceCents('), source.indexOf('function orderDraft('));
 const helpers = source.slice(source.indexOf('function productMatches('), source.indexOf('function filterOrderProducts('));
 const context = {
-  window: {orderBrandFilter: ''},
+  window: {orderBrandFilter: '', orderCatalogOpen: true},
   s: {prices: [],industries:[{name:'Bruna Tavares',active:true},{name:'Ruby Kisses',active:true},{name:'Outra',active:true}],priceTables:[{id:'Bruna Tavares|PA',brand:'Bruna Tavares',state:'PA',active:true},{id:'Ruby Kisses|PA',brand:'Ruby Kisses',state:'PA',active:true},{id:'Outra|AP',brand:'Outra',state:'AP',active:true}]},
   norm: value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(),
   esc: value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[ch])),
@@ -23,6 +23,11 @@ context.s.prices = products.map((p, i) => ({...p, state:i === 2 ? 'AP' : 'PA'}))
 const draft = {priceTable:'PA', quantities:{'Bruna Tavares|BT01':2, 'Ruby Kisses|RK01':1}};
 const catalog = context.pricesForTable('PA');
 assert.equal(catalog.length, 2);
+// Exercise collapsed and open states independently of fixture defaults.
+context.window.orderCatalogOpen = false;
+assert.equal(context.orderVisibleProducts(catalog,draft,'').length, 0);
+assert.equal(context.orderVisibleProducts(catalog,draft,'ruby').length, 1);
+context.window.orderCatalogOpen = true;
 assert.equal(context.orderVisibleProducts(catalog,draft,'').length, 2);
 assert.equal(context.orderVisibleProducts(catalog,draft,'ruby').length, 1);
 context.window.orderBrandFilter = 'Bruna Tavares';
