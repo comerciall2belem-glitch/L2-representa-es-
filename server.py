@@ -422,6 +422,8 @@ async def lifespan(app):
     initialize_personal(db)
     from homologation_access import recover
     recover(db, password_hash)
+    from homologation_roster import seed as seed_homologation_roster
+    seed_homologation_roster(db, password_hash)
     zara.log_configuration()
     zara.verify_database_schema()
     correct_order_18_date()
