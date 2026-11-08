@@ -1,5 +1,6 @@
 """L2 ONE: secure FastAPI/PostgreSQL application for Render."""
 import logging
+from pipeline_rules import validate_opportunity
 from portfolio_transfer_20261020 import transfer as transfer_portfolio_20261020
 import drive_backup
 import os, json, time, hashlib, secrets, re, base64, gzip, unicodedata, io, zipfile, asyncio
@@ -1239,6 +1240,12 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                                 try: date.fromisoformat(str(value))
                                 except (ValueError,TypeError): raise HTTPException(400,'Data da oportunidade inválida')
                         if len(str(obj.get('notes','')))>2000: raise HTTPException(400,'Contexto muito extenso')
+                        for key in ('proposalId', 'orderId'):
+                            if obj.get(key) is not None and (not isinstance(obj[key], str) or len(obj[key]) > 128):
+                                raise HTTPException(400, 'Referência de proposta ou pedido inválida')
+                        linked_ids = list({obj.get('proposalId'), obj.get('orderId')} - {None, ''})
+                        linked_orders = {r[0]['id']: r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='order' AND id=ANY(%s)", (linked_ids,)).fetchall()} if linked_ids else {}
+                        validate_opportunity(obj, linked_orders, datetime.now(TZ).date())
                 if kind in ('opportunity','order','fulfillment'):
                     previous = con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s',(kind,entity_id)).fetchone()
                     old = previous[0] if previous else {}
@@ -1555,7 +1562,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 'goal': ('month','user','brand','amount','updatedAt'),
                 'industry': ('name','active'),
                 'lead': ('name','owner','createdAt','taxId'),
-                'opportunity': ('clientId','brand','stage','owner','amount','followUp','closeDate','orderId','stageHistory','updatedAt','createdAt','notes'),
+                'opportunity': ('clientId','brand','stage','owner','amount','followUp','next','contactEvidence','proposalId','acceptanceEvidence','closeDate','orderId','stageHistory','updatedAt','createdAt','notes'),
                 'order': ('clientId','brand','status','sellerResponsible','user','amount','date','orderNumber','stageHistory','items','proposalSentAt','proposalSentBy'),
                 'route': ('clientId','user','date','status','objective'),
                 'visit': ('clientId','user','date','result','checkIn','checkOut','next','notes','returnDate','brand'),
