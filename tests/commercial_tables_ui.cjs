@@ -11,16 +11,18 @@ assert.equal(ctx.pricesForTable('AP').length,2,'AP customer can use shared and P
 ctx.window.currentOrder.tableSelections={'Bella Brazil':'a'};
 assert.equal(ctx.pricesForTable('AP').find(p=>p.brand==='Bella Brazil').price,'4.41');
 assert.equal(ctx.bellaItemRate({tableId:'r'}),0.08);assert.equal(ctx.bellaItemRate({tableId:'a'}),0.05);
-let order={id:'new',clientId:'x',priceTable:'PA',status:'Confirmado',paymentTerms:'28',items:[{brand:'Bella Brazil',tableId:'r',sku:'800',quantity:420,unitPrice:'4.84'}]};
+let order={id:'new',clientId:'x',priceTable:'PA',status:'Confirmado',paymentTerms:'28',items:[{brand:'Bella Brazil',tableId:'r',sku:'800',quantity:840,unitPrice:'4.84'}]};
 assert.equal(ctx.validateBellaDraft(order),'');
-assert.match(ctx.validateBellaDraft({...order,priceTable:'AP'}),/mínimo/);
+assert.equal(ctx.validateBellaDraft({...order,priceTable:'AP'}),'');
+assert.match(ctx.validateBellaDraft({...order,items:[{...order.items[0],quantity:300}]}),/mínimo/);
+assert.match(ctx.validateBellaDraft({...order,items:[{...order.items[0],quantity:420}]}),/defina o frete/);
 assert.match(ctx.validateBellaDraft({...order,items:[{...order.items[0],quantity:421}]}),/múltiplos/);
-assert.match(ctx.validateBellaDraft({...order,paymentTerms:'90'}),/prazo/);
+assert.match(ctx.validateBellaDraft({...order,paymentTerms:'90'}),/boleto em 28/);
 console.log('Independent tables, shared coverage, channel commissions and Bella order rules: OK');
 
 assert.equal(ctx.catalogPrices().length,4);ctx.window.catalogSelectedTable='r';assert.equal(ctx.catalogPrices().length,1);assert.equal(ctx.catalogPrices()[0].price,'4.84');ctx.window.catalogSelectedTable='';ctx.window.catalogUF='AP';assert.equal(ctx.catalogPrices().length,3);
 
-assert.match(ctx.validateBellaDraft({...order,clientState:'AP',priceTable:'PA'}),/mínimo 3000 em AP/);
+assert.equal(ctx.validateBellaDraft({...order,clientState:'AP',priceTable:'PA'}),'');
 // Amapa uses local prices by default while retaining the authorized Para option.
 s.priceTables.push({id:'BT|AP',brand:'BT',state:'AP',active:true});
 s.prices.push({brand:'BT',state:'AP',sku:'x',price:'12.00'});

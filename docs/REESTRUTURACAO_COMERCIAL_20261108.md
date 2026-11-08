@@ -40,3 +40,11 @@ O PDF precisa ser efetivamente enviado pelo operador; o registro de envio não d
 
 A suíte CPQ/PostgreSQL usa apenas uma base descartável explicitamente identificada, sem dados reais nem credenciais de produção. A integração CI executa também os 63 testes do financeiro pessoal antes ignorados por falta de PERSONAL_TEST_DSN.
 Consulte os resultados do workflow do commit do PR; criação de workflow ou início de job não comprovam aprovação.
+
+## Revisão de política — 08/11/2026
+
+FRAN e MBOOM foram retiradas do escopo por instrução expressa da gestora. Não são criadas indústrias, tabelas ou regras para essas marcas.
+
+Bella Brazil: mínimo líquido de R$ 1.500,00 em PA/AP; boleto em 28 dias. CIF somente quando o subtotal líquido da marca ultrapassa R$ 3.500,00. De R$ 1.500,00 a R$ 3.500,00 inclusive, a emissão fica bloqueada até o frete ser definido, conforme escolha expressa da gestora. Abaixo de R$ 1.500,00, o mínimo bloqueia a emissão. Embalagens e comissões preservadas.
+
+A revisão registra histórico e altera apenas o cadastro comercial da indústria. Pedidos já confirmados e propostas já convertidas mantêm as condições aprovadas; novas cotações usam a nova política. Cotações ainda não convertidas devem ser recalculadas/reaprovadas após a alteração.

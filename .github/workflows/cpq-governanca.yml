@@ -58,6 +58,7 @@ jobs:
           node --check app.js
           node tests/pipeline_forecast.cjs
           node tests/test_crm_operations.cjs
+          node tests/commercial_tables_ui.cjs
       - name: Interface combinada de homologacao
         run: |
           npm install --prefix /tmp/l2-cpq-dom jsdom --no-audit --no-fund

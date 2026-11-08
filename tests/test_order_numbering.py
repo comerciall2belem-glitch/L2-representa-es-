@@ -82,7 +82,7 @@ class OrderNumberTests(unittest.TestCase):
         con=FakeCon();con.client_state='AP'
         namespace['db']=lambda:FakeDB(con);namespace['auth']=lambda token:'Ana Paula'
         states=[];original=namespace['validate_bella_order']
-        namespace['validate_bella_order']=lambda con,obj,state,user:states.append(state)
+        namespace['validate_bella_order']=lambda con,obj,state,user,previous=None:states.append(state)
         try:
             data={'id':'ap-pa','clientId':'client','brand':'Bruna Tavares','priceTable':'PA','sellerResponsible':'Erika','items':[{'sku':'BBBL01B','quantity':2}]}
             change=type('Change',(),{'type':'order','data':data,'changeId':'change-ap-pa'})()
