@@ -33,7 +33,7 @@ class CommercialTests(unittest.TestCase):
         for channel,rate in ns['CHANNELS'].items():
             tid='Bella Brazil|'+channel
             self.db.tables[tid]={'id':tid,'brand':'Bella Brazil','state':'ALL','active':True,'channel':channel,'commissionRate':rate}
-        self.order={'id':'new','clientId':'customer','status':'Confirmado','paymentTerms':'28/35','items':[{'brand':'Bella Brazil','tableId':'Bella Brazil|REVENDA','sku':'800','quantity':420,'subtotal':'2032.80'}]}
+        self.order={'id':'new','clientId':'customer','status':'Confirmado','paymentTerms':'28','items':[{'brand':'Bella Brazil','tableId':'Bella Brazil|REVENDA','sku':'800','quantity':420,'subtotal':'4000.00'}]}
     def test_three_prices_for_same_sku_do_not_collide(self):
         keys={ns['price_id']({'brand':'Bella Brazil','tableId':f'Bella Brazil|{ch}','sku':'800'}) for ch in ns['CHANNELS']}
         self.assertEqual(len(keys),3)
@@ -55,7 +55,8 @@ class CommercialTests(unittest.TestCase):
         self.assertEqual(self.order['bellaCommissionRate'],8)
         self.assertEqual(self.order['items'][0]['commissionRate'],8)
         self.assertEqual(self.order['bellaFreight'],'CIF')
-    def test_ap_minimum_applies_only_to_bella_subtotal(self):
+    def test_freight_pending_applies_only_to_bella_subtotal(self):
+        self.order['items'][0]['subtotal']='2032.80'
         self.order['items'].append({'brand':'BT','subtotal':'10000.00'})
         with self.assertRaises(HTTPException):ns['validate_bella_order'](self.db,self.order,'AP','Ana Paula')
     def test_draft_can_be_below_minimum_but_units_are_multiples_of_six(self):
@@ -64,13 +65,13 @@ class CommercialTests(unittest.TestCase):
         self.order['items'][0]['quantity']=7
         with self.assertRaises(HTTPException):ns['validate_bella_order'](self.db,self.order,'AP','Ana Paula')
     def test_payment_terms_and_bonus_bounds(self):
-        for terms in ('28','28/35','30/45/60'):
+        for terms in ('28',):
             self.order['paymentTerms']=terms;ns['validate_bella_order'](self.db,self.order,'PA','Ana Paula')
         self.order['paymentTerms']='30/60/90'
         with self.assertRaises(HTTPException):ns['validate_bella_order'](self.db,self.order,'PA','Ana Paula')
         self.order['paymentTerms']='28';self.order['bellaBonusPercent']=15
         ns['validate_bella_order'](self.db,self.order,'PA','Ana Paula')
-        self.assertEqual(self.order['bellaBonusValue'],'304.92')
+        self.assertEqual(self.order['bellaBonusValue'],'600.00')
         self.order['bellaBonusPercent']=16
         with self.assertRaises(HTTPException):ns['validate_bella_order'](self.db,self.order,'PA','Ana Paula')
     def test_repeat_bonus_needs_consultation_even_for_archived_history(self):

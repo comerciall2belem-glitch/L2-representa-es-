@@ -53,6 +53,7 @@ jobs:
           node --check app.js
           node tests/pipeline_forecast.cjs
           node tests/test_crm_operations.cjs
+          node tests/commercial_tables_ui.cjs
       - name: Evidencia de testes
         if: always()
         uses: actions/upload-artifact@v4

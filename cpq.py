@@ -12,7 +12,7 @@ from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 from psycopg.types.json import Jsonb
-from commercial_tables import validate_table, price_id
+from commercial_tables import validate_table, price_id, bella_policy, BELLA
 
 TZ = ZoneInfo('America/Belem')
 router = APIRouter(prefix='/api/cpq', tags=['CPQ'])
@@ -94,6 +94,8 @@ class Acceptance(Strict):
 
 def commercial_policy(industry, state, channel, net, terms):
     """No fabricated freight/minimum when an industry has not configured them."""
+    if industry.get('name') == BELLA:
+        return bella_policy(net,terms,state,industry.get('cpqPolicy'))
     tiers = [t for t in industry.get('commercialPolicy', []) if
              (not t.get('state') or t['state'] in (state, 'ALL')) and
              (not t.get('channel') or t['channel'].casefold() == channel.casefold())]
@@ -227,7 +229,7 @@ def quote_pdf(quote, client):
     table = Table(rows, colWidths=[125,180,38,72,72], repeatRows=1)
     table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#dbe8e8')),('VALIGN',(0,0),(-1,-1),'TOP'),('GRID',(0,0),(-1,-1),.3,colors.grey)]))
     story += [table, Spacer(1,12),p('Desconto: '+quote['discountPercent']+'% · Total líquido R$ '+quote['amount']),p('Pagamento: '+quote['paymentTerms'])]
-    for brand, policy in quote['policies'].items(): story.append(p(brand+' · Frete '+policy['freight']+' · Pedido mínimo R$ '+policy['minimum']))
+    for brand, policy in quote['policies'].items(): story.append(p(brand+' · Frete '+policy['freight']+' · Pedido mínimo R$ '+policy['minimum']+' · '+policy.get('paymentMethod','')))
     story.append(p('Vendedor responsável: '+quote['sellerResponsible']))
     doc.build(story)
     return out.getvalue()
@@ -238,7 +240,8 @@ def emit_pdf(quote_id: str, authorization: str | None = Header(default=None)):
     with _services['db']() as con:
         lock(con)
         quote = scoped_quote(con, quote_id, user)
-        current(con, quote); released(quote)
+        if not quote.get('convertedOrderId'): current(con, quote)
+        released(quote)
         content = quote_pdf(quote, get(con, 'client', quote['clientId']))
         quote.update(documentIssuedAt=now().isoformat(), documentHash=hashlib.sha256(content).hexdigest())
         put(con, 'cpq_quote', quote); audit(con, user, quote_id, 'pdf_issued')
