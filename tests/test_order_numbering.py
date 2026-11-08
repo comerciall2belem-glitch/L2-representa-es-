@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from access_policy import effective_sectors, attribute_order
 from seller_commission import apply_seller_commission
 from financial_visibility import hide_industry_commissions
+import cpq
 
 tree=ast.parse(Path(__file__).resolve().parents[1].joinpath('server.py').read_text())
 functions=[node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name in ('sync','next_order_number')]
@@ -56,6 +57,8 @@ namespace={'strategic_crm':SimpleNamespace(event=lambda *a:None,refresh_client=l
            'normalize_uf':lambda value:value,'price_table_matches_client':lambda a,b:a==b or (a=='AP' and b=='PA'),
            'Jsonb':lambda value:value,'re':re,'project_order':lambda con,identifier,obj:None,
            'check_client_scope':lambda con,user,client_id:None,'scoped_rows':lambda con,kind,user:[row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))]}
+namespace['cpq']=cpq
+namespace['is_seller']=lambda con,user:False
 exec(compile(ast.Module(body=functions,type_ignores=[]),'<order-numbering>','exec'),namespace)
 commercial=ast.parse(Path(__file__).resolve().parents[1].joinpath('commercial_tables.py').read_text())
 exec(compile(ast.Module(body=[node for node in commercial.body if isinstance(node,(ast.FunctionDef,ast.Assign))],type_ignores=[]),'<commercial-tables>','exec'),namespace)
@@ -69,7 +72,7 @@ class OrderNumberTests(unittest.TestCase):
             change=type('Change',(),{'type':'order','data':data,'changeId':'change-'+identifier})()
             namespace['sync'](type('Sync',(),{'changes':[change]})(),'token')
         self.assertEqual([con.orders[key]['orderNumber'] for key in ('first','second')],[1,2])
-        edited=dict(con.orders['first'],orderNumber=999,status='Confirmado')
+        edited=dict(con.orders['first'],orderNumber=999,status='Pendente')
         change=type('Change',(),{'type':'order','data':edited,'changeId':'change-edit'})()
         namespace['sync'](type('Sync',(),{'changes':[change]})(),'token')
         self.assertEqual(con.orders['first']['orderNumber'],1)

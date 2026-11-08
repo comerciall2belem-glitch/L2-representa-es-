@@ -1,34 +1,39 @@
 from datetime import date
 import unittest
 from fastapi import HTTPException
-from pipeline_rules import validate_opportunity
+from pipeline_rules import validate_opportunity, canonical_stage
 
-DAY = date(2026, 11, 8)
+DAY=date(2026,11,8)
 def item(**changes):
-    return dict(stage='Prospectado', clientId='a', next='Enviar catálogo', contactEvidence='Comprador solicitou o catálogo', followUp=str(DAY), **changes)
+    value={'stage':'Prospectado','clientId':'a','owner':'Erika','next':'Enviar catálogo','contactEvidence':'Comprador solicitou catálogo','followUp':str(DAY)}
+    value.update(changes);return value
+
+def quote(**changes):
+    value={'clientId':'a','sellerResponsible':'Erika','approvalStatus':'Aprovada','documentIssuedAt':str(DAY),'sentAt':str(DAY),'acceptedAt':str(DAY),'convertedOrderId':'o'}
+    value.update(changes);return value
 
 class PipelineTests(unittest.TestCase):
-    def test_missing_next_step_and_past_date_rejected(self):
-        for change in ({'next':''}, {'contactEvidence':''}, {'followUp':'2026-11-07'}, {'followUp':'2026-02-30'}):
-            value=item();value.update(change)
-            with self.assertRaises(HTTPException):validate_opportunity(value,{},DAY)
-    
-    def test_sent_proposal_must_belong_to_client(self):
-        value=item();value.update(stage='Negociação',proposalId='p')
-        for proposal in ({'clientId':'b','proposalSentAt':str(DAY)}, {'clientId':'a'}, {'clientId':'a','proposalSentAt':'2026-11-09'}):
-            with self.assertRaises(HTTPException):validate_opportunity(value,{'p':proposal},DAY)
-        validate_opportunity(value,{'p':{'clientId':'a','proposalSentAt':str(DAY)}},DAY)
-    
-    def test_acceptance_and_real_order_required(self):
-        value=item();value.update(stage='Pedido confirmado',proposalId='p',orderId='o')
-        orders={'p':{'clientId':'a','proposalSentAt':str(DAY)},'o':{'clientId':'a','status':'Confirmado'}}
-        with self.assertRaises(HTTPException):validate_opportunity(value,orders,DAY)
-        value['acceptanceEvidence']='Aceite recebido por e-mail'
-        validate_opportunity(value,orders,DAY)
-        value['stage']='Entregue'
-        with self.assertRaises(HTTPException):validate_opportunity(value,orders,DAY)
-        orders['o']['status']='Entregue'
-        validate_opportunity(value,orders,DAY)
-    
-    def test_lost_opportunity_can_be_closed_without_followup(self):
-        validate_opportunity({'stage':'Perdido'}, {},DAY)
+    def test_required_commitment_and_basic_client(self):
+        for changes in ({'next':''},{'contactEvidence':''},{'followUp':'2026-11-07'},{'followUp':'2026-02-30'}):
+            with self.assertRaises(HTTPException):validate_opportunity(item(**changes),{},DAY)
+        with self.assertRaises(HTTPException):validate_opportunity(item(),{},DAY,client={'name':'Loja'})
+    def test_stage_two_requires_emitted_sent_approved_cpq(self):
+        for q in (None,quote(clientId='b'),quote(sellerResponsible='Outro'),quote(documentIssuedAt=None),quote(sentAt=None),quote(approvalStatus='Pendente')):
+            with self.assertRaises(HTTPException):validate_opportunity(item(stage='Proposta enviada'),{},DAY,q)
+        validate_opportunity(item(stage='Proposta enviada'),{},DAY,quote(acceptedAt=None))
+    def test_negotiation_requires_real_acceptance(self):
+        with self.assertRaises(HTTPException):validate_opportunity(item(stage='Negociação'),{},DAY,quote(acceptedAt=None))
+        validate_opportunity(item(stage='Negociação'),{},DAY,quote())
+    def test_order_conversion_and_billing_gate(self):
+        orders={'o':{'id':'o','clientId':'a','status':'Confirmado'}}
+        value=item(stage='Pedido confirmado',orderId='o')
+        with self.assertRaises(HTTPException):validate_opportunity(value,orders,DAY,quote(convertedOrderId=None))
+        validate_opportunity(value,orders,DAY,quote())
+        value['stage']='Pós-venda'
+        with self.assertRaises(HTTPException):validate_opportunity(value,orders,DAY,quote())
+        orders['o']['status']='Faturado';validate_opportunity(value,orders,DAY,quote())
+    def test_loss_reason_and_legacy_labels(self):
+        with self.assertRaises(HTTPException):validate_opportunity({'stage':'Perdido'},{},DAY)
+        validate_opportunity({'stage':'Perdido','lossReason':'Sem orçamento'},{},DAY)
+        self.assertEqual(canonical_stage('Qualificado'),'Prospectado')
+        self.assertEqual(canonical_stage('Faturado'),'Pós-venda')

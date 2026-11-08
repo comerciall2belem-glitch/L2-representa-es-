@@ -1,6 +1,7 @@
 """L2 ONE: secure FastAPI/PostgreSQL application for Render."""
 import logging
 from pipeline_rules import validate_opportunity
+import cpq
 from portfolio_transfer_20261020 import transfer as transfer_portfolio_20261020
 import drive_backup
 import os, json, time, hashlib, secrets, re, base64, gzip, unicodedata, io, zipfile, asyncio
@@ -1225,7 +1226,9 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         try: datetime.fromisoformat(str(obj.get('at','')).replace('Z','+00:00'))
                         except (ValueError,TypeError): raise HTTPException(400,'Data da interação inválida')
                     else:
-                        stages = ('Prospectado','Qualificado','Visita agendada','Proposta enviada','Negociação','Ganho','Pedido confirmado','Faturado','Entregue','Pós-venda','Perdido')
+                        from pipeline_rules import STAGES, canonical_stage
+                        stages = STAGES
+                        obj['stage'] = canonical_stage(obj.get('stage'))
                         if obj.get('stage') not in stages or not isinstance(obj.get('brand'),str) or not 1 <= len(obj['brand'].strip()) <= 120:
                             raise HTTPException(400,'Etapa ou indústria inválida')
                         if obj.get('stage') == 'Perdido' and not str(obj.get('lossReason','')).strip():
@@ -1240,12 +1243,14 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                                 try: date.fromisoformat(str(value))
                                 except (ValueError,TypeError): raise HTTPException(400,'Data da oportunidade inválida')
                         if len(str(obj.get('notes','')))>2000: raise HTTPException(400,'Contexto muito extenso')
-                        for key in ('proposalId', 'orderId'):
+                        for key in ('proposalId', 'orderId', 'cpqQuoteId'):
                             if obj.get(key) is not None and (not isinstance(obj[key], str) or len(obj[key]) > 128):
                                 raise HTTPException(400, 'Referência de proposta ou pedido inválida')
                         linked_ids = list({obj.get('proposalId'), obj.get('orderId')} - {None, ''})
                         linked_orders = {r[0]['id']: r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='order' AND id=ANY(%s)", (linked_ids,)).fetchall()} if linked_ids else {}
-                        validate_opportunity(obj, linked_orders, datetime.now(TZ).date())
+                        quote = cpq.scoped_quote(con, obj['cpqQuoteId'], user) if obj.get('cpqQuoteId') else None
+                        if quote and not quote.get('convertedOrderId'): cpq.current(con, quote)
+                        validate_opportunity(obj, linked_orders, datetime.now(TZ).date(), quote, cpq.get(con, 'client', obj['clientId']))
                 if kind in ('opportunity','order','fulfillment'):
                     previous = con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s',(kind,entity_id)).fetchone()
                     old = previous[0] if previous else {}
@@ -1473,9 +1478,10 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     obj['priceTable'] = price_table
                     obj['state'] = price_table
                     obj['amount'] = float(total.quantize(Decimal('0.01')))
-                    validate_bella_order(con,obj,client_uf,user)
                     existing_order = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
                     attribute_order(con,user,obj,existing_order[0] if existing_order else None)
+                    cpq.enforce_order(con, obj, existing_order[0] if existing_order else None)
+                    validate_bella_order(con,obj,client_uf,user)
                     rate_row=con.execute('SELECT seller_commission_rate FROM app_users WHERE username=%s',(obj['sellerResponsible'],)).fetchone()
                     apply_seller_commission(obj,rate_row[0] if rate_row else None,existing_order[0] if existing_order else None)
                     if not existing_order and con.execute("SELECT 1 FROM archived_entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone():
@@ -1520,7 +1526,9 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                             documento=excluded.documento,curva_abc=excluded.curva_abc,updated_at=now()""",
                             (entity_id,obj['name'],obj.get('tradeName') or None,obj.get('taxId') or None,obj.get('abc') if obj.get('abc') in ('A','B','C') else None))
                     elif kind in ('visit','interaction'): project_attendance(con,kind,entity_id,obj)
-                    elif kind=='order': project_order(con,entity_id,obj)
+                    elif kind=='order':
+                        project_order(con,entity_id,obj)
+                        cpq.attach_order(con,obj,user)
                     strategic_crm.event(con,kind,obj)
                     if kind in ('order','visit','interaction') and previous_entity and previous_entity[0].get('clientId') and previous_entity[0]['clientId']!=obj.get('clientId'):
                         strategic_crm.refresh_client(con,previous_entity[0]['clientId'])
@@ -1562,16 +1570,19 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 'goal': ('month','user','brand','amount','updatedAt'),
                 'industry': ('name','active'),
                 'lead': ('name','owner','createdAt','taxId'),
-                'opportunity': ('clientId','brand','stage','owner','amount','followUp','next','contactEvidence','proposalId','acceptanceEvidence','closeDate','orderId','stageHistory','updatedAt','createdAt','notes'),
+                'opportunity': ('clientId','brand','stage','owner','amount','followUp','next','contactEvidence','cpqQuoteId','proposalId','acceptanceEvidence','closeDate','orderId','stageHistory','updatedAt','createdAt','notes'),
                 'order': ('clientId','brand','status','sellerResponsible','user','amount','date','orderNumber','stageHistory','items','proposalSentAt','proposalSentBy'),
                 'route': ('clientId','user','date','status','objective'),
                 'visit': ('clientId','user','date','result','checkIn','checkOut','next','notes','returnDate','brand'),
                 'fulfillment': ('clientId','orderId','stage','owner','due','at','stageHistory','notes','postSaleDate','postSaleResult')
             }
             names = {'goal':'goals','industry':'industries','client':'clients','lead':'leads','opportunity':'opportunities','order':'orders','route':'routes','visit':'visits','fulfillment':'fulfillments'}
+            seller_scope = is_seller(con,user)
             for kind, keys in fields.items():
+                allowed_ids = {x['id'] for x in scoped_rows(con,kind,user)} if seller_scope else None
                 rows = []
                 for entity_id, payload in con.execute('SELECT id,payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,)):
+                    if allowed_ids is not None and entity_id not in allowed_ids: continue
                     item = {key: payload[key] for key in keys if key in payload}
                     item['id'] = entity_id
                     if kind == 'order':
@@ -1579,6 +1590,9 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     rows.append(item)
                 result['crmTeam'][names[kind]] = rows
             result['crmTeam']['billedDocuments'] = [{key: payload[key] for key in ('orderId','brand','billed','billedDate') if key in payload} for (payload,) in con.execute("SELECT payload FROM entities WHERE kind='settlement' AND coalesce(payload->>'invoiceNumber','')<>''")]
+            if seller_scope:
+                visible_orders = {o['id'] for o in result['crmTeam'].get('orders',[])}
+                result['crmTeam']['billedDocuments'] = [d for d in result['crmTeam']['billedDocuments'] if d.get('orderId') in visible_orders]
             result['crmTeam']['billedOrderIds'] = list({x['orderId'] for x in result['crmTeam']['billedDocuments'] if x.get('orderId')})
             result['crmTeam']['at'] = datetime.now(TZ).isoformat()
         for kind, name in [('settlement','settlements'),('office_finance','officeFinance'),('office_budget','officeBudget'),('office_monthly_close','officeMonthlyClose'),('cash_day','cashDays'),('cash_entry','cashEntries'),('commission_rate','commissionRates'),('commission_receipt','commissionReceipts')]:
@@ -2151,7 +2165,7 @@ def zara_page():
 
 @app.get('/{filename}')
 def asset(filename: str):
-    if filename not in ('bi_dashboard.js','bi_dashboard.css','invoice_pdf.js','inventory.js','industry_workspace.js','jspdf.umd.min.js','central_operations.js','modern_workspace.js','modern_workspace.css','strategy_ui.css','leaflet.js','leaflet.css','strategic_crm.js','app.js','live_records.js','crm_operations.js','goals_dashboard.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
+    if filename not in ('cpq.js','bi_dashboard.js','bi_dashboard.css','invoice_pdf.js','inventory.js','industry_workspace.js','jspdf.umd.min.js','central_operations.js','modern_workspace.js','modern_workspace.css','strategy_ui.css','leaflet.js','leaflet.css','strategic_crm.js','app.js','live_records.js','crm_operations.js','goals_dashboard.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
         raise HTTPException(404)
     if filename in ('logo-l2-light.jpg','logo-l2-dark.jpg'):
         source={'logo-l2-light.jpg':'logo-light.jpg.b64','logo-l2-dark.jpg':'logo-dark.jpg.b64'}[filename]
@@ -2458,3 +2472,12 @@ drive_backup.configure(app, db, auth, google_drive_snapshot)
 
 from bi_dashboard import install as install_bi_dashboard
 install_bi_dashboard(app, db, auth, sectors_for, scoped_rows, is_seller)
+
+
+def sync_cpq_order(order, authorization):
+    return sync(Sync(changes=[Change(type='order', data=order, changeId='cpq-convert-'+order['cpqQuoteId'])]), authorization)
+
+cpq.configure(db=db, auth=auth, require_sector=require_sector, check_client_scope=check_client_scope,
+              scoped_rows=scoped_rows, is_seller=is_seller, normalize_uf=normalize_uf,
+              price_table_matches_client=price_table_matches_client, valid_cnpj=valid_cnpj, sync_order=sync_cpq_order)
+app.include_router(cpq.router)

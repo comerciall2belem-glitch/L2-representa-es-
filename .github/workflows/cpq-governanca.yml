@@ -1,0 +1,52 @@
+name: CPQ e governanca PostgreSQL
+on:
+  pull_request:
+  push:
+    branches: [feat/funil-processos-20261108]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  postgres-acceptance:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: l2_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PERSONAL_TEST_DSN: postgresql://postgres:postgres@localhost:5432/l2_ci
+      CPQ_TEST_DSN: postgresql://postgres:postgres@localhost:5432/l2_ci
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/l2_ci
+      L2_INITIAL_PASSWORD: ci-only-initial-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install -r requirements-dev.txt
+      - name: Regras, financeiro pessoal e CPQ em PostgreSQL real
+        run: python -m pytest -q --junitxml=/tmp/l2-cpq-tests.xml
+      - name: Sintaxe e forecast
+        run: |
+          node --check cpq.js
+          node --check app.js
+          node tests/pipeline_forecast.cjs
+          node tests/test_crm_operations.cjs
+      - name: Evidencia de testes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: l2-cpq-tests
+          path: /tmp/l2-cpq-tests.xml
