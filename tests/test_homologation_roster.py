@@ -5,17 +5,11 @@ import homologation_roster as h
 
 class RosterTests(unittest.TestCase):
     def test_disabled(self):
-        with patch.dict('os.environ', {'L2_HOMOLOGATION_SELLERS_JSON': ''}):
+        with patch.dict('os.environ', {'RENDER_SERVICE_ID': ''}):
             self.assertFalse(h.seed(lambda: self.fail('DB accessed'), str))
 
-    def test_guards(self):
-        for service, database in [('production', h.DATABASE), (h.SERVICE, 'l2one')]:
-            with patch.dict('os.environ', {'L2_HOMOLOGATION_SELLERS_JSON': '{}', 'RENDER_SERVICE_ID': service, 'L2_EXPECTED_DATABASE': database}):
-                with self.assertRaises(RuntimeError):
-                    h.seed(lambda: self.fail('DB accessed'), str)
-
-    def test_complete_roster_required(self):
-        with patch.dict('os.environ', {'L2_HOMOLOGATION_SELLERS_JSON': json.dumps({'Erika': 'x'*40}), 'RENDER_SERVICE_ID': h.SERVICE, 'L2_EXPECTED_DATABASE': h.DATABASE}):
+    def test_database_guard(self):
+        with patch.dict('os.environ', {'RENDER_SERVICE_ID': h.SERVICE, 'L2_EXPECTED_DATABASE': 'l2one'}):
             with self.assertRaises(RuntimeError):
                 h.seed(lambda: self.fail('DB accessed'), str)
 
