@@ -15,7 +15,7 @@ class DB:
     def execute(self,query,params=()):self.queries.append((query,params));return Cursor()
 
 class LiveRecordTests(unittest.TestCase):
-    def test_commercial_dashboard_reads_team_without_finance_or_portfolio_write_access(self):
+    def test_commercial_dashboard_restricts_seller_and_preserves_management_snapshot(self):
         class SnapshotDB(DB):
             def execute(self,q,params=()):
                 if q.startswith('SELECT role,sectors FROM app_users'):
@@ -27,7 +27,7 @@ class LiveRecordTests(unittest.TestCase):
                 if q.startswith('SELECT payload FROM entities'):
                     return [({'orderId':'other-order','brand':'BT','billed':'50','commissionReceived':'secret'},)]
                 return []
-        with patch.object(server,'auth',return_value='Erika'),patch.object(server,'db',return_value=SnapshotDB()),patch.object(server,'effective_sectors',return_value={'commercial'}),patch.object(server,'scoped_rows',return_value=[]):
+        with patch.object(server,'auth',return_value='Erika'),patch.object(server,'db',return_value=SnapshotDB()),patch.object(server,'effective_sectors',return_value={'commercial'}),patch.object(server,'scoped_rows',return_value=[]),patch.object(server,'is_seller',return_value=False):
             result=server.sync(server.Sync(changes=[]),'test-only')
         self.assertEqual(result['orders'],[])
         self.assertEqual(result['crmTeam']['orders'][0]['id'],'other-order')
@@ -36,6 +36,11 @@ class LiveRecordTests(unittest.TestCase):
         self.assertNotIn('phone',result['crmTeam']['clients'][0])
         self.assertNotIn('commissionReceived',result['crmTeam']['billedDocuments'][0])
         self.assertEqual(result['crmTeam']['billedOrderIds'],['other-order'])
+        with patch.object(server,'auth',return_value='Erika'),patch.object(server,'db',return_value=SnapshotDB()),patch.object(server,'effective_sectors',return_value={'commercial'}),patch.object(server,'scoped_rows',return_value=[]),patch.object(server,'is_seller',return_value=True):
+            restricted=server.sync(server.Sync(changes=[]),'test-only')
+        self.assertEqual(restricted['crmTeam']['clients'],[])
+        self.assertEqual(restricted['crmTeam']['orders'],[])
+        self.assertEqual(restricted['crmTeam']['billedDocuments'],[])
 
     def test_team_monitor_feed_includes_other_sellers_and_legacy_records(self):
         from datetime import datetime, timezone

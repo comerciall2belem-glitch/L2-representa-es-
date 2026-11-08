@@ -111,7 +111,8 @@ class EndpointTests(unittest.TestCase):
                 self.assertEqual(r.status_code,200,r.text)
         self.assertEqual(sum(k=='client' for k,i in self.con.entities),1)
         self.assertEqual(sum(k=='lead' for k,i in self.con.entities),1)
-        self.assertEqual(sum(k=='task' for k,i in self.con.entities),1)
+        self.assertEqual(sum(k=='task' for k,i in self.con.entities),2)
+        self.assertEqual(sum(k=='opportunity' for k,i in self.con.entities),1)
     def test_existing_other_portfolio_is_protected(self):
         self.con.entities[('client','c')]={'id':'c','owner':'Euler','name':'Loja','taxId':'11222333000181'}
         with patch('strategic_crm.qualify',side_effect=lambda d:qualify(d,DAY)):
