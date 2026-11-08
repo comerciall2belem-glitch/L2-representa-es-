@@ -32,7 +32,7 @@ from login_identity import resolve_identity
 from catalog_document import build_catalog_pdf
 from whatsapp_media import send_media, validate_media, provider_config, MediaError, send_text
 
-from commercial_tables import table_id, price_id, validate_table, seed_bella, validate_bella_order
+from commercial_tables import table_id, price_id, validate_table, seed_bella, validate_bella_order, migrate_bella_policy
 from access_policy import effective_sectors, attribute_order, authorize_visit_change, COMMERCIAL_SECTORS
 from seller_commission import validate_rate, apply_seller_commission
 from financial_visibility import hide_industry_commissions, preserve_industry_commissions
@@ -148,6 +148,7 @@ def initialize():
         if commercial_planning.enabled(): commercial_planning.setup(con)
         field_assistant.setup(con)
         seed_bella(con, BASE)
+        migrate_bella_policy(con)
         seed_senscience(con, BASE)
         seed_davines(con, BASE)
         seed_magic_beauty(con, BASE)
@@ -1522,7 +1523,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     existing_order = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
                     attribute_order(con,user,obj,existing_order[0] if existing_order else None)
                     cpq.enforce_order(con, obj, existing_order[0] if existing_order else None)
-                    validate_bella_order(con,obj,client_uf,user)
+                    validate_bella_order(con,obj,client_uf,user,existing_order[0] if existing_order else None)
                     rate_row=con.execute('SELECT seller_commission_rate FROM app_users WHERE username=%s',(obj['sellerResponsible'],)).fetchone()
                     apply_seller_commission(obj,rate_row[0] if rate_row else None,existing_order[0] if existing_order else None)
                     if not existing_order and con.execute("SELECT 1 FROM archived_entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone():
