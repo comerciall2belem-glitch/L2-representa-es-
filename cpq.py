@@ -65,7 +65,7 @@ def scoped_quote(con, identifier, user):
         raise HTTPException(403, 'Proposta pertence a outro vendedor')
     return quote
 
-class Strict(BaseModel): model_config = ConfigDict(extra='forbid')
+class Strict(BaseModel): model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
 class Line(Strict):
     brand: str = Field(min_length=1, max_length=120)
     tableId: str = Field(min_length=1, max_length=250)
@@ -290,7 +290,11 @@ def enforce_order(con, order, previous=None):
     previous = previous or {}
     quote_id = order.get('cpqQuoteId')
     discount = money(order.get('discountPercent', 0))
-    # Historic billed documents stay immutable under the ERP's existing rules.
+    # Confirmed commercial conditions cannot be rewritten through a status update.
+    if previous.get('status') in ('Confirmado','Faturado','Entregue'):
+        for key in ('clientId','sellerResponsible','priceTable','paymentTerms','items'):
+            if key in previous and order.get(key) != previous.get(key):
+                raise HTTPException(409, 'Pedido confirmado: condições comerciais imutáveis')
     if previous.get('cpqQuoteId') and quote_id != previous['cpqQuoteId']:
         raise HTTPException(409, 'O vínculo de origem CPQ não pode ser removido')
     if not quote_id:
@@ -327,8 +331,12 @@ def attach_order(con, order, user):
     stage = 'Pós-venda' if order.get('status') in ('Faturado','Entregue') else 'Pedido confirmado'
     if opp.get('stage') != stage:
         opp['stageHistory'] = list(opp.get('stageHistory') or []) + [{'stage':stage,'at':now().isoformat(),'by':user}]
-    opp.update(stage=stage, orderId=order['id'], cpqQuoteId=quote['id'], updatedAt=now().isoformat())
+    opp.update(stage=stage, orderId=order['id'], cpqQuoteId=quote['id'], updatedAt=now().isoformat(),
+               next='Acompanhar recompra e mix' if stage=='Pós-venda' else 'Conferir faturamento e entrega',
+               followUp=str(now().date()+timedelta(days=7)))
     put(con,'opportunity',opp)
+    put(con,'task',{'id':'cpq-followup-'+quote['id'],'clientId':opp['clientId'],'user':opp['owner'],
+                   'sourceOpportunityId':opp['id'],'text':opp['next'],'date':opp['followUp'],'status':'Aberta','source':'CPQ'})
 
 
 def mix_suggestions(client, clients, orders, prices, tables, today):

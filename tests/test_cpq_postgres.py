@@ -113,3 +113,23 @@ def test_legacy_bypass_and_financial_boundaries(environment):
     response=client.post('/api/sync',json={'changes':[{'type':'order','data':order,'changeId':'ci-bypass-change'}]},headers=header());assert response.status_code==409,response.text
     with server.db() as con:assert not con.execute("SELECT 1 FROM entities WHERE kind='order' AND id='ci-bypass'").fetchone()
     response=client.post('/api/sync',json={'changes':[{'type':'office_finance','data':{'id':'ci-secret','Valor':'100'},'changeId':'ci-finance-change'}]},headers=header());assert response.status_code==403,response.text
+
+
+def test_converted_snapshot_survives_price_and_table_changes(environment):
+    server,client=environment;quote=create(client)
+    accept(client,quote)
+    result=client.post('/api/cpq/quotes/'+quote['id']+'/convert',headers=header());assert result.status_code==200,result.text
+    with server.db() as con:
+        order=cpq.get(con,'order',result.json()['orderId'])
+        price=cpq.get(con,'price','Marca CI|PA|sku');price['price']='200.00';cpq.put(con,'price',price)
+        table=cpq.get(con,'price_table','Marca CI|PA');table['active']=False;cpq.put(con,'price_table',table)
+    try:
+        order['status']='Faturado'
+        response=client.post('/api/sync',json={'changes':[{'type':'order','data':order,'changeId':'status-'+quote['id']}]},headers=header())
+        assert response.status_code==200,response.text
+        with server.db() as con:
+            updated=cpq.get(con,'order',order['id']);assert updated['amount']==950.0;assert updated['status']=='Faturado'
+    finally:
+        with server.db() as con:
+            price['price']='100.00';cpq.put(con,'price',price)
+            table['active']=True;cpq.put(con,'price_table',table)

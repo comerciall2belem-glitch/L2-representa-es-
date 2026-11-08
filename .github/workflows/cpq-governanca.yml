@@ -23,9 +23,9 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      PERSONAL_TEST_DSN: postgresql://postgres:postgres@localhost:5432/l2_ci
-      CPQ_TEST_DSN: postgresql://postgres:postgres@localhost:5432/l2_ci
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/l2_ci
+      PERSONAL_TEST_DSN: postgresql://ci_app:ci-only@localhost:5432/l2_ci
+      CPQ_TEST_DSN: postgresql://ci_app:ci-only@localhost:5432/l2_ci
+      DATABASE_URL: postgresql://ci_app:ci-only@localhost:5432/l2_ci
       L2_INITIAL_PASSWORD: ci-only-initial-password
     steps:
       - uses: actions/checkout@v4
@@ -36,6 +36,15 @@ jobs:
         with:
           node-version: '22'
       - run: pip install -r requirements-dev.txt
+      - name: Criar usuario de aplicacao sem privilegios de superusuario
+        run: |
+          python - <<'PYSQL'
+          import psycopg
+          with psycopg.connect('postgresql://postgres:postgres@localhost:5432/l2_ci') as con:
+              con.execute("CREATE ROLE ci_app LOGIN PASSWORD 'ci-only' NOSUPERUSER NOBYPASSRLS")
+              con.execute('GRANT ALL ON DATABASE l2_ci TO ci_app')
+              con.execute('GRANT ALL ON SCHEMA public TO ci_app')
+          PYSQL
       - name: Regras, financeiro pessoal e CPQ em PostgreSQL real
         run: python -m pytest -q --junitxml=/tmp/l2-cpq-tests.xml
       - name: Sintaxe e forecast

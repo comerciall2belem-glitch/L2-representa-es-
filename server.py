@@ -1251,6 +1251,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         quote = cpq.scoped_quote(con, obj['cpqQuoteId'], user) if obj.get('cpqQuoteId') else None
                         if quote and not quote.get('convertedOrderId'): cpq.current(con, quote)
                         validate_opportunity(obj, linked_orders, datetime.now(TZ).date(), quote, cpq.get(con, 'client', obj['clientId']))
+                        if quote:
+                            obj['amount'] = quote['amount']
                 if kind in ('opportunity','order','fulfillment'):
                     previous = con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s',(kind,entity_id)).fetchone()
                     old = previous[0] if previous else {}
@@ -1448,6 +1450,9 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         raise HTTPException(400, 'Escolha a tabela de preços PA ou AP')
                     if not price_table_matches_client(customer[0].get('state'), obj.get('priceTable')):
                         raise HTTPException(400, 'Cliente do Pará usa PA; cliente do Amapá pode usar PA ou AP')
+                    existing_cpq = bool(previous_entity and previous_entity[0].get('cpqQuoteId'))
+                    if existing_cpq:
+                        cpq.enforce_order(con, obj, previous_entity[0])
                     total = Decimal('0')
                     brands=set()
                     for item in obj['items']:
@@ -1456,10 +1461,10 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         item_brand=str(item.get('brand') or obj.get('brand') or '').strip()
                         if not item_brand or item_brand=='Multimarcas': raise HTTPException(400,'Indústria do item obrigatória')
                         brands.add(item_brand)
-                        table=validate_table(con,{**item,'brand':item_brand,'state':price_table},item_brand,price_table,allowed_states=['AP','PA'] if client_uf=='AP' else ['PA'])
+                        table={'id':item['tableId']} if existing_cpq else validate_table(con,{**item,'brand':item_brand,'state':price_table},item_brand,price_table,allowed_states=['AP','PA'] if client_uf=='AP' else ['PA'])
                         item['tableId']=table['id']
                         price_key = price_id({**item,'brand':item_brand,'sku':item['sku'].strip()})
-                        price_row = con.execute("SELECT payload FROM entities WHERE kind='price' AND id=%s", (price_key,)).fetchone()
+                        price_row = ({'price':item['unitPrice']},) if existing_cpq else con.execute("SELECT payload FROM entities WHERE kind='price' AND id=%s", (price_key,)).fetchone()
                         if not price_row:
                             raise HTTPException(400, f"Preço não cadastrado na tabela {price_table}: {item['sku']}")
                         try:
@@ -1470,7 +1475,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         if not qty.is_finite() or not unit.is_finite() or qty != qty.to_integral_value() or qty <= 0 or qty > 100000 or unit <= 0:
                             raise HTTPException(400, 'Quantidade ou preço inválido')
                         item['unitPrice'] = str(unit)
-                        item['subtotal'] = str((qty * unit).quantize(Decimal('0.01')))
+                        if not existing_cpq:
+                            item['subtotal'] = str((qty * unit).quantize(Decimal('0.01')))
                         item['brand']=item_brand
                         total += qty * unit
                     obj['brand']='Multimarcas' if len(brands)>1 else next(iter(brands))
