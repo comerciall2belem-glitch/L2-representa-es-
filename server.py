@@ -1,7 +1,10 @@
 """L2 ONE: secure FastAPI/PostgreSQL application for Render."""
 import logging
+from pipeline_rules import validate_opportunity
+import cpq
 import global_search_server
 import next_staging_seed
+import commercial_planning
 from portfolio_transfer_20261020 import transfer as transfer_portfolio_20261020
 import drive_backup
 import os, json, time, hashlib, secrets, re, base64, gzip, unicodedata, io, zipfile, asyncio
@@ -37,7 +40,6 @@ from financial_visibility import hide_industry_commissions, preserve_industry_co
 import zara
 import webchat
 import strategic_crm
-import commercial_planning
 import field_assistant
 import routine_alerts
 import client_bases
@@ -134,7 +136,6 @@ def initialize():
         drive_backup.setup(con)
         webchat.setup(con)
         con.execute('CREATE TABLE IF NOT EXISTS entities (kind TEXT NOT NULL, id TEXT NOT NULL, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(kind,id))')
-        # Índices criados apenas no banco isolado; demais ambientes exigem migração planejada.
         if os.getenv('L2_EXPECTED_DATABASE') == 'l2_one_next_staging_db':
             global_search_server.create_indexes(con)
         con.execute('ALTER TABLE entities ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ')
@@ -144,8 +145,7 @@ def initialize():
         con.execute('CREATE TABLE IF NOT EXISTS applied_changes (change_id TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE TABLE IF NOT EXISTS audit_log (id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, kind TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         strategic_crm.setup(con)
-        if commercial_planning.enabled():
-            commercial_planning.setup(con)
+        if commercial_planning.enabled(): commercial_planning.setup(con)
         field_assistant.setup(con)
         seed_bella(con, BASE)
         seed_senscience(con, BASE)
@@ -376,9 +376,8 @@ def initialize():
         con.execute('CREATE INDEX IF NOT EXISTS idx_client_docs_client ON documentos_cliente(client_id,category,created_at DESC)')
         con.execute('CREATE INDEX IF NOT EXISTS idx_atendimentos_client_date ON atendimentos(cliente_id,data_atendimento DESC)')
         con.execute('CREATE INDEX IF NOT EXISTS idx_faturamento_client_date ON faturamento_pedidos(cliente_id,data_pedido DESC)')
+        if os.getenv('L2_NEXT_SEED') == 'yes': next_staging_seed.seed(con)
         # Idempotent projection; legacy missing dates remain NULL (no backfilled business history).
-        if os.getenv('L2_NEXT_SEED') == 'yes':
-            next_staging_seed.seed(con)
         con.execute("""INSERT INTO clientes(id,razao_social,nome_fantasia,documento,curva_abc,created_at,updated_at)
             SELECT id,coalesce(nullif(payload->>'name',''),id),nullif(payload->>'tradeName',''),
                    nullif(payload->>'taxId',''),CASE WHEN payload->>'abc' IN ('A','B','C') THEN payload->>'abc' ELSE NULL END,
@@ -1262,7 +1261,9 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         try: datetime.fromisoformat(str(obj.get('at','')).replace('Z','+00:00'))
                         except (ValueError,TypeError): raise HTTPException(400,'Data da interação inválida')
                     else:
-                        stages = ('Prospectado','Qualificado','Visita agendada','Proposta enviada','Negociação','Ganho','Pedido confirmado','Faturado','Entregue','Pós-venda','Perdido')
+                        from pipeline_rules import STAGES, canonical_stage
+                        stages = STAGES
+                        obj['stage'] = canonical_stage(obj.get('stage'))
                         if obj.get('stage') not in stages or not isinstance(obj.get('brand'),str) or not 1 <= len(obj['brand'].strip()) <= 120:
                             raise HTTPException(400,'Etapa ou indústria inválida')
                         if obj.get('stage') == 'Perdido' and not str(obj.get('lossReason','')).strip():
@@ -1277,6 +1278,16 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                                 try: date.fromisoformat(str(value))
                                 except (ValueError,TypeError): raise HTTPException(400,'Data da oportunidade inválida')
                         if len(str(obj.get('notes','')))>2000: raise HTTPException(400,'Contexto muito extenso')
+                        for key in ('proposalId', 'orderId', 'cpqQuoteId'):
+                            if obj.get(key) is not None and (not isinstance(obj[key], str) or len(obj[key]) > 128):
+                                raise HTTPException(400, 'Referência de proposta ou pedido inválida')
+                        linked_ids = list({obj.get('proposalId'), obj.get('orderId')} - {None, ''})
+                        linked_orders = {r[0]['id']: r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='order' AND id=ANY(%s)", (linked_ids,)).fetchall()} if linked_ids else {}
+                        quote = cpq.scoped_quote(con, obj['cpqQuoteId'], user) if obj.get('cpqQuoteId') else None
+                        if quote and not quote.get('convertedOrderId'): cpq.current(con, quote)
+                        validate_opportunity(obj, linked_orders, datetime.now(TZ).date(), quote, cpq.get(con, 'client', obj['clientId']))
+                        if quote:
+                            obj['amount'] = quote['amount']
                 if kind in ('opportunity','order','fulfillment'):
                     previous = con.execute('SELECT payload FROM entities WHERE kind=%s AND id=%s',(kind,entity_id)).fetchone()
                     old = previous[0] if previous else {}
@@ -1445,11 +1456,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     if registration != 'ISENTO' and re.fullmatch(r'[\d.\-/\s]+', registration):
                         registration = re.sub(r'\D', '', registration)
                     if not existing or tax_id or registration:
-                        if not commercial_planning.valid_tax_id(tax_id):
-                            raise HTTPException(400, 'CPF/CNPJ inválido; revise os dígitos verificadores')
-                        if len(tax_id)==11 and not registration:
-                            registration='ISENTO'
-                        con.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,0))',('tax:'+tax_id,))
+                        if not valid_cnpj(tax_id):
+                            raise HTTPException(400, 'CNPJ inválido; informe os 14 dígitos corretos')
                         if registration != 'ISENTO' and not (registration.isdigit() and 7 <= len(registration) <= 14):
                             raise HTTPException(400, f"Cliente {obj['name'].strip()} ({entity_id}): informe inscrição estadual numérica de 7 a 14 dígitos ou ISENTO")
                         obj['taxId'] = tax_id
@@ -1477,6 +1485,9 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         raise HTTPException(400, 'Escolha a tabela de preços PA ou AP')
                     if not price_table_matches_client(customer[0].get('state'), obj.get('priceTable')):
                         raise HTTPException(400, 'Cliente do Pará usa PA; cliente do Amapá pode usar PA ou AP')
+                    existing_cpq = bool(previous_entity and previous_entity[0].get('cpqQuoteId'))
+                    if existing_cpq:
+                        cpq.enforce_order(con, obj, previous_entity[0])
                     total = Decimal('0')
                     brands=set()
                     for item in obj['items']:
@@ -1485,10 +1496,10 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         item_brand=str(item.get('brand') or obj.get('brand') or '').strip()
                         if not item_brand or item_brand=='Multimarcas': raise HTTPException(400,'Indústria do item obrigatória')
                         brands.add(item_brand)
-                        table=validate_table(con,{**item,'brand':item_brand,'state':price_table},item_brand,price_table,allowed_states=['AP','PA'] if client_uf=='AP' else ['PA'])
+                        table={'id':item['tableId']} if existing_cpq else validate_table(con,{**item,'brand':item_brand,'state':price_table},item_brand,price_table,allowed_states=['AP','PA'] if client_uf=='AP' else ['PA'])
                         item['tableId']=table['id']
                         price_key = price_id({**item,'brand':item_brand,'sku':item['sku'].strip()})
-                        price_row = con.execute("SELECT payload FROM entities WHERE kind='price' AND id=%s", (price_key,)).fetchone()
+                        price_row = ({'price':item['unitPrice']},) if existing_cpq else con.execute("SELECT payload FROM entities WHERE kind='price' AND id=%s", (price_key,)).fetchone()
                         if not price_row:
                             raise HTTPException(400, f"Preço não cadastrado na tabela {price_table}: {item['sku']}")
                         try:
@@ -1499,7 +1510,8 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                         if not qty.is_finite() or not unit.is_finite() or qty != qty.to_integral_value() or qty <= 0 or qty > 100000 or unit <= 0:
                             raise HTTPException(400, 'Quantidade ou preço inválido')
                         item['unitPrice'] = str(unit)
-                        item['subtotal'] = str((qty * unit).quantize(Decimal('0.01')))
+                        if not existing_cpq:
+                            item['subtotal'] = str((qty * unit).quantize(Decimal('0.01')))
                         item['brand']=item_brand
                         total += qty * unit
                     obj['brand']='Multimarcas' if len(brands)>1 else next(iter(brands))
@@ -1507,9 +1519,10 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     obj['priceTable'] = price_table
                     obj['state'] = price_table
                     obj['amount'] = float(total.quantize(Decimal('0.01')))
-                    validate_bella_order(con,obj,client_uf,user)
                     existing_order = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone()
                     attribute_order(con,user,obj,existing_order[0] if existing_order else None)
+                    cpq.enforce_order(con, obj, existing_order[0] if existing_order else None)
+                    validate_bella_order(con,obj,client_uf,user)
                     rate_row=con.execute('SELECT seller_commission_rate FROM app_users WHERE username=%s',(obj['sellerResponsible'],)).fetchone()
                     apply_seller_commission(obj,rate_row[0] if rate_row else None,existing_order[0] if existing_order else None)
                     if not existing_order and con.execute("SELECT 1 FROM archived_entities WHERE kind='order' AND id=%s",(entity_id,)).fetchone():
@@ -1554,7 +1567,9 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                             documento=excluded.documento,curva_abc=excluded.curva_abc,updated_at=now()""",
                             (entity_id,obj['name'],obj.get('tradeName') or None,obj.get('taxId') or None,obj.get('abc') if obj.get('abc') in ('A','B','C') else None))
                     elif kind in ('visit','interaction'): project_attendance(con,kind,entity_id,obj)
-                    elif kind=='order': project_order(con,entity_id,obj)
+                    elif kind=='order':
+                        project_order(con,entity_id,obj)
+                        cpq.attach_order(con,obj,user)
                     strategic_crm.event(con,kind,obj)
                     if kind in ('order','visit','interaction') and previous_entity and previous_entity[0].get('clientId') and previous_entity[0]['clientId']!=obj.get('clientId'):
                         strategic_crm.refresh_client(con,previous_entity[0]['clientId'])
@@ -1596,16 +1611,19 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 'goal': ('month','user','brand','amount','updatedAt'),
                 'industry': ('name','active'),
                 'lead': ('name','owner','createdAt','taxId'),
-                'opportunity': ('clientId','brand','stage','owner','amount','followUp','closeDate','orderId','stageHistory','updatedAt','createdAt','notes'),
+                'opportunity': ('clientId','brand','stage','owner','amount','followUp','next','contactEvidence','cpqQuoteId','proposalId','acceptanceEvidence','closeDate','orderId','stageHistory','updatedAt','createdAt','notes'),
                 'order': ('clientId','brand','status','sellerResponsible','user','amount','date','orderNumber','stageHistory','items','proposalSentAt','proposalSentBy'),
                 'route': ('clientId','user','date','status','objective'),
                 'visit': ('clientId','user','date','result','checkIn','checkOut','next','notes','returnDate','brand'),
                 'fulfillment': ('clientId','orderId','stage','owner','due','at','stageHistory','notes','postSaleDate','postSaleResult')
             }
             names = {'goal':'goals','industry':'industries','client':'clients','lead':'leads','opportunity':'opportunities','order':'orders','route':'routes','visit':'visits','fulfillment':'fulfillments'}
+            seller_scope = is_seller(con,user)
             for kind, keys in fields.items():
+                allowed_ids = {x['id'] for x in scoped_rows(con,kind,user)} if seller_scope else None
                 rows = []
                 for entity_id, payload in con.execute('SELECT id,payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,)):
+                    if allowed_ids is not None and entity_id not in allowed_ids: continue
                     item = {key: payload[key] for key in keys if key in payload}
                     item['id'] = entity_id
                     if kind == 'order':
@@ -1613,6 +1631,9 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     rows.append(item)
                 result['crmTeam'][names[kind]] = rows
             result['crmTeam']['billedDocuments'] = [{key: payload[key] for key in ('orderId','brand','billed','billedDate') if key in payload} for (payload,) in con.execute("SELECT payload FROM entities WHERE kind='settlement' AND coalesce(payload->>'invoiceNumber','')<>''")]
+            if seller_scope:
+                visible_orders = {o['id'] for o in result['crmTeam'].get('orders',[])}
+                result['crmTeam']['billedDocuments'] = [d for d in result['crmTeam']['billedDocuments'] if d.get('orderId') in visible_orders]
             result['crmTeam']['billedOrderIds'] = list({x['orderId'] for x in result['crmTeam']['billedDocuments'] if x.get('orderId')})
             result['crmTeam']['at'] = datetime.now(TZ).isoformat()
         for kind, name in [('settlement','settlements'),('office_finance','officeFinance'),('office_budget','officeBudget'),('office_monthly_close','officeMonthlyClose'),('cash_day','cashDays'),('cash_entry','cashEntries'),('commission_rate','commissionRates'),('commission_receipt','commissionReceipts')]:
@@ -2185,7 +2206,7 @@ def zara_page():
 
 @app.get('/{filename}')
 def asset(filename: str):
-    if filename not in ('commercial_planning.js','commercial_planning.css','bi_dashboard.js','bi_dashboard.css','invoice_pdf.js','inventory.js','industry_workspace.js','jspdf.umd.min.js','central_operations.js','modern_workspace.js','modern_workspace.css','strategy_ui.css','leaflet.js','leaflet.css','strategic_crm.js','app.js','live_records.js','crm_operations.js','goals_dashboard.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
+    if filename not in ('commercial_planning.js','commercial_planning.css','cpq.js','bi_dashboard.js','bi_dashboard.css','invoice_pdf.js','inventory.js','industry_workspace.js','jspdf.umd.min.js','central_operations.js','modern_workspace.js','modern_workspace.css','strategy_ui.css','leaflet.js','leaflet.css','strategic_crm.js','app.js','live_records.js','crm_operations.js','goals_dashboard.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
         raise HTTPException(404)
     if filename in ('logo-l2-light.jpg','logo-l2-dark.jpg'):
         source={'logo-l2-light.jpg':'logo-light.jpg.b64','logo-l2-dark.jpg':'logo-dark.jpg.b64'}[filename]
@@ -2492,3 +2513,12 @@ drive_backup.configure(app, db, auth, google_drive_snapshot)
 
 from bi_dashboard import install as install_bi_dashboard
 install_bi_dashboard(app, db, auth, sectors_for, scoped_rows, is_seller)
+
+
+def sync_cpq_order(order, authorization):
+    return sync(Sync(changes=[Change(type='order', data=order, changeId='cpq-convert-'+order['cpqQuoteId'])]), authorization)
+
+cpq.configure(db=db, auth=auth, require_sector=require_sector, check_client_scope=check_client_scope,
+              scoped_rows=scoped_rows, is_seller=is_seller, normalize_uf=normalize_uf,
+              price_table_matches_client=price_table_matches_client, valid_cnpj=valid_cnpj, sync_order=sync_cpq_order)
+app.include_router(cpq.router)

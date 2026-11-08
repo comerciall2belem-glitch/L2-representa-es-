@@ -4,7 +4,7 @@ const fs=require('fs'),assert=require('node:assert/strict'),{JSDOM}=require(proc
  w.structuredClone=structuredClone;w.matchMedia=()=>({matches:false});w.alert=()=>{};w.confirm=()=>true;w.setInterval=()=>0;w.fetch=async()=>({ok:true,json:async()=>[]});
  w.localStorage.setItem('l2one_state_v2',JSON.stringify({user,role:user==='Erika'?'Vendedor':'Administrativo',token:'mock-token',server:'https://l2.test',sectors:['commercial','routes','office','management','finance','catalog','admin'],sellers:['Ana Paula','Erika'],clients:[{id:'c1',owner:user,name:'Loja <teste>',city:'Belém',state:'PA'}],pending:[]}));
  w.eval(['commercial_drafts.js','crm_operations.js','goals_dashboard.js','workspace.js','strategic_crm.js','app.js'].map(f=>fs.readFileSync(f,'utf8')).join('\n')+'\nwindow.strategyState=s;');
- await w.L2AppReady; // Complete initial cloud sync/navigation before simulating input.
+ await new Promise(resolve=>w.setTimeout(resolve,50)); // Complete initial cloud sync/navigation before simulating input.
  w.show('clientes');assert(w.document.querySelector('form[onsubmit="L2Strategy.qualify(event)"]'));assert(w.document.querySelector('form[onsubmit="L2Strategy.discover(event)"]'));
  const discovery=w.document.querySelector('#strategyDiscoverForm');discovery.elements.latitude.value='-1.45';discovery.elements.longitude.value='-48.468';
  w.L2Strategy.wizard(1);assert.equal(w.document.querySelector('[data-part="1"]').hidden,false);w.L2Strategy.wizard(1);assert.equal(w.document.querySelector('#strategyProgress').value,3);assert(w.document.querySelector('#strategyNext').hidden);w.L2Strategy.wizard(-1);assert.equal(w.document.querySelector('#strategyProgress').value,2);

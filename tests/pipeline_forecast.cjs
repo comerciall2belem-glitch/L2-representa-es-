@@ -1,0 +1,15 @@
+const assert=require('node:assert/strict');
+const {historicalForecast}=require('../crm_operations.js');
+const day='2026-11-08',history=[{stage:'Negociação',at:'2026-10-01'},{stage:'Perdido',at:'2026-10-02'}];
+const lost=Array.from({length:4},(_,i)=>({id:'l'+i,stage:'Perdido',stageHistory:history}));
+const won={id:'w',clientId:'a',stage:'Pedido confirmado',orderId:'o',stageHistory:history.slice(0,1)};
+const order={id:'o',clientId:'a',status:'Confirmado',date:'2026-10-02'};
+const open={id:'open',stage:'Negociação',amount:1000};
+assert.equal(historicalForecast([open],[],day).expected,0);
+assert.equal(historicalForecast([open],[],day).unknown,1);
+const result=historicalForecast([...lost,won,{...won,id:'duplicate'},open],[order],day);
+assert.equal(result.rates.Negociação.sample,5);
+assert.equal(result.rates.Negociação.rate,.2);
+assert.equal(result.expected,200);
+assert.equal(historicalForecast([...lost,won,open],[{...order,status:'Orçamento'}],day).unknown,1);
+console.log('Historical pipeline forecast passed');

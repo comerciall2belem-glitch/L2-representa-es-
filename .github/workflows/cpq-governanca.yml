@@ -1,0 +1,72 @@
+name: CPQ e governanca PostgreSQL
+on:
+  pull_request:
+  push:
+    branches: [feat/funil-processos-20261108, feat/cpq-staging-20261108, codex/l2-next-staging-isolado]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  postgres-acceptance:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: l2_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PERSONAL_TEST_DSN: postgresql://ci_app:ci-only@localhost:5432/l2_ci
+      CPQ_TEST_DSN: postgresql://ci_app:ci-only@localhost:5432/l2_ci
+      L2_SEARCH_TEST_DSN: postgresql://ci_app:ci-only@localhost:5432/l2_ci
+      L2_TEST_POSTGRES_DSN: postgresql://ci_app:ci-only@localhost:5432/l2_planning_test
+      DATABASE_URL: postgresql://ci_app:ci-only@localhost:5432/l2_ci
+      L2_INITIAL_PASSWORD: ci-only-initial-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install -r requirements-dev.txt
+      - name: Criar usuario de aplicacao sem privilegios de superusuario
+        run: |
+          python - <<'PYSQL'
+          import psycopg
+          with psycopg.connect('postgresql://postgres:postgres@localhost:5432/l2_ci') as con:
+              con.execute("CREATE ROLE ci_app LOGIN PASSWORD 'ci-only' NOSUPERUSER NOBYPASSRLS")
+              con.execute('GRANT ALL ON DATABASE l2_ci TO ci_app')
+              con.execute('GRANT ALL ON SCHEMA public TO ci_app')
+          with psycopg.connect('postgresql://postgres:postgres@localhost:5432/l2_ci',autocommit=True) as con:
+              con.execute('CREATE DATABASE l2_planning_test OWNER ci_app')
+          PYSQL
+      - name: Regras, financeiro pessoal e CPQ em PostgreSQL real
+        run: python -m pytest -q --junitxml=/tmp/l2-cpq-tests.xml
+      - name: Sintaxe e forecast
+        run: |
+          node --check cpq.js
+          node --check app.js
+          node tests/pipeline_forecast.cjs
+          node tests/test_crm_operations.cjs
+      - name: Interface combinada de homologacao
+        run: |
+          npm install --prefix /tmp/l2-cpq-dom jsdom --no-audit --no-fund
+          L2_JSDOM=/tmp/l2-cpq-dom/node_modules/jsdom node tests/modern_workspace_dom.cjs
+          L2_JSDOM=/tmp/l2-cpq-dom/node_modules/jsdom node tests/commercial_planning_dom.cjs
+          L2_JSDOM=/tmp/l2-cpq-dom/node_modules/jsdom node tests/live_records_dom.cjs
+          node tests/test_visit_table.cjs
+      - name: Evidencia de testes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: l2-cpq-tests
+          path: /tmp/l2-cpq-tests.xml

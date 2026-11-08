@@ -8,6 +8,7 @@ const fs=require('fs'),assert=require('assert'),{JSDOM}=require(process.env.L2_J
  w.eval(['commercial_drafts.js','crm_operations.js','goals_dashboard.js','workspace.js','app.js','live_records.js'].map(p=>fs.readFileSync(p,'utf8')).join('\n')+'\nwindow.testState=s;');
  await w.L2AppReady; // Complete initial cloud sync/navigation before simulating input.
 
+ await new Promise(resolve=>w.setTimeout(resolve,50)); // Let initial async synchronization settle before asserting user navigation.
  w.eval('L2Live.pause();');w.show('pedidos');
  const form=w.document.getElementById('orderForm'),notes=form.elements.namedItem('notes');notes.value='Texto não salvo';notes.focus();notes.setSelectionRange(3,8);
  w.eval("testState.orders.push({id:'o1',clientId:'c1',brand:'BT',sellerResponsible:'Euler',date:'2026-10-07',status:'Confirmado',amount:250});queue('order',testState.orders[0]);L2Live.refresh();");

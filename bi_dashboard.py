@@ -9,6 +9,43 @@ from fastapi.responses import Response
 import csv
 import io
 import json
+from typing import Literal
+
+
+def order_documents(orders):
+    """Allocate recorded order totals by brand; explicitly not fiscal evidence."""
+    docs = []
+    invalid = 0
+    for o in orders:
+        if o.get('status') != 'Faturado':
+            continue
+        total = amount(o.get('amount'))
+        if total is None:
+            invalid += 1
+            continue
+        gross = defaultdict(lambda: Decimal(0))
+        for item in o.get('items') or []:
+            value = amount(item.get('subtotal'))
+            if value is None:
+                price, quantity = amount(item.get('unitPrice')), amount(item.get('quantity'))
+                value = price * quantity if price is not None and quantity is not None else None
+            if value is not None:
+                gross[item.get('brand') or o.get('brand') or 'Não informada'] += value
+        gross_total = sum(gross.values(), Decimal(0))
+        if not gross_total:
+            gross = {o.get('brand') or 'Não informada': Decimal(1)}
+            gross_total = Decimal(1)
+        cents = int((total * 100).quantize(Decimal(1)))
+        allocations = [[b, int(cents * v / gross_total), (cents * v / gross_total) % 1] for b, v in sorted(gross.items())]
+        remainder = cents - sum(r[1] for r in allocations)
+        for r in sorted(allocations, key=lambda r: (-r[2], r[0]))[:remainder]:
+            r[1] += 1
+        for brand, value, _ in allocations:
+            docs.append({'id': 'order-status:' + o['id'] + ':' + brand, 'orderId': o['id'],
+                         'invoiceNumber': 'Status faturado / ' + brand, 'brand': brand,
+                         'billedDate': str(o.get('billedAt') or o.get('date') or '')[:10],
+                         'billed': str(Decimal(value) / 100)})
+    return docs, invalid
 
 TZ = ZoneInfo('America/Belem')
 
@@ -65,8 +102,12 @@ def goal_value(goals, start, end, seller='', brand='', narrowed=False):
 
 
 def build(clients, orders, settlements, goals, opportunities, start, end,
-          seller='', brand='', state='', city='', segment='', finance=False, today=None):
+          seller='', brand='', state='', city='', segment='', finance=False, today=None, basis='invoices'):
     today = today or datetime.now(TZ).date()
+    invalid_orders = 0
+    if basis == 'orders':
+        settlements, invalid_orders = order_documents(orders)
+        finance = False  # Order amounts never establish financial rights or receipts.
     if start >= end or (end - start).days > 366:
         raise HTTPException(422, 'Selecione de 1 a 366 dias; a data final não é incluída')
     clients = {c['id']: c for c in clients if c.get('id')}
@@ -76,7 +117,7 @@ def build(clients, orders, settlements, goals, opportunities, start, end,
                         and (not segment or c.get('segment') == segment)
                         and (not seller or c.get('owner') == seller)}
     order_map = {o['id']: o for o in orders if o.get('id')}
-    rows, invalid, seen = [], 0, set()
+    rows, invalid, seen = [], invalid_orders, set()
     for entry in settlements:
         o = order_map.get(entry.get('orderId'))
         if not o or o.get('status') == 'Cancelado' or o.get('clientId') not in clients:
@@ -141,6 +182,9 @@ def build(clients, orders, settlements, goals, opportunities, start, end,
                 'Cobertura parcial: devoluções, histórico anterior e cancelamentos fiscais devem ser conciliados. MoM/YoY, churn e ativação permanecem indisponíveis sem essa validação.',
                 'Carteira usa responsável atual; vendas usam vendedor do pedido. Positivação por marca não possui carteira específica validada.',
                 'Giro, encalhe e ABC de SKU exigem itens efetivamente faturados; não são estimados a partir do pedido.']
+    if basis == 'orders':
+        warnings[0] = 'Base operacional: somente pedidos com status Faturado. Usa billedAt quando disponível; caso contrário, data do pedido. Não comprova NF nem data fiscal e nunca soma com a base de NFs.'
+        warnings.append('Totais multimarcas distribuídos proporcionalmente pelos itens, preservando descontos e centavos. Comissões, recebíveis e lucro não são inferidos dos pedidos.')
     if invalid:
         warnings.append(f'{invalid} registro(s) inválido(s) ou duplicado(s) excluído(s); revisar conciliação.')
     financial = None
@@ -170,7 +214,8 @@ def build(clients, orders, settlements, goals, opportunities, start, end,
         warnings.append('Financeiro: comissões previstas e recebidas dos documentos selecionados; posição aberta/vencida em hoje, independente do período. Não representa contas de clientes perante as indústrias nem lucro líquido.')
     return {'period': {'start': str(start), 'end_exclusive': str(end)},
             'generated_at': datetime.now(TZ).isoformat(), 'formula_version': 'bi-invoices-v1',
-            'filters': dict(seller=seller, brand=brand, state=state, city=city, segment=segment),
+            'filters': dict(seller=seller, brand=brand, state=state, city=city, segment=segment, basis=basis),
+            'basis': basis,
             'kpis': {'sales': total, 'target': target, 'attainment': percentage(total, target),
                      'orders': len(distinct_orders), 'buyers': len(positive),
                      'ticket_order': total / len(distinct_orders) if distinct_orders else None,
@@ -187,7 +232,7 @@ def build(clients, orders, settlements, goals, opportunities, start, end,
 def install(app, db, auth, sectors_for, scoped_rows, is_seller):
     @app.get('/api/bi/dashboard')
     def dashboard(start: date, end: date, seller: str = '', brand: str = '', state: str = '',
-                  city: str = '', segment: str = '', authorization: str | None = Header(default=None)):
+                  city: str = '', segment: str = '', basis: Literal['orders','invoices'] = 'orders', authorization: str | None = Header(default=None)):
         user = auth(authorization)
         permissions = sectors_for(user)
         if not {'commercial', 'management', 'finance', 'office'} & permissions:
@@ -209,6 +254,6 @@ def install(app, db, auth, sectors_for, scoped_rows, is_seller):
                     raise HTTPException(403, 'Vendedor fora do seu escopo')
                 seller = user
             result = build(clients, orders, settlements, goals, opportunities, start, end,
-                           seller, brand, state, city, segment, 'finance' in permissions)
+                           seller, brand, state, city, segment, 'finance' in permissions, basis=basis)
         # No shared response/cache can retain data after role or account changes.
         return Response(json.dumps(result, default=str), media_type='application/json', headers={'Cache-Control': 'no-store'})

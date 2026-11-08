@@ -4,7 +4,7 @@ import re
 import uuid
 import routing_engine
 from datetime import date, datetime, timedelta
-from statistics import median
+from statistics import median, mean
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field, ConfigDict, ValidationError
@@ -119,7 +119,8 @@ def cadence(client, orders, visits=(), today=None):
     purchases = sorted({d for o in orders if o.get('clientId') == client['id'] and o.get('status') in BUYING and (d := local_date(o.get('date'))) and d <= today})
     contacts = [d for v in visits if v.get('clientId') == client['id'] and (d := local_date(v.get('at') or v.get('date'))) and d <= today]
     intervals = [(b-a).days for a,b in zip(purchases, purchases[1:])]
-    cycle = max(7, min(180, round(median(intervals)))) if len(intervals) >= 2 else 30
+    cycle = max(1, round(mean(intervals))) if intervals else 30
+    normal_cycle = mean(intervals) if intervals else None
     last = purchases[-1] if purchases else None
     age = (today-last).days if last else None
     status = 'Sem histórico' if age is None else 'Inativo' if age >= 60 else 'Em risco' if age >= 15 or age > cycle else 'Ativo'
@@ -134,7 +135,7 @@ def cadence(client, orders, visits=(), today=None):
     if last and (not last_contact or last > last_contact):
         next_contact = last + timedelta(days=7)
     return {'status': status, 'lastPurchase': last.isoformat() if last else None,
-            'daysSincePurchase': age, 'cycleDays': cycle, 'cycleSource': 'Histórico' if len(intervals)>=2 else 'Padrão',
+            'daysSincePurchase': age, 'cycleDays': cycle, 'cycleSource': 'Histórico' if intervals else 'Padrão', 'cycleMeanDays':round(normal_cycle,2) if normal_cycle else None, 'cycleSample':len(intervals), 'reorderAlert':bool(normal_cycle and age is not None and age > normal_cycle*1.2),
             'purchaseCount': len(purchases), 'last30Revenue':round(recent,2), 'baselineMonthlyRevenue':round(baseline_monthly,2) if len(baseline)>=2 else None, 'volumeDrop':volume_drop,
             'recordedRevenue': round(sum(safe_amount(o.get('amount')) for o in orders if o.get('clientId')==client['id'] and o.get('status') in BUYING and (d:=local_date(o.get('date'))) and d<=today),2),
             'nextContact': next_contact.isoformat(), 'overdueCycle': age is not None and age > cycle,
@@ -152,9 +153,12 @@ def refresh_client(con, client_id):
     previous = con.execute("SELECT payload FROM entities WHERE kind='task' AND id=%s", (task_id,)).fetchone()
     member = con.execute('SELECT username FROM app_users WHERE username=%s AND active', (client.get('owner',''),)).fetchone()
     task = {'responsibleNeedsReview': not bool(member), 'id': task_id, 'clientId': client_id, 'user': client.get('owner',''), 'date': info['nextContact'],
-            'text': 'Reativar cliente' if info['status']=='Inativo' else 'Contato de acompanhamento',
+            'text': 'Prioridade: recompra ultrapassou 120% do ciclo' if info['reorderAlert'] else 'Reativar cliente' if info['status']=='Inativo' else 'Contato de acompanhamento',
+            'priority':'Alta' if info['reorderAlert'] else 'Normal', 'cycleDays':info['cycleMeanDays'],
             'notes': 'MCR · '+info['status'], 'status': 'Aberta', 'source':'MCR'}
-    if previous and previous[0].get('date') == task['date']:
+    if info['reorderAlert']:
+        task['date'] = datetime.now(TZ).date().isoformat()
+    if previous and previous[0].get('date') == task['date'] and previous[0].get('priority') == task['priority']:
         task['status'] = previous[0].get('status', 'Aberta')
     put(con, 'task', task)
     # Preserve published agenda; update priority instead of moving appointments silently.
@@ -286,6 +290,9 @@ def tdc_qualify(data: Qualification, authorization: str | None = Header(default=
             put(con,'client',client)
             con.execute('INSERT INTO clientes(id,razao_social,nome_fantasia,documento) VALUES(%s,%s,%s,%s) ON CONFLICT(id) DO NOTHING',(client['id'],client['name'],client.get('tradeName'),client['taxId']))
             refresh_client(con,client['id'])
+            if info['qualified']:
+                from cpq import qualify_pipeline
+                qualify_pipeline(con,client,info['evidence'],datetime.now(TZ).date()+timedelta(days=max(1,min(7,data.urgencyDays))))
             con.execute('INSERT INTO audit_log(username,kind,entity_id,action) VALUES(%s,%s,%s,%s)',(user,'client',client['id'],'tdc_qualification'))
         if data.prospectId:
             raw=con.execute("SELECT payload FROM entities WHERE kind='lead' AND id=%s",(data.prospectId,)).fetchone()
@@ -524,6 +531,8 @@ def intake_tdc(con, item, result):
         put(con,'client',client)
         con.execute('INSERT INTO clientes(id,razao_social,nome_fantasia,documento) VALUES(%s,%s,%s,%s) ON CONFLICT(id) DO NOTHING',(client['id'],client['name'],client.get('tradeName'),tax))
         refresh_client(con,client['id'])
+        from cpq import qualify_pipeline
+        qualify_pipeline(con,client,info['evidence'],datetime.now(TZ).date()+timedelta(days=max(1,min(7,data.urgencyDays))))
     put(con,'lead',{'id':'capture-'+result['id'],'clientId':client['id'] if info['qualified'] else None,
                     'owner':client['owner'],'name':data.name,'taxId':tax,'state':data.state,'city':data.city,'tdc':info,'status':info['tag'],'createdAt':datetime.now(TZ).isoformat()})
     changed(con)

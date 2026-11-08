@@ -4,7 +4,7 @@ from decimal import Decimal
 from contextlib import contextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
-from bi_dashboard import build, install, goal_value
+from bi_dashboard import build, install, goal_value, order_documents
 
 START, END, NOW = date(2026,11,1), date(2026,12,1), date(2026,11,6)
 CLIENTS = [{'id':'c1','name':'Loja','owner':'Erika','city':'Belém','state':'PA'}, {'id':'c2','name':'Outra','owner':'Outro','state':'AP'}]
@@ -34,6 +34,15 @@ class Metrics(unittest.TestCase):
         self.assertIsNone(goal_value(goals,START,NOW));self.assertIsNone(goal_value(goals,START,END,narrowed=True))
     def test_bad_range(self):
         with self.assertRaises(HTTPException):build([],[],[],[],[],END,START)
+    def test_operational_basis_is_separate_and_never_estimates_finance(self):
+        orders=[dict(ORDERS[0],date='2026-11-02',amount='90.01',items=[{'brand':'BT','subtotal':'100'},{'brand':'Kiss','subtotal':'100'}]),dict(ORDERS[1],date='2026-11-02',amount='500',status='Confirmado')]
+        docs,invalid=order_documents(orders)
+        self.assertEqual(invalid,0);self.assertEqual(sum(Decimal(d['billed']) for d in docs),Decimal('90.01'))
+        r=build(CLIENTS,orders,DOCS,[],[],START,END,today=NOW,basis='orders',finance=True)
+        self.assertEqual(r['kpis']['sales'],Decimal('90.01'));self.assertEqual(r['kpis']['orders'],1);self.assertIsNone(r['financial']);self.assertEqual(r['basis'],'orders')
+        self.assertIn('Não comprova NF',r['warnings'][0])
+    def test_operational_invalid_data_is_not_zero_sales(self):
+        docs,invalid=order_documents([dict(ORDERS[0],amount='NaN')]);self.assertEqual(docs,[]);self.assertEqual(invalid,1)
 
 class API(unittest.TestCase):
     def setUp(self):
@@ -50,7 +59,7 @@ class API(unittest.TestCase):
             return {'client':CLIENTS[:1] if user=='Erika' else CLIENTS,'order':ORDERS[:1] if user=='Erika' else ORDERS,'goal':[],'opportunity':[]}[kind]
         app=FastAPI();install(app,db,auth,lambda u: {'commercial'} if u=='Erika' else {'finance'},scoped,lambda c,u:u=='Erika');self.client=TestClient(app)
     def get(self,extra=''):
-        return self.client.get('/api/bi/dashboard?start=2026-11-01&end=2026-12-01'+extra,headers={'Authorization':'Bearer valid'})
+        return self.client.get('/api/bi/dashboard?start=2026-11-01&end=2026-12-01&basis=invoices'+extra,headers={'Authorization':'Bearer valid'})
     def test_auth_required_and_cache_private(self):
         self.assertEqual(self.client.get('/api/bi/dashboard?start=2026-11-01&end=2026-12-01').status_code,401)
         r=self.get();self.assertEqual(r.status_code,200);self.assertEqual(r.headers['Cache-Control'],'no-store');self.assertIsNone(r.json()['financial']);self.assertNotIn('Outra',r.text)
