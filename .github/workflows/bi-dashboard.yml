@@ -1,7 +1,7 @@
 name: BI integrado
 on:
   push:
-    branches: [feat/bi-integrado-l2, codex/l2-next-staging-isolado]
+    branches: [feat/bi-producao-l2, main]
   pull_request:
 jobs:
   bi:

@@ -7,7 +7,7 @@ const result={kpis:{sales:'1200',target:null,attainment:null,orders:1,buyers:1,t
  w.s={token:'valid',server:''};const calls=[];
  w.fetch=async(url,init)=>{calls.push({url,init});return{ok:true,json:async()=>result}};
  w.eval(fs.readFileSync('bi_dashboard.js','utf8'));w.document.getElementById('app').innerHTML=w.L2BI.panel();w.L2BI.bind();await wait();
- assert.match(w.document.getElementById('bi-data').textContent,/Vendas representadas/);
+ assert.match(w.document.getElementById('bi-data').textContent,/Vendas por NF/);
  assert.equal(w.document.querySelector('#bi-data img'),null);
  assert.doesNotMatch(w.document.getElementById('bi-data').textContent,/Comissão prevista/);
  const form=w.document.getElementById('bi-filters');form.elements.city.value='Belém';form.dispatchEvent(new w.Event('submit',{cancelable:true}));await wait();
