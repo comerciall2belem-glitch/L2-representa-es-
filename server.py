@@ -1,3 +1,4 @@
+import monthly_goals
 """L2 ONE: secure FastAPI/PostgreSQL application for Render."""
 import logging
 from pipeline_rules import validate_opportunity
@@ -490,6 +491,9 @@ def check_client_scope(con, user, client_id):
     if not row or (row[0]!=user and not authorized): raise HTTPException(403,'Cliente fora da sua carteira autorizada')
 
 def scoped_rows(con, kind, user):
+    if kind == 'goal':
+        goals=monthly_goals.expand_goals([row[0] for row in con.execute("SELECT payload FROM entities WHERE kind='goal' ORDER BY updated_at,id")])
+        return [g for g in goals if g.get('user')==user] if is_seller(con,user) else goals
     if not is_seller(con,user):
         return [row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))]
     allowed={row[0] for row in con.execute('SELECT client_id FROM client_seller_authorizations WHERE seller_username=%s AND active',(user,))}
@@ -1078,6 +1082,14 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                 if con.execute('SELECT 1 FROM applied_changes WHERE change_id=%s',(change.changeId,)).fetchone():
                     continue
                 target_kind=deletable.get(kind,kind)
+                if target_kind=='goal':
+                    previous_goal=con.execute("SELECT payload FROM entities WHERE kind='goal' AND id=%s",(entity_id,)).fetchone()
+                    if obj.get('sourcePlan') or '-member-' in entity_id:
+                        raise HTTPException(400,'Edite o plano mensal para alterar o rateio')
+                    if obj.get('planVersion') or (previous_goal and previous_goal[0].get('planVersion')):
+                        if 'management' not in permissions and 'admin' not in permissions: raise HTTPException(403,'Gestão de metas restrita à gestão comercial')
+                        if kind=='goal' and obj.get('planVersion')!=1: raise HTTPException(400,'Use o cadastro mensal de metas')
+
                 if target_kind=='client':
                     previous_client=con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s",(entity_id,)).fetchone()
                     if not admin_access(user) and previous_client and obj.get('owner',previous_client[0].get('owner'))!=previous_client[0].get('owner'):
@@ -1538,6 +1550,19 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     except (TypeError, ValueError): raise HTTPException(400,'Valor inválido')
                     if not 0 <= amount <= 1e10: raise HTTPException(400,'Valor inválido')
                 if kind == 'goal':
+                    if obj.get('planVersion'):
+                        if previous_goal and previous_goal[0].get('planVersion') and obj.get('baseUpdatedAt')!=previous_goal[0].get('updatedAt'): raise HTTPException(409,'Plano alterado por outra pessoa. Sincronize antes de editar novamente.')
+                        existing_plan=con.execute("SELECT id FROM entities WHERE kind='goal' AND payload->>'month'=%s AND payload->>'brand'=%s AND payload->>'planVersion'='1' AND id<>%s LIMIT 1",(obj.get('month'),obj.get('brand'),entity_id)).fetchone()
+                        if existing_plan: raise HTTPException(409,'Já existe um plano para esta indústria e mês. Sincronize para editá-lo.')
+                        try: monthly_goals.validate_plan(obj)
+                        except (ValueError,TypeError,KeyError) as exc: raise HTTPException(400,str(exc))
+                        for member in obj['allocations']:
+                            if not con.execute('SELECT 1 FROM app_users WHERE username=%s AND active',(member['user'],)).fetchone(): raise HTTPException(400,'Integrante inativo ou não cadastrado')
+                        history=list(previous_goal[0].get('history',[])) if previous_goal else []
+                        if previous_goal:
+                            history.append({k:v for k,v in previous_goal[0].items() if k!='history'})
+                        obj['history']=history[-24:]
+                        obj.pop('baseUpdatedAt',None)
                     if obj.get('clientTarget') is not None:
                         value=obj['clientTarget']
                         if isinstance(value,bool) or not isinstance(value,(int,float)) or value!=int(value) or not 0<=value<=1000000: raise HTTPException(400,'Meta de clientes inválida')
@@ -1613,7 +1638,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
         if {'commercial','office','management'} & permissions:
             fields = {
                 'client': ('name','owner','taxId'),
-                'goal': ('month','user','brand','amount','updatedAt'),
+                'goal': ('month','user','brand','amount','updatedAt','planVersion','allocations','workDates','clientTarget','sourcePlan'),
                 'industry': ('name','active'),
                 'lead': ('name','owner','createdAt','taxId'),
                 'opportunity': ('clientId','brand','stage','owner','amount','followUp','next','contactEvidence','cpqQuoteId','proposalId','acceptanceEvidence','closeDate','orderId','stageHistory','updatedAt','createdAt','notes'),
@@ -1634,7 +1659,9 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                     if kind == 'order':
                         item['items'] = [{key: line[key] for key in ('brand','subtotal','quantity','unitPrice') if key in line} for line in payload.get('items',[])]
                     rows.append(item)
-                result['crmTeam'][names[kind]] = rows
+                if kind=='goal' and seller_scope:
+                    rows=[{k:g[k] for k in ('id',*keys) if k in g} for g in scoped_rows(con,'goal',user)]
+                result['crmTeam'][names[kind]] = monthly_goals.expand_goals(rows) if kind=='goal' else rows
             result['crmTeam']['billedDocuments'] = [{key: payload[key] for key in ('orderId','brand','billed','billedDate') if key in payload} for (payload,) in con.execute("SELECT payload FROM entities WHERE kind='settlement' AND coalesce(payload->>'invoiceNumber','')<>''")]
             if seller_scope:
                 visible_orders = {o['id'] for o in result['crmTeam'].get('orders',[])}
@@ -2222,7 +2249,7 @@ def zara_page():
 
 @app.get('/{filename}')
 def asset(filename: str):
-    if filename not in ('commercial_planning.js','commercial_planning.css','cpq.js','bi_dashboard.js','bi_dashboard.css','invoice_pdf.js','inventory.js','industry_workspace.js','jspdf.umd.min.js','central_operations.js','modern_workspace.js','modern_workspace.css','strategy_ui.css','leaflet.js','leaflet.css','strategic_crm.js','app.js','live_records.js','crm_operations.js','goals_dashboard.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
+    if filename not in ('commercial_planning.js','commercial_planning.css','cpq.js','bi_dashboard.js','bi_dashboard.css','invoice_pdf.js','inventory.js','industry_workspace.js','jspdf.umd.min.js','central_operations.js','modern_workspace.js','modern_workspace.css','strategy_ui.css','leaflet.js','leaflet.css','strategic_crm.js','app.js','live_records.js','crm_operations.js','goals_dashboard.js','monthly_goals.js', 'commercial_drafts.js','workspace.js','finance360.js','cash.js','personal-finance.js','sw.js','manifest.json','logo-l2.jpeg','logo-l2-light.jpg','logo-l2-dark.jpg','logo-data.js','icon-192.png','icon-512.png','apple-touch-icon.png'):
         raise HTTPException(404)
     if filename in ('logo-l2-light.jpg','logo-l2-dark.jpg'):
         source={'logo-l2-light.jpg':'logo-light.jpg.b64','logo-l2-dark.jpg':'logo-dark.jpg.b64'}[filename]
