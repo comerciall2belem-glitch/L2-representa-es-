@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),{JSDOM}=require(process.env.L2_JSDOM||'jsdom');
+const dom=new JSDOM('<main id="app"></main>',{url:'http://localhost',runScripts:'outside-only'}),w=dom.window;
+const state={industries:[{name:'BT',active:true}],team:['Ana Paula','Euler'],sellers:['Euler'],goals:[]};let queued=[],shown=[];
+Object.assign(w,{s:state,managementAllowed:()=>true,teamNames:()=>state.team,industryLabel:x=>x,esc:x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),money:n=>Number(n).toFixed(2),formatBRLInput:n=>String(n).replace('.',','),commissionKey:x=>x.toLowerCase(),parseBRLCents:x=>Math.round(Number(String(x).replaceAll('.','').replace(',','.'))*100),today:()=> '2026-11-09',queue:(...args)=>queued.push(args),show:x=>shown.push(x)});w.HTMLElement.prototype.scrollIntoView=function(){};
+w.eval(fs.readFileSync('goals_dashboard.js','utf8'));w.eval(fs.readFileSync('monthly_goals.js','utf8'));
+w.document.getElementById('app').innerHTML=w.L2MonthlyGoals.panel('2026-11');assert.match(w.document.body.textContent,/Não cadastrada/);assert.equal(queued.length,0);
+w.L2MonthlyGoals.edit('2026-11','BT');let f=w.document.getElementById('monthlyPlanForm');f.elements.amount.value='1.000,01';f.elements.mode.value='equal';w.document.getElementById('previewMonthlyPlan').click();assert.match(w.document.getElementById('monthlyPlanPreview').textContent,/1000.01/);f.dispatchEvent(new w.Event('submit',{cancelable:true}));assert.equal(queued.length,1);assert.equal(queued[0][0],'goal');assert.equal(queued[0][1].amount,1000.01);assert.equal(queued[0][1].allocations.reduce((n,r)=>n+r.weight,0),10000);
+// Editing retains selected month, calendar and weights; invalid percentages do not queue.
+w.L2MonthlyGoals.edit('2026-11','BT');f=w.document.getElementById('monthlyPlanForm');f.elements.mode.value='percent';f.querySelector('[data-person]').value='99';f.dispatchEvent(new w.Event('submit',{cancelable:true}));assert.equal(queued.length,1);assert.match(w.document.getElementById('monthlyPlanPreview').textContent,/100%/);
+// Copy keeps amounts blank, calendars in the destination month, and does not save.
+w.L2MonthlyGoals.edit('2026-12','BT',true);f=w.document.getElementById('monthlyPlanForm');assert.equal(f.elements.amount.value,'');assert([...f.querySelectorAll('[name=workDate]')].every(x=>x.value.startsWith('2026-12')));assert.equal(queued.length,1);
+w.managementAllowed=()=>false;assert.equal(w.L2MonthlyGoals.panel('2026-11'),'');
+console.log('Monthly form: blank initial values, preview, exact equal save, validation, copy month and management guard OK');

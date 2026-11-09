@@ -10,6 +10,7 @@ from access_policy import effective_sectors, attribute_order
 from seller_commission import apply_seller_commission
 from financial_visibility import hide_industry_commissions
 import cpq
+import monthly_goals
 
 tree=ast.parse(Path(__file__).resolve().parents[1].joinpath('server.py').read_text())
 functions=[node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name in ('sync','next_order_number')]
@@ -58,6 +59,7 @@ namespace={'strategic_crm':SimpleNamespace(event=lambda *a:None,refresh_client=l
            'Jsonb':lambda value:value,'re':re,'project_order':lambda con,identifier,obj:None,
            'check_client_scope':lambda con,user,client_id:None,'scoped_rows':lambda con,kind,user:[row[0] for row in con.execute('SELECT payload FROM entities WHERE kind=%s ORDER BY updated_at,id',(kind,))]}
 namespace['cpq']=cpq
+namespace['monthly_goals']=monthly_goals
 namespace['is_seller']=lambda con,user:False
 exec(compile(ast.Module(body=functions,type_ignores=[]),'<order-numbering>','exec'),namespace)
 commercial=ast.parse(Path(__file__).resolve().parents[1].joinpath('commercial_tables.py').read_text())
