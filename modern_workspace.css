@@ -91,3 +91,35 @@
  .l2-modern .order-items .order-product-qty input{min-height:44px;min-width:0;width:100%}
 }
 .l2-nav-group{border-bottom:1px solid var(--line);padding:8px 0}.l2-nav-group>summary{cursor:pointer;min-height:48px;display:flex;align-items:center;gap:8px;font-weight:650;font-size:13px;color:var(--brand);list-style:none}.l2-nav-group>summary:before{content:'▸';color:var(--accent)}.l2-nav-group[open]>summary:before{content:'▾'}.l2-nav-group:not([open])>button{display:none!important}.l2-nav-group>button{display:flex!important;align-items:center;gap:10px;width:100%;white-space:normal}#l2SupportOps{position:relative}#l2SupportOps>summary{cursor:pointer;font-size:13px;padding:12px}#l2SupportOps>div{position:absolute;right:0;top:100%;background:var(--surface);border:1px solid var(--line);border-radius:12px;z-index:35;min-width:230px;max-height:70vh;overflow:auto;padding:10px}#l2SupportOps:not([open])>div{display:none}#l2SupportOps button{display:block;width:100%;margin-bottom:5px;text-align:left}.l2-card-blocked{border-left:4px solid #ae3e30!important}.l2-deadline-warning{color:#ae3e30;font-weight:600}.l2-kanban dl{font-size:13px}.l2-kanban dt{color:#788986;margin-top:10px}.l2-kanban dd{margin:4px 0;overflow-wrap:anywhere}.l2-modern .l2-client-link{background:none;color:var(--brand);padding:0;text-align:left;font-weight:700}.l2-client-sheet{max-width:1100px}.l2-client-sheet details>summary{cursor:pointer;min-height:44px;font-weight:600}.l2-nav-group summary:focus-visible{outline:3px solid var(--accent)}
+
+/* Simple daily workspace: short actions, compact summaries and readable controls. */
+.l2-modern main{max-width:1440px}
+.l2-modern .muted,.l2-modern .l2-intro>p,.l2-modern .l2-metric>span,.l2-modern .l2-metric small{color:#536663}
+.l2-modern .l2-intro{padding:4px 0 12px}
+.l2-modern .l2-intro h2{font-size:28px;margin:8px 0}
+.l2-modern .l2-intro>p{margin:0;line-height:1.5}
+.l2-daily-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 0 18px}
+.l2-modern .l2-daily-actions button{min-height:48px;margin:0;white-space:normal}
+.l2-modern .l2-metrics{gap:12px;margin-bottom:18px}
+.l2-modern .l2-metric{min-height:136px;padding:16px;gap:12px;border-radius:10px}
+.l2-modern .l2-metric strong{font-size:28px;overflow-wrap:anywhere}
+.l2-modern .box,.l2-modern .card{border-radius:10px}
+.l2-section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+.l2-section-title h3{margin:0}
+.l2-today-task{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-top:1px solid var(--line)}
+.l2-today-task>div{min-width:0;overflow-wrap:anywhere}
+.l2-today-task small{display:block;margin-top:5px;color:#536663;line-height:1.5}
+.l2-today-task>button{flex-shrink:0}
+.l2-team-details>summary{cursor:pointer;min-height:44px;display:list-item;font-weight:600;padding:10px 0}
+.l2-team-details #l2DailyProductivity{margin:12px 0 0;border:0;padding:0}
+.l2-modern #tabs:before{display:none}
+.l2-modern input:focus-visible,.l2-modern select:focus-visible,.l2-modern textarea:focus-visible,.l2-modern summary:focus-visible{outline:3px solid #426f65;outline-offset:2px}
+@media(max-width:760px){
+ .l2-modern main{padding:16px 12px 105px}
+ .l2-daily-actions{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .l2-modern .l2-metric{min-height:128px;padding:13px;gap:10px}
+ .l2-modern .l2-metric strong{font-size:23px}
+ .l2-modern .box{padding:16px}
+ .l2-section-title>button{font-size:12px}
+ .l2-today-task{gap:10px}
+}
