@@ -1,0 +1,10 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const source=fs.readFileSync('app.js','utf8');const code=source.slice(source.indexOf('const visitView ='),source.indexOf('function show(t){'));
+const badges=[{dataset:{photoCount:'v1'},isConnected:true,textContent:''},{dataset:{photoCount:'v2'},isConnected:true,textContent:''}];
+const root={isConnected:true,querySelectorAll:()=>badges};
+const ctx={s:{token:'x',server:'https://example.test',visits:Array.from({length:15},(_,i)=>({id:'v'+i,date:'2026-10-'+String(i+1).padStart(2,'0'),result:i%2?'Contato remoto':'Visitado - pedido',user:i%2?'Euler':'Ana',clientId:'c'})),orders:[],clients:[],interactions:[]},client:()=>({name:'Cliente <teste>'}),esc:x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),document:{addEventListener(){},querySelectorAll(){return []}},window:{addEventListener(){}},navigator:{onLine:true},$:id=>id==='visitResults'?root:null,fetch:async url=>({ok:!url.includes('v2'),json:async()=>[{id:1},{id:2}]}),requestAnimationFrame:fn=>fn()};
+vm.createContext(ctx);vm.runInContext(code,ctx);
+let html=vm.runInContext('visitResultsHTML()',ctx);assert(html.includes('15 atendimento(s) · página 1 de 2'));assert(html.includes('Cliente &lt;teste&gt;'));assert(html.indexOf('15/10/2026')<html.indexOf('14/10/2026'));assert(html.includes('data-photo-count'));
+vm.runInContext("visitView.result='Contato remoto';visitView.user='Euler';visitView.page=1",ctx);html=vm.runInContext('visitResultsHTML()',ctx);assert(html.includes('7 atendimento(s)'));assert(!html.includes('Visitado - pedido'));
+vm.runInContext("visitView.start='2026-10-05';visitView.end='2026-10-10'",ctx);html=vm.runInContext('visitResultsHTML()',ctx);assert(html.includes('3 atendimento(s)'));
+vm.runInContext('visitLoadCounts()',ctx);setTimeout(()=>{assert.equal(badges[0].textContent,'2');assert.equal(badges[1].textContent,'?');console.log('OK: filtros, paginação, escape, contador e falha de consulta.');},20);

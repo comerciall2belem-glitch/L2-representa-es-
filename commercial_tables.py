@@ -5,12 +5,42 @@ from psycopg.types.json import Jsonb
 import json
 
 BELLA = 'Bella Brazil'
+BELLA_POLICY_VERSION = 'bella-2026-11-08'
+BELLA_POLICY = {'version':BELLA_POLICY_VERSION, 'minimum':'1500.00', 'paymentTerms':['28'], 'paymentMethod':'Boleto Bancário', 'cifAbove':'3500.00', 'freightBelowOrEqual':None}
 CHANNELS = {'VAREJO': 8, 'REVENDA': 8, 'ATACADO': 5}
 AUDIENCES = {
     'VAREJO': 'Exclusiva para Perfumarias',
     'REVENDA': 'Grupos de lojas, redes de farmácia, redes de supermercados e distribuidores de salões de beleza',
     'ATACADO': 'Atacados e distribuidores que compram e revendem para lojas, farmácias e mercados',
 }
+
+def bella_policy(subtotal, terms, state, policy=None):
+    policy = policy or BELLA_POLICY
+    if state not in ('PA','AP'): raise HTTPException(422,'Bella Brazil: UF deve ser PA ou AP')
+    minimum = Decimal(policy['minimum'])
+    if subtotal < minimum:
+        raise HTTPException(422,'Bella Brazil: pedido mínimo R$ 1.500,00 por marca, após descontos')
+    if terms not in policy['paymentTerms']:
+        raise HTTPException(422,'Bella Brazil: pagamento em 28 dias por boleto bancário')
+    if subtotal <= Decimal(policy['cifAbove']):
+        raise HTTPException(422,'Bella Brazil: frete pendente até R$ 3.500,00 inclusive; defina a condição antes de emitir')
+    return {'minimum':str(minimum),'freight':'CIF','paymentTerms':terms,'paymentMethod':policy['paymentMethod'],'policyVersion':policy['version']}
+
+
+def migrate_bella_policy(con):
+    """One-time revision of commercial settings; never rewrites orders or prices."""
+    row=con.execute("SELECT payload FROM entities WHERE kind='industry' AND id=%s FOR UPDATE",(BELLA,)).fetchone()
+    if not row or row[0].get('cpqPolicy',{}).get('version')==BELLA_POLICY_VERSION:return False
+    industry=dict(row[0])
+    history=list(industry.get('commercialPolicyHistory') or [])
+    history.append({key:industry.get(key) for key in ('commercialPolicy','minimumByState','freight','paymentOptions','notes','cpqPolicy')})
+    industry.update(cpqPolicy=dict(BELLA_POLICY),minimumByState={'PA':'1500.00','AP':'1500.00'},
+                    paymentOptions=['28'],freight='Condicional',commercialPolicy=[],commercialPolicyHistory=history,
+                    notes='Política informada por Ana Paula em 08/11/2026: mínimo R$ 1.500,00 em PA/AP; pagamento em 28 dias por boleto. CIF somente acima de R$ 3.500,00. Até R$ 3.500,00 inclusive, frete ainda não definido: emissão bloqueada. Embalagens e comissões preservadas.')
+    con.execute("UPDATE entities SET payload=%s,updated_at=now() WHERE kind='industry' AND id=%s",(Jsonb(industry),BELLA))
+    con.execute("INSERT INTO audit_log(username,kind,entity_id,action) VALUES('Ana Paula','industry',%s,%s)",(BELLA,'policy_'+BELLA_POLICY_VERSION))
+    return True
+
 
 def table_id(payload):
     return payload.get('tableId') or f"{payload.get('brand', '')}|{payload.get('state', '')}"
@@ -50,7 +80,7 @@ def seed_bella(con, base):
             payload['id'] = price_id(payload)
             con.execute("INSERT INTO entities(kind,id,payload) VALUES('price',%s,%s) ON CONFLICT DO NOTHING",(payload['id'],Jsonb(payload)))
 
-def validate_bella_order(con, order, state, user):
+def validate_bella_order(con, order, state, user, previous=None):
     items = [x for x in order['items'] if x['brand'] == BELLA]
     if not items:
         return
@@ -67,12 +97,16 @@ def validate_bella_order(con, order, state, user):
         item['packSize'] = 6
         item['commissionRate'] = CHANNELS[channel]
     if order.get('status') in ('Confirmado','Faturado'):
-        minimum = Decimal('2000') if state == 'PA' else Decimal('3000')
-        if subtotal < minimum:
-            raise HTTPException(400,f'Bella Brazil: mínimo {state} R$ {minimum:.2f} com frete CIF')
-        terms = str(order.get('paymentTerms','')).replace(' ','')
-        if terms not in ('28','28/35','30/45/60'):
-            raise HTTPException(400,'Bella Brazil: escolha 28, 28/35 ou 30/45/60 dias')
+        # Converted CPQ orders and already confirmed legacy orders keep approved conditions.
+        frozen=(order.get('freightByBrand') or {}).get(BELLA) if order.get('cpqQuoteId') and order.get('cpqFingerprint') else None
+        legacy=previous if previous and previous.get('status') in ('Confirmado','Faturado','Entregue') else None
+        if frozen:
+            order['bellaFreight']=frozen['freight']
+        elif legacy:
+            order['bellaFreight']=legacy.get('bellaFreight','CIF')
+        else:
+            rule=bella_policy(subtotal,str(order.get('paymentTerms','')).replace(' ',''),state)
+            order.update(bellaFreight=rule['freight'],bellaPaymentMethod=rule['paymentMethod'],bellaPolicyVersion=rule['policyVersion'])
     try:
         bonus = Decimal(str(order.get('bellaBonusPercent',0)))
     except (InvalidOperation,ValueError,TypeError):
@@ -89,5 +123,5 @@ def validate_bella_order(con, order, state, user):
             raise HTTPException(400,'Bonificação de introdução: informe de 5% a 15%, ou zero sem bonificação')
     order['bellaBonusPercent'] = str(bonus)
     order['bellaBonusValue'] = str((subtotal * bonus / 100).quantize(Decimal('0.01')))
-    order['bellaFreight'] = 'CIF'
+    order.setdefault('bellaFreight','A definir' if subtotal<=Decimal('3500') else 'CIF')
     order['bellaDeliveryDays'] = [6,9]

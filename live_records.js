@@ -15,7 +15,7 @@
    const preview=document.createElement('div');preview.innerHTML=html;const app=$('app');
    // Replace only read-only metrics and record tables. Form nodes, files, selection,
    // focus, scroll position and unsaved field contents are never recreated.
-   for(const selector of ['.l2-metrics','.l2-dashboard-grid','.l2-client-status-tabs','.client-directory','.l2-product-grid','#goalsDashboardData','#crm360Dashboard','.cards','.workspace-stats','.workspace-sync','.scroll','#clientTimeline','h3','.muted','.fin-chart','[data-live-client-facts]']){
+   for(const selector of ['.l2-metrics','#l2DailyProductivity','.l2-dashboard-grid','.l2-client-status-tabs','.client-directory','.l2-product-grid','#goalsDashboardData','#crm360Dashboard','.cards','.workspace-stats','.workspace-sync','.scroll','#clientTimeline','h3','.muted','.fin-chart','[data-live-client-facts]']){
     const current=[...app.querySelectorAll(selector)],next=[...preview.querySelectorAll(selector)];
     if(current.length!==next.length)continue;
     current.forEach((node,index)=>{if(node.closest('form')||node.querySelector('input,textarea,select,form,[contenteditable="true"]')||next[index].querySelector('input,textarea,select,form'))return;
@@ -24,6 +24,13 @@
    }
    const currentKanban=app.querySelector('.l2-kanban'),nextKanban=preview.querySelector('.l2-kanban');
    if(currentKanban&&nextKanban&&!currentKanban.contains(document.activeElement)&&currentKanban.innerHTML!==nextKanban.innerHTML){const left=currentKanban.scrollLeft;currentKanban.innerHTML=nextKanban.innerHTML;currentKanban.scrollLeft=left;}
+   // Refresh only the visit results, leaving the editing form and filters intact.
+   const visits=app.querySelector('#visitResults'),nextVisits=preview.querySelector('#visitResults');
+   if(visits&&nextVisits&&!visits.contains(document.activeElement)&&!visits.querySelector('.l2-visit-actions[open]')&&visits.dataset.liveSignature!==nextVisits.innerHTML){
+    visits.dataset.liveSignature=nextVisits.innerHTML;
+    visits.innerHTML=nextVisits.innerHTML;
+    if(typeof visitLoadCounts==='function')visitLoadCounts();
+   }
    window.L2Modern?.bindReadOnly();
    for(const select of app.querySelectorAll('select[name="sellerResponsible"],select[name="user"],select[name="owner"],select[name="Responsável"]')){const names=select.name==='sellerResponsible'?s.sellers:teamNames();for(const name of names||[])if(![...select.options].some(o=>o.value===name)){const option=document.createElement('option');option.value=name;option.textContent=name;select.append(option);}}
    const feed=$('commercialActivity');if(feed)feed.innerHTML=commercialActivityHTML(activities());network();
@@ -31,7 +38,7 @@
  }
  function schedule(){clearTimeout(timer);timer=setTimeout(()=>{refresh();if(s.token&&navigator.onLine&&!syncing&&!s.mustChangePassword)sync({automatic:true});},700);}
  function saved(){refresh();schedule();}
- function settled(){refresh();if(tab==='admin')loadAdminUsage();if(tab==='finance'){window.loadFinancialAnalysis?.();window.loadFinancialInputs?.();}if(needsRead){needsRead=false;requestRead();}else if(s.pending.length&&!window.lastSyncError)schedule();}
+ function settled(){refresh();if(['hoje','approvals','productivity'].includes(tab))window.L2Modern?.loadDailyQuotes();if(tab==='admin')loadAdminUsage();if(tab==='finance'){window.loadFinancialAnalysis?.();window.loadFinancialInputs?.();}if(needsRead){needsRead=false;requestRead();}else if(s.pending.length&&!window.lastSyncError)schedule();}
  async function requestRead(){
   if(!s.token||!navigator.onLine||document.hidden)return;
   // Read the team feed even if a local validation issue blocks record sync.

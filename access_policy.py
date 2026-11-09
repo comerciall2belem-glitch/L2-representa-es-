@@ -33,3 +33,16 @@ def attribute_order(con, actor, order, previous=None):
                  enteredAs=previous.get('enteredAs') or ('Adm' if entered == 'Laís' or (entered == actor and administrative) else 'Comercial'),
                  updatedAs='Adm' if administrative else 'Sócio' if actor == 'Euler' else 'Comercial',
                  sellerResponsible=seller, commissionSeller=seller)
+
+
+def authorize_visit_change(actor, seller, incoming, previous=None, deleting=False):
+    """Apply an ownership rule to sellers; administrators retain their scope."""
+    if not seller:
+        return
+    if previous is not None and str(previous.get('user') or '').strip() != actor:
+        raise HTTPException(403, 'Vendedor só pode alterar seus próprios atendimentos')
+    if not deleting:
+        selected = str(incoming.get('user') or '').strip()
+        if selected and selected != actor:
+            raise HTTPException(403, 'Vendedor só pode registrar atendimentos em seu próprio nome')
+        incoming['user'] = actor
