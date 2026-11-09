@@ -2,6 +2,8 @@ import ast
 from pathlib import Path
 from unittest import TestCase
 from unittest.mock import MagicMock
+from copy import deepcopy
+from financial_visibility import hide_industry_commissions
 
 class SearchDetailTests(TestCase):
     def setUp(self):
@@ -13,7 +15,8 @@ class SearchDetailTests(TestCase):
         self.db.return_value.__enter__.return_value = self.con
         self.scope = MagicMock()
         self.auth = MagicMock(return_value='Ana Paula')
-        self.ns = dict(auth=self.auth, require_sector=MagicMock(), db=self.db, check_order_scope=self.scope, Header=lambda **kw: None)
+        self.sectors = MagicMock(return_value={'commercial', 'finance'})
+        self.ns = dict(sectors_for=self.sectors, hide_industry_commissions=hide_industry_commissions, auth=self.auth, require_sector=MagicMock(), db=self.db, check_order_scope=self.scope, Header=lambda **kw: None)
         exec(compile(ast.Module(body=[node], type_ignores=[]), '<detail>', 'exec'), self.ns)
 
     def test_full_order_and_client_are_returned_after_scope_check(self):
@@ -33,3 +36,32 @@ class SearchDetailTests(TestCase):
         self.auth.side_effect = PermissionError('unauthorized')
         with self.assertRaises(PermissionError): self.ns['searched_order_detail']('o', 'bad')
         self.db.assert_not_called()
+
+    def test_non_financial_profiles_cannot_receive_industry_commissions(self):
+        for user in ('Marlene', 'Erika', 'MB', 'Anapon', 'Danyelle Oliveira'):
+            with self.subTest(user=user):
+                self.auth.return_value = user
+                self.sectors.return_value = {'commercial', 'office'}
+                order = {'id': 'o', 'clientId': 'c', 'amount': 100, 'sellerCommissionRate': 2.5,
+                         'commissionAmount': 8, 'notes': 'Entrega combinada. Comissão da indústria 8%.',
+                         'items': [{'sku': 'sku', 'quantity': 3, 'commissionRate': 8}]}
+                original = deepcopy(order)
+                self.con.execute.return_value.fetchone.side_effect = [(order,), ({'id': 'c'},)]
+                result = self.ns['searched_order_detail']('o', 'valid-session')
+                self.assertNotIn('commissionAmount', result['order'])
+                self.assertNotIn('commissionRate', result['order']['items'][0])
+                self.assertEqual(result['order']['notes'], 'Entrega combinada.')
+                self.assertEqual(result['order']['sellerCommissionRate'], 2.5)
+                self.assertEqual(result['order']['items'][0]['quantity'], 3)
+                self.assertEqual(result['order']['amount'], 100)
+                self.assertEqual(order, original)
+
+    def test_financial_profiles_keep_full_commercial_conditions(self):
+        for user in ('Ana Paula', 'Euler', 'Laís'):
+            with self.subTest(user=user):
+                self.auth.return_value = user
+                self.sectors.return_value = {'commercial', 'finance'}
+                order = {'id': 'o', 'clientId': 'c', 'commissionAmount': 8,
+                         'items': [{'sku': 'sku', 'commissionRate': 8}]}
+                self.con.execute.return_value.fetchone.side_effect = [(order,), ({'id': 'c'},)]
+                self.assertEqual(self.ns['searched_order_detail']('o', 'valid-session')['order'], order)
