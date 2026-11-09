@@ -1654,6 +1654,16 @@ def check_order_scope(con,user,order_id):
     if not row: raise HTTPException(404,'Pedido não encontrado')
     check_client_scope(con,user,row[0])
 
+@app.get('/api/orders/{order_id}/detail')
+def searched_order_detail(order_id: str, authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    require_sector(user, 'commercial', 'office')
+    with db() as con:
+        check_order_scope(con, user, order_id)
+        order = con.execute("SELECT payload FROM entities WHERE kind='order' AND id=%s", (order_id,)).fetchone()[0]
+        customer = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (order.get('clientId'),)).fetchone()
+        return {'order': order, 'client': customer[0] if customer else None}
+
 @app.get('/api/admin/orders/archived')
 def archived_orders(authorization: str | None = Header(default=None)):
     user=auth(authorization)

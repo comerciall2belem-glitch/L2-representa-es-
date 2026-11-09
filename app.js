@@ -130,7 +130,24 @@ function l2OpenSearch(){
     const data=await response.json();if(id!==requestId||!d.isConnected)return;
     results.replaceChildren();
     for(const c of data.clients||[]){const b=document.createElement('button');b.type='button';b.className='l2-search-item';b.textContent='Cliente · '+(c.name||'Sem nome');b.onclick=()=>{if(!s.clients.some(x=>x.id===c.id))s.clients.push(c);d.close();if(sectionAllowed('crm'))openClient360(c.id);else if(sectionAllowed('clientes'))show('clientes')};results.append(b)}
-    for(const o of data.orders||[]){const b=document.createElement('button');b.type='button';b.className='l2-search-item';b.textContent='Pedido '+orderLabel(o.orderNumber)+' · '+(o.clientName||'Cliente')+' · '+(o.status||'Sem situação');b.onclick=()=>{results.replaceChildren();const title=document.createElement('h3');title.textContent=b.textContent;const info=document.createElement('p');info.textContent='Data: '+(o.date||'não informada')+' · Total: '+money(o.amount)+' · Indústria: '+(o.brand||'não informada');const back=document.createElement('button');back.textContent='Voltar aos resultados';back.className='secondary';back.onclick=search;results.append(title,info,back)};results.append(b)}
+    for(const o of data.orders||[]){const b=document.createElement('button');b.type='button';b.className='l2-search-item';b.textContent='Pedido '+orderLabel(o.orderNumber)+' · '+(o.clientName||'Cliente')+' · '+(o.status||'Sem situação');b.onclick=async()=>{
+     results.textContent='Carregando pedido…';
+     try{
+      const token=s.token,response=await fetch(s.server+'/api/orders/'+encodeURIComponent(o.id)+'/detail',{headers:{Authorization:'Bearer '+token},cache:'no-store'});
+      if(!response.ok)throw Error(response.status===403?'Acesso ao pedido recusado.':'Não foi possível abrir o pedido.');
+      const detail=await response.json();if(!d.isConnected||token!==s.token)return;
+      // Keep unsynchronized local changes intact when opening server results.
+      for(const [key,row] of [['clients',detail.client],['orders',detail.order]]){if(!row)continue;const index=s[key].findIndex(x=>x.id===row.id);if(index<0)s[key].push(row);else if(!s.pending.some(x=>x.id===row.id||x.payload?.id===row.id||x.data?.id===row.id))s[key][index]=row}
+      const order=s.orders.find(x=>x.id===o.id);results.replaceChildren();
+      const title=document.createElement('h3');title.textContent=b.textContent;
+      const info=document.createElement('p');info.textContent='Data: '+(order.date||'não informada')+' · Total: '+money(order.amount)+' · Indústria: '+(order.brand||'não informada');results.append(title,info);
+      const action=(label,run)=>{const button=document.createElement('button');button.type='button';button.textContent=label;button.onclick=run;results.append(button);return button};
+      if(sectionAllowed('pedidos')){const edit=action('Editar pedido',()=>{d.close();editOrder(order.id)});edit.disabled=!['Orçamento','Pendente','Cancelado'].includes(order.status);if(edit.disabled){const note=document.createElement('p');note.textContent='Pedidos confirmados ou faturados têm os itens protegidos contra alteração.';results.append(note)}}
+      action('Baixar PDF',()=>downloadOrderPDF(order.id));
+      action('Atualizar dados',()=>b.onclick());
+      action('Voltar aos resultados',search);
+     }catch(error){if(d.isConnected){results.textContent=error.message;const retry=document.createElement('button');retry.textContent='Tentar novamente';retry.onclick=()=>b.onclick();results.append(retry)}}
+    };results.append(b)}
     if(!results.children.length)results.textContent='Nenhum resultado disponível.';
    }catch(error){if(error.name!=='AbortError'&&id===requestId&&d.isConnected)results.textContent=error.message||'Erro de conexão.'}
   },250);
