@@ -13,6 +13,7 @@ const result={kpis:{sales:'1200',target:null,attainment:null,orders:1,buyers:1,t
  const form=w.document.getElementById('bi-filters');form.elements.city.value='Belém';form.dispatchEvent(new w.Event('submit',{cancelable:true}));await wait();
  assert.match(calls.at(-1).url,/city=Bel/);assert.equal(calls.at(-1).init.headers.Authorization,'Bearer valid');
  assert.equal(form,w.document.getElementById('bi-filters'));assert.equal(form.elements.city.value,'Belém');
+ const original=form.elements.start.value;w.document.querySelector('[data-bi-period="-1"]').click();await wait();assert.notEqual(form.elements.start.value,original);assert.equal(form.elements.city.value,'Belém');assert.match(calls.at(-1).url,/city=Bel/);w.document.querySelector('[data-bi-period="0"]').click();await wait();assert.equal(form.elements.start.value,original);
  w.document.querySelector('[data-bi-view="clients"]').click();assert.match(w.document.getElementById('bi-data').textContent,/Curva ABC/);
  w.fetch=async()=>({ok:false,json:async()=>({detail:'Sem acesso'})});w.document.getElementById('bi-refresh').click();await wait();
  assert.match(w.document.getElementById('bi-status').textContent,/Sem acesso/);assert.equal(w.document.getElementById('bi-data').textContent,'');
