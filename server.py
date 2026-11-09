@@ -132,6 +132,13 @@ def initialize():
         expected_database=os.getenv('L2_EXPECTED_DATABASE','').strip()
         if expected_database and con.execute('SELECT current_database()').fetchone()[0]!=expected_database:
             raise RuntimeError('Banco conectado diverge do ambiente esperado; inicialização recusada')
+        # Authenticated requests read app_users before entities. Take schema locks
+        # in that same order to avoid a startup/request lock-upgrade deadlock.
+        con.execute('CREATE TABLE IF NOT EXISTS app_users (username TEXT PRIMARY KEY, password_hash TEXT NOT NULL, active BOOLEAN NOT NULL DEFAULT true, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())')
+        con.execute('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false')
+        con.execute('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS sectors JSONB')
+        con.execute('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS role TEXT')
+        con.execute('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS department TEXT')
         zara.setup(con)
         drive_backup.setup(con)
         webchat.setup(con)
@@ -194,11 +201,6 @@ def initialize():
         con.execute('CREATE TABLE IF NOT EXISTS visit_photos (id TEXT PRIMARY KEY, visit_id TEXT NOT NULL, filename TEXT NOT NULL, content_type TEXT NOT NULL, content BYTEA NOT NULL, uploaded_by TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
         con.execute('CREATE INDEX IF NOT EXISTS idx_visit_photos_visit ON visit_photos(visit_id)')
         con.execute('CREATE INDEX IF NOT EXISTS idx_order_attachments_order ON order_attachments(order_id)')
-        con.execute('CREATE TABLE IF NOT EXISTS app_users (username TEXT PRIMARY KEY, password_hash TEXT NOT NULL, active BOOLEAN NOT NULL DEFAULT true, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())')
-        con.execute('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false')
-        con.execute('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS sectors JSONB')
-        con.execute('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS role TEXT')
-        con.execute('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS department TEXT')
         con.execute('''CREATE TABLE IF NOT EXISTS seller_profiles (
             username TEXT PRIMARY KEY REFERENCES app_users(username) ON DELETE RESTRICT,
             full_name TEXT NOT NULL, document TEXT NOT NULL, email TEXT NOT NULL,
