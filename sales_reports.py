@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 class ReportExport(BaseModel):
     title: str = Field(max_length=160)
-    period: str = Field(max_length=100)
+    period: str = Field(max_length=2000)
     headers: list[str] = Field(max_length=15)
     rows: list[list[str | int | float | None]] = Field(max_length=20000)
 
@@ -44,7 +44,7 @@ def install(app, auth):
             styles = getSampleStyleSheet(); width = landscape(A4)[0]-56
             def para(v): return Paragraph(escape(str(v if v is not None else '—')), styles['BodyText'])
             data = [[para(v) for v in row] for row in [report.headers, *report.rows]]
-            table = LongTable(data, colWidths=[width/len(report.headers)]*len(report.headers), repeatRows=1)
+            table = LongTable(data, colWidths=[width/len(report.headers)]*len(report.headers), repeatRows=1, splitInRow=1)
             table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#dce8ea')),('VALIGN',(0,0),(-1,-1),'TOP'),('GRID',(0,0),(-1,-1),.3,colors.lightgrey),('BOTTOMPADDING',(0,0),(-1,-1),7)]))
             SimpleDocTemplate(out, pagesize=landscape(A4), leftMargin=28,rightMargin=28,topMargin=28,bottomMargin=28).build([Paragraph(escape(report.title),styles['Title']),para(report.period),Spacer(1,12),table])
             mime = 'application/pdf'
