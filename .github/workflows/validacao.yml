@@ -28,6 +28,7 @@ jobs:
           node --check central_operations.js
           node --check industry_workspace.js
           node --check cash.js
+          node --check field_mobile.js
       - name: Testar regras fiscais
         run: python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Testar fluxos comerciais
@@ -44,6 +45,8 @@ jobs:
       - name: Testar interface TDC SRI MCR
         run: |
           npm install --prefix /tmp/l2-test-dom jsdom --no-audit --no-fund
+          node tests/field_mobile.cjs
+          L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/field_mobile_dom.cjs
           L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/strategic_crm_dom.cjs
           L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/strategic_tools_dom.cjs
           L2_JSDOM=/tmp/l2-test-dom/node_modules/jsdom node tests/sales_workspace_dom.cjs
