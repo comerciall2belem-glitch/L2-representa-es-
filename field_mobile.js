@@ -13,7 +13,8 @@ window.L2Field=(()=>{
  };
  workspaceNav=function(){nav();document.body.classList.toggle('l2-field',active());if(!active())return;const bottom=document.getElementById('l2BottomNav');if(!bottom)return;bottom.replaceChildren();for(const [id,label] of [['hoje','Hoje'],['clientes','Clientes'],['rota','Rota'],['pedidos','Pedidos'],['registro','Atender']]){if(!sectionAllowed(id))continue;const b=document.createElement('button');b.textContent=label;b.dataset.fieldGo=id;b.setAttribute('aria-current',tab===id?'page':'false');bottom.appendChild(b);}};
  document.addEventListener('click',e=>{const b=e.target.closest('[data-field-go],[data-field-client],[data-field-visit],[data-field-filter]');if(!b||!active())return;if(b.dataset.fieldGo){document.body.classList.remove('l2-menu-open');show(b.dataset.fieldGo);}else if(b.hasAttribute('data-field-filter')){filter=b.dataset.fieldFilter;show('hoje');}else if(b.hasAttribute('data-field-client'))openClient360(b.dataset.fieldClient);else{window.prefillId=b.dataset.fieldVisit;show('registro');}});
- query.addEventListener('change',()=>{if(!document.querySelector('#app input:focus,#app textarea:focus,#app select:focus'))render();});
+ const resized=()=>{if(!document.querySelector('#app input:focus,#app textarea:focus,#app select:focus'))render();};
+ if(query.addEventListener)query.addEventListener('change',resized);else if(query.addListener)query.addListener(resized);
  return {active,rows};
 })();
 if(window.L2Field.active())render();
