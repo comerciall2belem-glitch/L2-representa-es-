@@ -468,6 +468,22 @@ function releaseRestoredTableFaults(){
   if((x.data.items||[]).length&&(x.data.items||[]).every(i=>s.prices.some(p=>(p.tableId||p.brand+'|'+p.state)===(i.tableId||(i.brand||x.data.brand)+'|'+x.data.priceTable)&&p.sku===i.sku)))delete s.syncFaults[x.changeId];
  }
 }
+function releaseRestoredDirectOrderFaults(){
+ // Recheck only direct ERP orders previously rejected by an obsolete CPQ guard.
+ // CPQ-linked orders and discounted orders must never bypass quotation approval.
+ const attempted=window.l2RetriedDirectOrderFaultIds||(window.l2RetriedDirectOrderFaultIds=new Set());
+ let released=false;
+ for(const change of s.pending){
+  if(change.type!=='order'||!change.changeId||attempted.has(change.changeId))continue;
+  const fault=String(s.syncFaults?.[change.changeId]||'');
+  if(!fault.includes('Gere e aceite a proposta CPQ antes de confirmar o pedido'))continue;
+  attempted.add(change.changeId);
+  if(change.data?.cpqQuoteId||Number(change.data?.discountPercent||0)!==0)continue;
+  delete s.syncFaults[change.changeId];
+  released=true;
+ }
+ if(released)save();
+}
 function syncReadyBatch(limit=500){
  const blocked=new Set([...Object.keys(s.syncFaults||{}),...pendingTableIssues().map(x=>x.change.changeId),...pendingOrderSellerIssues().map(x=>x.changeId),...pendingClientRegistrationIssues().map(x=>x.changeId)]);
  const blockedClients=new Set(s.pending.filter(x=>blocked.has(x.changeId)&&x.type==='client').map(x=>x.data.id));
@@ -1013,6 +1029,7 @@ async function sync(options={}){
  }
  syncing=true;network();
  releaseRestoredTableFaults();
+ releaseRestoredDirectOrderFaults();
  const batch=syncReadyBatch(), user=s.user, server=s.server, token=s.token;
  try{
   const r=await fetch(server+'/api/sync',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({changes:batch})});
