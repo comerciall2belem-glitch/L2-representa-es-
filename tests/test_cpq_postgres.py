@@ -110,8 +110,9 @@ def test_changed_prices_invalidate_approval(environment):
 def test_legacy_bypass_and_financial_boundaries(environment):
     server,client=environment
     order={'id':'ci-bypass','clientId':'ci-client','sellerResponsible':'Erika','brand':'Marca CI','priceTable':'PA','items':payload()['items'],'status':'Confirmado','date':str(date.today())}
-    response=client.post('/api/sync',json={'changes':[{'type':'order','data':order,'changeId':'ci-bypass-change'}]},headers=header());assert response.status_code==409,response.text
-    with server.db() as con:assert not con.execute("SELECT 1 FROM entities WHERE kind='order' AND id='ci-bypass'").fetchone()
+    # Pedido direto é permitido sem CPQ; regras financeiras permanecem restritas.
+    response=client.post('/api/sync',json={'changes':[{'type':'order','data':order,'changeId':'ci-bypass-change'}]},headers=header());assert response.status_code==200,response.text
+    with server.db() as con:assert con.execute("SELECT 1 FROM entities WHERE kind='order' AND id='ci-bypass'").fetchone()
     response=client.post('/api/sync',json={'changes':[{'type':'office_finance','data':{'id':'ci-secret','Valor':'100'},'changeId':'ci-finance-change'}]},headers=header());assert response.status_code==403,response.text
 
 
