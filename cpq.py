@@ -301,8 +301,9 @@ def enforce_order(con, order, previous=None):
     if previous.get('cpqQuoteId') and quote_id != previous['cpqQuoteId']:
         raise HTTPException(409, 'O vínculo de origem CPQ não pode ser removido')
     if not quote_id:
-        if order.get('status') in ('Confirmado','Faturado','Entregue') and previous.get('status') not in ('Confirmado','Faturado','Entregue'):
-            raise HTTPException(409, 'Gere e aceite a proposta CPQ antes de confirmar o pedido')
+        # Pedidos diretos do ERP não exigem proposta CPQ. O fluxo CPQ é obrigatório
+        # apenas para pedidos vinculados a uma cotação ou com desconto.
+        # Não flexibilizar a imutabilidade nem o vínculo de pedidos CPQ existentes.
         if discount: raise HTTPException(409, 'Descontos exigem proposta CPQ aprovada')
         return
     if not isinstance(quote_id, str) or len(quote_id)>128: raise HTTPException(422, 'Proposta CPQ inválida')
