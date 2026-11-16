@@ -1143,6 +1143,7 @@ async function sendTableDocument(){const status=$('tableDocumentStatus'),button=
 
 
 function operationsOverviewHTML(selectedId){
+ if(!s.token)return '<section class="box" role="status"><h3>Acesso à nuvem desconectado</h3><p>Os números da carteira não estão disponíveis porque esta sessão não está autenticada. Isso não significa que os clientes e as tarefas foram apagados.</p><p>Abra Configurações, entre novamente com o mesmo usuário e a senha pessoal e toque em Sincronizar. Preserve as alterações pendentes neste aparelho.</p><button type="button" onclick="show(\'config\')">Abrir Configurações</button></section>';
  const state={...s,clients:selectedId?s.clients.filter(c=>c.id===selectedId):s.clients},m=CRMOperations.overview(state,today()),rows=m.pending;
  const filter=window.pendingAgendaFilter||(tab==='hoje'?'action':'all'),owner=window.pendingAgendaOwner||'',visible=CRMOperations.filterPending(rows,today(),filter,owner),limit=window.pendingAgendaLimit||50;
  const label={task:'Tarefa',visit:'Retorno',route:'Visita',opportunity:'Negociação',office:'Escritório',fulfillment:'Pedido / entrega'};
