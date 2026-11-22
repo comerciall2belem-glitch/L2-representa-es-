@@ -1,3 +1,4 @@
+from monthly_goals import monthly_target
 from decimal import Decimal, ROUND_HALF_UP
 import re,unicodedata
 def key(v):return re.sub(r"[^a-z0-9]+","-",unicodedata.normalize("NFD",str(v or "")).encode("ascii","ignore").decode().lower()).strip("-")
@@ -28,7 +29,7 @@ def analyze_finance(inputs,orders,ledger,rates,month,goals=()):
             product_key=(brand,sku);r=products.setdefault(product_key,{'brand':brand,'sku':sku,'sales':Decimal(0),'contribution':Decimal(0)})
             r['sales']+=amount;r['contribution']+=contribution
     bonusRules=[x for name in {i['name'] for i in inputs if i['kind']=='seller_contract'} if (x:=latest('seller_contract',lambda i:i['name']==name)) and x.get('bonusRate') is not None]
-    target=sum((D(g.get('amount')) for g in goals if g.get('month')==month and not g.get('brand')),Decimal(0))
+    target=monthly_target(goals,month)
     bonuses=[]
     for rule in bonusRules:
         amount= sales*D(rule['bonusRate'])/100 if target>0 and sales>=target*D(rule.get('targetPercent') or 100)/100 else Decimal(0)

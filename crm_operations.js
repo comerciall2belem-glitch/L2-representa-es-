@@ -29,12 +29,13 @@
  }
  function targets(state,day,user,all,brandTotals,seller){
   const month=day.slice(0,7),days=businessDays(month),weekday=new Date(day+'T12:00:00Z').getUTCDay(),monday=dayNumber(day)-(weekday===0?6:weekday-1),week=days.filter(d=>dayNumber(d)>=monday&&dayNumber(d)<monday+7);
-  return (state.goals||[]).filter(g=>g.month===month&&(all||g.user===user||g.user==='Equipe')).map(g=>{
+  return (root.L2Goals?root.L2Goals.expandGoals(state.goals||[]):(state.goals||[])).filter(g=>g.month===month&&(all||g.user===user||g.user==='Equipe')).map(g=>{
    const orders=(state.orders||[]).filter(o=>['Confirmado','Faturado'].includes(o.status)&&o.date<=day&&(g.user==='Equipe'||seller(o)===g.user));
    const sum=dates=>orders.filter(o=>dates.includes(o.date)).reduce((n,o)=>n+(g.brand?(brandTotals(o).get(g.brand)||0)/100:Number(o.amount||0)),0);
    const planned=(state.routes||[]).filter(r=>r.date===day&&(g.user==='Equipe'||r.user===g.user)&&(!g.brand||r.brand===g.brand||String(state.clients.find(c=>c.id===r.clientId)?.brands||'').split(/[,;|]/).map(b=>b.trim()).includes(g.brand))).length;
-   const daily=days.includes(day)?Number(g.amount||0)/days.length:0;
-   return {...g,daily,weekly:Number(g.amount||0)*week.length/days.length,dailySales:sum([day]),weeklySales:sum(week),planned,perAttendance:planned?daily/planned:null};
+   const period=g.workDates&&root.L2Goals?root.L2Goals.periodGoal(g,day,new Date(monday*864e5).toISOString().slice(0,10),new Date((monday+6)*864e5).toISOString().slice(0,10)):null;
+   const daily=period?period.daily/100:days.includes(day)?Number(g.amount||0)/days.length:0;
+   return {...g,daily,weekly:period?period.weekly/100:Number(g.amount||0)*week.length/days.length,dailySales:sum([day]),weeklySales:sum(week),planned,perAttendance:planned?daily/planned:null};
   });
  }
  function filterPending(rows,day,filter='all',owner=''){return rows.filter(x=>(!owner||(x.owner||x.user||'Não definido')===owner)&&(filter==='all'||filter==='action'&&x.due&&x.due<=day||filter==='overdue'&&x.due&&x.due<day||filter==='today'&&x.due===day||filter==='future'&&x.due>day||filter==='undated'&&!x.due));}

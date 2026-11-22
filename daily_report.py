@@ -1,3 +1,4 @@
+from monthly_goals import monthly_target
 """Daily management PDF and scheduled email, sourced from persisted PostgreSQL rows."""
 import io
 import os
@@ -51,7 +52,7 @@ def summarize(data, day):
     monthly=[o for o in orders if str(o.get('date','')).startswith(month)]
     # Only general team goals, not per-brand subtotals, to avoid double-counting.
     goals=[g for g in data['goal'] if g.get('month')==month and not g.get('brand')]
-    target=sum((amount(g.get('amount')) for g in goals),Decimal('0'))
+    target=monthly_target(data['goal'],month)
     finance=data['office_finance']
     open_rows=[r for r in finance if r.get('Situação')!='Pago/Recebido']
     receivable=sum((amount(r.get('Valor')) for r in open_rows if r.get('Tipo')=='Receita'),Decimal('0'))

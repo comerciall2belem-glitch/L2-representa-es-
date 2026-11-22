@@ -31,6 +31,7 @@
     visits.innerHTML=nextVisits.innerHTML;
     if(typeof visitLoadCounts==='function')visitLoadCounts();
    }
+   if(tab==='gestao'&&!$('salesReports')?.contains(document.activeElement))window.L2SalesReports?.render();
    window.L2Modern?.bindReadOnly();
    for(const select of app.querySelectorAll('select[name="sellerResponsible"],select[name="user"],select[name="owner"],select[name="Responsável"]')){const names=select.name==='sellerResponsible'?s.sellers:teamNames();for(const name of names||[])if(![...select.options].some(o=>o.value===name)){const option=document.createElement('option');option.value=name;option.textContent=name;select.append(option);}}
    const feed=$('commercialActivity');if(feed)feed.innerHTML=commercialActivityHTML(activities());network();

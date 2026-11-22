@@ -30,9 +30,15 @@ class LogicTests(unittest.TestCase):
             with self.assertRaises(HTTPException):cpq.commercial_policy(industry,'PA','B2B',net,terms)
         with self.assertRaises(HTTPException):cpq.commercial_policy({'name':'Sem regra'},'PA','B2B',Decimal('9999'),'30')
     def test_no_external_discount_bypass(self):
-        with self.assertRaises(HTTPException):cpq.enforce_order(None,{'status':'Confirmado','discountPercent':'0'})
-        with self.assertRaises(HTTPException):cpq.enforce_order(None,{'status':'Pendente','discountPercent':'10'})
+        # Pedidos diretos são válidos sem cotação; descontos continuam restritos ao CPQ.
+        cpq.enforce_order(None,{'status':'Confirmado','discountPercent':'0'})
         cpq.enforce_order(None,{'status':'Pendente','discountPercent':'0'})
+        with self.assertRaises(HTTPException):cpq.enforce_order(None,{'status':'Pendente','discountPercent':'10'})
+        with self.assertRaises(HTTPException):cpq.enforce_order(None,{'status':'Confirmado','discountPercent':'10'})
+
+    def test_existing_cpq_link_cannot_be_removed(self):
+        with self.assertRaises(HTTPException):
+            cpq.enforce_order(None,{'status':'Confirmado','discountPercent':'0'}, {'cpqQuoteId':'existing-quote'})
     def test_reorder_exactly_120_percent_is_not_overdue(self):
         from strategic_crm import cadence
         orders=[{'clientId':'a','status':'Faturado','date':str(DAY-timedelta(days=n))} for n in (32,22,12)]

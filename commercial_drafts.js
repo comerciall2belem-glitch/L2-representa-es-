@@ -15,11 +15,34 @@
  function restoreOrder(){if(window.currentOrder)return;const entry=read()['order:new'];if(entry?.payload?.order&&(!entry.payload.order.clientId||s.clients.some(c=>c.id===entry.payload.order.clientId)))window.currentOrder=structuredClone(entry.payload.order)}
  function bind(){for(const form of document.forms){const k=key(form);if(!k)continue;const entry=read()[k];if(entry?.payload?.fields){for(const [name,value] of Object.entries(entry.payload.fields)){const field=form.elements[name];if(!field||['file','password'].includes(field.type)||(form.getAttribute('id')==='orderForm'&&['date','clientId','priceTable'].includes(name)))continue;if(field.type==='checkbox')field.checked=!!value;else if(!field.disabled)field.value=value}badge(form,'Rascunho recuperado · arquivos devem ser selecionados novamente.')}if(!form.dataset.draftBound){form.dataset.draftBound='1';form.addEventListener('input',()=>capture(form));form.addEventListener('change',()=>capture(form))}}}
  function clear(k){try{storeDraft(k,null)}catch(_){}}
- function list(){const rows=Object.values(read()).filter(x=>x.key.startsWith('order:')&&x.payload?.order&&(x.payload.order.clientId||x.payload.order.notes||Object.values(x.payload.order.quantities||{}).some(Number)));return rows.length?'<details class="box"><summary>Rascunhos de pedidos salvos · '+rows.length+'</summary>'+rows.map(x=>'<p>'+esc(client(x.payload.order.clientId).name||'Sem cliente')+' · '+esc(x.payload.order.date||'')+' <button type="button" onclick="CommercialDrafts.open(\''+esc(x.key)+'\')">Retomar rascunho</button></p>').join('')+'</details>':''}
- function open(k){const entry=read()[k];if(!entry?.payload?.order)return;window.currentOrder=structuredClone(entry.payload.order);if(!window.currentOrder.id&&k!=='order:new')window.currentOrder.draftKey=k.slice(6);show('pedidos')}
- async function load(){if(!s.token||!navigator.onLine)return;const token=s.token,user=s.user;try{const r=await fetch(s.server+'/api/commercial/drafts',{headers:{Authorization:'Bearer '+token}});if(!r.ok)return;const remote=await r.json();if(token!==s.token||user!==s.user||!Array.isArray(remote))return;const rows=read();for(const entry of remote)if(!pending.has(entry.key)&&(!rows[entry.key]||entry.updatedAt>=rows[entry.key].updatedAt)){rows[entry.key]=entry;confirmed.add(entry.key);}if(!editingForm()){window.currentOrder=null;}}catch(_){}}
+ function savedOrder(id){const order=read()['order:'+id]?.payload?.order;return order?structuredClone(order):null}
+ function list(){
+  const drafts=Object.values(read()).filter(entry=>{
+   const order=entry.payload?.order;
+   return entry.key.startsWith('order:')&&order&&(order.clientId||order.notes||Object.values(order.quantities||{}).some(Number));
+  }).sort((a,b)=>b.updatedAt-a.updatedAt);
+  if(!drafts.length)return '';
+  return `<details class="box order-drafts">
+   <summary>Rascunhos salvos (${drafts.length})</summary>
+   <p class="order-draft-help">Use <strong>Retomar</strong> para continuar um pedido já digitado.</p>
+   <ul class="order-draft-list">
+    ${drafts.map(({key,payload:{order}})=>{
+     const name=client(order.clientId).name||'Cliente a selecionar';
+     const date=String(order.date||'').replace(/^(\d{4})-(\d{2})-(\d{2})$/,'$3/$2/$1');
+     const count=Object.values(order.quantities||{}).filter(q=>Number(q)>0).length;
+     const info=[date,count===0?'Sem produtos':count===1?'1 produto':count+' produtos'].filter(Boolean).join(' · ');
+     return `<li class="order-draft-row">
+      <div><strong>${esc(name)}</strong><small>${esc(info)}</small></div>
+      <button type="button" class="secondary" data-draft-key="${esc(key)}" aria-label="Retomar rascunho de ${esc(name)}" onclick="CommercialDrafts.open(this.dataset.draftKey)">Retomar</button>
+     </li>`;
+    }).join('')}
+   </ul>
+  </details>`;
+ }
+ function open(k){const entry=read()[k];if(!entry?.payload?.order)return;if(entry.payload.order.id)return editOrder(entry.payload.order.id);const form=document.getElementById('orderForm');if(form&&key(form)!==k){capture(form);if(window.currentOrder&&!window.currentOrder.id&&!window.currentOrder.draftKey)startNewOrder()}window.currentOrder=structuredClone(entry.payload.order);if(k!=='order:new')window.currentOrder.draftKey=k.slice(6);showOrderEditor()}
+ async function load(){if(!s.token||!navigator.onLine)return;const token=s.token,user=s.user;try{const r=await fetch(s.server+'/api/commercial/drafts',{headers:{Authorization:'Bearer '+token}});if(!r.ok)return;const remote=await r.json();if(token!==s.token||user!==s.user||!Array.isArray(remote))return;const rows=read();for(const entry of remote)if(!pending.has(entry.key)&&(!rows[entry.key]||entry.updatedAt>=rows[entry.key].updatedAt)){rows[entry.key]=entry;confirmed.add(entry.key);}if(!document.getElementById('orderForm')&&!editingForm()){window.currentOrder=null;}}catch(_){}}
  window.addEventListener('online',flush);
  window.addEventListener('beforeunload',event=>{if(pending.size){event.preventDefault();event.returnValue='';}});
  document.addEventListener('visibilitychange',()=>{if(document.hidden){for(const f of document.forms)if(key(f))capture(f);flush()}});window.addEventListener('pagehide',()=>{for(const f of document.forms)if(key(f))capture(f);flush()});
- root.CommercialDrafts={flush,capture,bind,restoreOrder,clear,load,persistOrder,startNewOrder,list,open};
+ root.CommercialDrafts={flush,capture,bind,restoreOrder,savedOrder,clear,load,persistOrder,startNewOrder,list,open};
 })(window);

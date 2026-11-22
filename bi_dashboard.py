@@ -1,4 +1,5 @@
 """Read-only BI over recorded invoices; never substitutes orders for invoicing."""
+from monthly_goals import expand_goals
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -73,6 +74,7 @@ def goal_value(goals, start, end, seller='', brand='', narrowed=False):
     # Monthly goals cannot be arbitrarily allocated to days, cities or customers.
     if narrowed or start.day != 1 or end != start.replace(day=monthrange(start.year, start.month)[1]) + timedelta(days=1):
         return None
+    goals = expand_goals(goals)
     latest = {}
     for g in goals:
         if g.get('month') != start.strftime('%Y-%m'):
@@ -85,6 +87,8 @@ def goal_value(goals, start, end, seller='', brand='', narrowed=False):
         candidates = [g for g in candidates if g.get('user') == seller]
     if brand:
         candidates = [g for g in candidates if g.get('brand') == brand]
+    elif any(g.get('planVersion') == 1 or g.get('sourcePlan') for g in candidates):
+        candidates = [g for g in candidates if g.get('brand')]
     elif any(not g.get('brand') for g in candidates):
         candidates = [g for g in candidates if not g.get('brand')]
     buckets = defaultdict(list)
