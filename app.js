@@ -490,11 +490,46 @@ function syncReadyBatch(limit=500){
  const blockedOrders=new Set(s.pending.filter(x=>blocked.has(x.changeId)&&x.type==='order').map(x=>x.data.id));
  return s.pending.filter(x=>!blocked.has(x.changeId)&&!blockedClients.has(x.data.clientId)&&!(x.type==='client'&&blockedClients.has(x.data.id))&&!blockedOrders.has(x.data.orderId)&&!(x.type==='order'&&blockedOrders.has(x.data.id))).slice(0,limit);
 }
+function confirmedOrderSyncConflict(change){
+ return change?.type==='order'&&String((s.syncFaults||{})[change.changeId]||'').includes('Pedido confirmado: condições comerciais imutáveis');
+}
 function syncFaultsHTML(){
  const rows=s.pending.filter(x=>(s.syncFaults||{})[x.changeId]);
- return rows.length?'<div class="box"><h3>Registros que precisam de correção</h3><p>Os demais registros podem sincronizar. Estes continuam salvos no aparelho.</p>'+rows.map(x=>'<p><b>'+esc(auditActionLabel({kind:x.type}))+'</b> · '+esc(x.data.orderNumber||x.data.name||x.data.id)+'<br>'+esc(s.syncFaults[x.changeId])+'</p>').join('')+'<button type="button" onclick="retrySyncFaults()">Tentar novamente após corrigir</button></div>':'';
+ return rows.length?'<div class="box"><h3>Registros que precisam de correção</h3><p>Os demais registros podem sincronizar. Estes continuam salvos no aparelho.</p>'+rows.map(x=>{
+  const conflict=confirmedOrderSyncConflict(x);
+  return '<div class="sync-fault"><p><b>'+esc(auditActionLabel({kind:x.type}))+'</b> · '+esc(x.data.orderNumber||x.data.name||x.data.id)+'<br>'+esc(s.syncFaults[x.changeId])+'</p>'+(conflict?'<p class="muted">O pedido já está confirmado na nuvem. Não é permitido alterar suas condições comerciais. Faça uma cópia da tentativa local antes de decidir descartá-la.</p><button type="button" class="secondary" onclick="exportOrderSyncConflict(\''+esc(x.changeId)+'\')">Baixar tentativa de alteração</button> <button type="button" onclick="resolveOrderSyncConflict(\''+esc(x.changeId)+'\')">Manter pedido confirmado na nuvem</button>':'')+'</div>';
+ }).join('')+'<p><button type="button" onclick="retrySyncFaults()">Tentar novamente após corrigir</button></p></div>':'';
 }
-function retrySyncFaults(){s.syncFaults={};save();sync();}
+function exportOrderSyncConflict(changeId){
+ const change=s.pending.find(x=>x.changeId===changeId);
+ if(!confirmedOrderSyncConflict(change))return false;
+ const related=s.pending.filter(x=>x.type==='order'&&x.data.id===change.data.id);
+ const blob=new Blob([JSON.stringify({exportedAt:new Date().toISOString(),orderId:change.data.id,changes:related},null,2)],{type:'application/json'});
+ const url=URL.createObjectURL(blob),link=document.createElement('a');
+ link.href=url;link.download='L2_ONE_pedido_conflito_'+String(change.data.orderNumber||change.data.id).replace(/[^a-zA-Z0-9_-]/g,'_')+'.json';
+ document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+ return true;
+}
+function resolveOrderSyncConflict(changeId){
+ const change=s.pending.find(x=>x.changeId===changeId);
+ if(!confirmedOrderSyncConflict(change))return;
+ const related=s.pending.filter(x=>x.type==='order'&&x.data.id===change.data.id);
+ if(!confirm('Este pedido já está confirmado na nuvem. Para manter a versão oficial, '+related.length+' alteração(ões) locais deste pedido serão removidas da fila. Baixe a cópia antes de continuar. Deseja baixar agora e manter o pedido confirmado?'))return;
+ if(!exportOrderSyncConflict(changeId))return;
+ if(!confirm('Confirma que a cópia do pedido foi baixada e que deseja manter a versão confirmada na nuvem?'))return;
+ const ids=new Set(related.map(x=>x.changeId));
+ s.pending=s.pending.filter(x=>!ids.has(x.changeId));
+ for(const id of ids)delete (s.syncFaults||{})[id];
+ // A cópia em memória não deve ser confundida com a versão oficial antes da leitura da nuvem.
+ if(window.currentOrder?.id===change.data.id)window.currentOrder=null;
+ save();sync();
+}
+function retrySyncFaults(){
+ // Repetir sem corrigir um pedido confirmado gera novamente o mesmo 409.
+ const conflicts=new Set(s.pending.filter(confirmedOrderSyncConflict).map(x=>x.changeId));
+ for(const id of Object.keys(s.syncFaults||{}))if(!conflicts.has(id))delete s.syncFaults[id];
+ save();sync();
+}
 function pendingTableRepairsHTML(){
  const issues=pendingTableIssues();if(!issues.length)return '';
  return '<div id="pendingTableRepairs" class="box"><h3>Tabelas das alterações pendentes</h3><p>Escolha a tabela correta de cada produto ou pedido. Os dados continuam salvos neste aparelho. Nenhuma tabela será substituída automaticamente.</p>'+issues.map(x=>`<form onsubmit="repairPendingTable(event,'${esc(x.change.changeId)}',${x.index})"><label>`+esc(x.brand)+' · '+esc(x.item.sku||'Produto')+' · '+(x.change.type==='order'?'Pedido':'Preço')+'<select name="tableId" required><option value="">Selecione a tabela</option>'+s.priceTables.filter(t=>pendingTableCompatible(x.change,t,x.brand,x.uf)).map(t=>'<option value="'+esc(t.id)+'">'+esc(t.title||t.id)+'</option>').join('')+'</select></label><button>Corrigir vínculo</button></form>').join('')+'</div>';
