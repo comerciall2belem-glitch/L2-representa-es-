@@ -8,7 +8,12 @@ const {JSDOM}=require(process.env.L2_JSDOM||'jsdom');
  await new Promise(resolve=>w.setTimeout(resolve,50)); // Let initial async synchronization settle before asserting user navigation.
  w.show('hoje');
  assert(w.document.querySelector('#app').textContent.includes('Vender e acompanhar'));
- assert(w.document.querySelector('#l2BottomNav'));assert.equal(w.document.querySelectorAll('.l2-metric').length,4);assert(!w.document.querySelector('#app').textContent.includes('162.800'));assert.equal(w.document.querySelector('#app').textContent.includes('Comissões apuradas'),w.financeAllowed());
+ assert(w.document.querySelector('#l2BottomNav'));
+ assert.deepEqual([...w.document.querySelectorAll('#l2BottomNav button')].map(b=>b.dataset.tab),['hoje','clientes','rota','pedidos','registro'].filter(w.sectionAllowed));
+ const groupedTabs=[...w.document.querySelectorAll('#tabs details button[data-tab]')].map(b=>b.dataset.tab);
+ assert.equal(new Set(groupedTabs).size,groupedTabs.length);
+ assert.equal(groupedTabs.includes('finance'),w.sectionAllowed('finance'));
+assert.equal(w.document.querySelectorAll('.l2-metric').length,4);assert(!w.document.querySelector('#app').textContent.includes('162.800'));assert.equal(w.document.querySelector('#app').textContent.includes('Comissões apuradas'),w.financeAllowed());
  w.L2Modern.toggleMenu();assert(w.document.body.classList.contains('l2-menu-open'));w.L2Modern.toggleMenu();assert(!w.document.body.classList.contains('l2-menu-open'));
  const d=new Date(),day=new Intl.DateTimeFormat('sv-SE').format(d),month=day.slice(0,7),daysAgo=n=>new Date(Date.parse(day+'T12:00:00Z')-n*864e5).toISOString().slice(0,10);
  w.testL2State.clients.push({id:'old',name:'Cliente Antigo',city:'Belém',state:'PA',clientBases:['Bella Brazil'],baseImports:{bella_brazil:{sourceRows:[{sourcePurchaseDate:daysAgo(65)}]}}});
