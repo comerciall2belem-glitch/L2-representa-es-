@@ -119,3 +119,9 @@
  .order-editor .order-submit-actions button{font-size:14px;padding:8px}
  .order-editor input[type=search]{font-size:16px}
 }
+
+.l2-modern .l2-sidebar-extra>summary{font-weight:700;color:#fff}
+.l2-modern .l2-sidebar-extra>button{width:100%;text-align:left}
+.order-action-menu .order-action-group{grid-column:1/-1;padding:4px 0}
+.order-action-group>summary{cursor:pointer;padding:8px 0}
+.order-action-group>button{margin:4px 6px 4px 0}
