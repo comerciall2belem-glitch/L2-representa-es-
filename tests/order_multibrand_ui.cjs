@@ -34,6 +34,12 @@ context.window.orderBrandFilter = 'Bruna Tavares';
 assert.equal(context.orderVisibleProducts(catalog,draft,'').length, 1);
 assert.equal(context.orderTotalCents(catalog,draft), 4125);
 assert.match(context.orderCartHTML(catalog,draft), /2 indústria\(s\)/);
+draft.unitPrices = {'Bruna Tavares|BT01':'23.8567'};
+draft.quantities['Bruna Tavares|BT01'] = 6;
+assert.equal(context.orderTotalCents(catalog,draft), 16339);
+assert.match(context.orderCartHTML(catalog,draft), /Preço unitário BT01/);
+assert.match(context.orderCartHTML(catalog,draft), /23,8567/);
+
 const order = {brand:'Multimarcas', items:[
   {brand:'Bruna Tavares', sku:'BT01', quantity:2, unitPrice:'10.50'},
   {brand:'Ruby Kisses', sku:'RK01', quantity:1, unitPrice:'20.25'},
