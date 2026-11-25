@@ -13,7 +13,7 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Header, UploadFile, File, Form, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from datetime import date, datetime
 from pydantic import BaseModel, Field
 import psycopg
@@ -1526,11 +1526,23 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
                             raise HTTPException(400, 'Quantidade ou preço inválido')
                         if not qty.is_finite() or not unit.is_finite() or qty != qty.to_integral_value() or qty <= 0 or qty > 100000 or unit <= 0:
                             raise HTTPException(400, 'Quantidade ou preço inválido')
+                        negotiated = item.pop('negotiatedUnitPrice', None)
+                        if negotiated is not None:
+                            if existing_cpq or obj.get('cpqQuoteId'):
+                                raise HTTPException(400, 'Pedidos do CPQ seguem o preço da proposta aprovada')
+                            raw_price = str(negotiated)
+                            if not re.fullmatch(r'[0-9]{1,7}(\.[0-9]{1,4})?', raw_price) or Decimal(raw_price) <= 0:
+                                raise HTTPException(400, 'Preço negociado deve ser positivo e ter até quatro casas decimais')
+                            unit = Decimal(raw_price)
+                            item['negotiatedUnitPrice'] = str(unit)
                         item['unitPrice'] = str(unit)
+                        line_total = qty * unit
                         if not existing_cpq:
-                            item['subtotal'] = str((qty * unit).quantize(Decimal('0.01')))
+                            if negotiated is not None:
+                                line_total = line_total.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                            item['subtotal'] = str(line_total.quantize(Decimal('0.01')))
                         item['brand']=item_brand
-                        total += qty * unit
+                        total += line_total
                     obj['brand']='Multimarcas' if len(brands)>1 else next(iter(brands))
                     obj['clientState'] = client_uf
                     obj['priceTable'] = price_table
