@@ -44,5 +44,5 @@ ctx.financeAllowed=()=>ctx.hasSector('finance');ctx.s.user='Marlene';ctx.s.role=
 
 ctx.eligibleTables=()=>[{brand:'Bella Brazil',id:'r',title:'Revenda',channel:'REVENDA',commissionRate:8}];
 ctx.client=()=>({});
-vm.runInContext(source.match(/^function orderCommercialTablesHTML\([^\n]+/m)[0],ctx);
+vm.runInContext(source.slice(source.indexOf('function orderCommercialTablesHTML('),source.indexOf('function preserveOrderFields(')),ctx);
 assert.doesNotMatch(ctx.orderCommercialTablesHTML({}),/comissão Varejo|Atacado 5%/);
