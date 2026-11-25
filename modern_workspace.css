@@ -125,3 +125,18 @@
 .order-action-menu .order-action-group{grid-column:1/-1;padding:4px 0}
 .order-action-group>summary{cursor:pointer;padding:8px 0}
 .order-action-group>button{margin:4px 6px 4px 0}
+
+.order-editor-compact{scroll-margin-top:90px;gap:10px}
+.order-status-label{background:#e6f0ed;color:#17444e;border-radius:8px;padding:4px 8px;font-size:13px;font-weight:700}
+.order-editor-compact #orderCart>button{display:none}
+.order-editor-compact .order-checkout .order-total{padding:5px 8px;margin:0 0 5px}
+.order-editor-compact .order-submit-actions:has(>button:only-child){grid-template-columns:1fr}
+@media(max-width:760px){
+ .l2-modern .order-editor-compact .order-cart-table tr:has(td){display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin:6px 0;padding:8px}
+ .l2-modern .order-editor-compact .order-cart-table td{padding:2px 0}
+ .l2-modern .order-editor-compact .order-cart-table td[data-label="Indústria"],
+ .l2-modern .order-editor-compact .order-cart-table td[data-label="Produto"]{grid-column:1/-1}
+ .l2-modern .order-editor-compact .order-cart-table td:is([data-label="Indústria"],[data-label="Produto"],[data-label="Ação"])::before{display:none}
+ .l2-modern .order-editor-compact .order-cart-table td[data-label="Produto"]{font-weight:700}
+ .l2-modern .order-editor-compact .order-cart-table td[data-label="Ação"]{text-align:right}
+}
