@@ -140,3 +140,11 @@
  .l2-modern .order-editor-compact .order-cart-table td[data-label="Produto"]{font-weight:700}
  .l2-modern .order-editor-compact .order-cart-table td[data-label="Ação"]{text-align:right}
 }
+
+.l2-modern .order-summary>label{max-width:200px}
+.l2-modern .order-summary-cards{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.l2-modern .order-summary-cards .card{min-width:0;padding:12px;font-size:13px}
+.l2-modern .order-summary-cards strong{font-size:clamp(15px,2vw,23px);margin-top:4px;overflow-wrap:anywhere}
+@media(max-width:760px){
+ .l2-modern .order-summary-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
