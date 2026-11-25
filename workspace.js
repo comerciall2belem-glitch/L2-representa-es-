@@ -15,6 +15,77 @@ function workspaceNav(){
  if(sub){sub.replaceChildren();sub.hidden=true}
 }
 function salesScope(){return {orders:managementAllowed()?s.orders:s.orders.filter(o=>orderSeller(o)===s.user),tasks:s.tasks.filter(t=>managementAllowed()||t.user===s.user),opportunities:(s.opportunities||[]).filter(o=>managementAllowed()||o.owner===s.user)}}
+function dailySalesSummary(orders, visits, sellers, day){
+ const bySeller=new Map(sellers.filter(Boolean).map(name=>[name,new Set()]));
+ const byBrand=new Map(), buyers=new Set();
+ let sold=0, pending=0, total=0;
+ const unassignedBrand='Marca não identificada';
+ for(const order of new Map(orders.map(order=>[order.id,order])).values()){
+  if(order.date!==day)continue;
+  if(order.status==='Pendente')pending++;
+  if(!['Confirmado','Faturado','Entregue'].includes(order.status))continue;
+  sold++;
+  const cents=priceCents(order.amount);
+  total+=cents;
+  const seller=orderSeller(order)||'Sem vendedor informado';
+  if(!bySeller.has(seller))bySeller.set(seller,new Set());
+  if(order.clientId){
+   buyers.add(order.clientId);
+   bySeller.get(seller).add(order.clientId);
+  }
+  const parts=[...orderBrandTotals(order)].filter(([,value])=>Number.isSafeInteger(value)&&value>0);
+  const identified=parts.reduce((sum,[,value])=>sum+value,0);
+  // Keep legacy orders with missing items or inconsistent splits in the commercial total.
+  const attributed=identified<=cents?identified:0;
+  if(attributed){
+   for(const [brand,value] of parts)byBrand.set(brand,(byBrand.get(brand)||0)+value);
+  }
+  if(attributed<cents)byBrand.set(unassignedBrand,(byBrand.get(unassignedBrand)||0)+cents-attributed);
+ }
+ const revisit=new Set(visits.filter(v=>v.date===day&&v.clientId&&v.result==='Visitado - sem pedido'&&!buyers.has(v.clientId)).map(v=>v.clientId));
+ const rank=entries=>entries.sort(([a,x],[b,y])=>y-x||a.localeCompare(b,'pt-BR'));
+ return {sold,pending,total,buyers:buyers.size,revisit:[...revisit],
+  sellers:rank([...bySeller].map(([name,clients])=>[name,clients.size])),
+  brands:rank([...byBrand])};
+}
+
+function renderDailySalesDashboard(){
+ if(!s.token||!sectionAllowed('pedidos'))return '';
+ const currentDay=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Belem'}).format(new Date());
+ const day=window.dailySalesDay||currentDay, team=managementAllowed();
+ const {orders}=salesScope();
+ const visits=s.visits.filter(v=>team||v.user===s.user);
+ const sellers=team?s.sellers.filter(name=>name!=='Laís'):[s.user];
+ const summary=dailySalesSummary(orders,visits,sellers,day);
+ const cash=cents=>money(cents/100);
+ const revisitNames=summary.revisit.map(id=>client(id).name).filter(Boolean).slice(0,3);
+ const chart=(title,rows,format,empty,brandChart=false)=>{
+  const max=Math.max(1,...rows.map(([,value])=>value));
+  return `<div class="daily-sales-chart"><h3>${title}</h3>${rows.length?`<ul>${rows.map(([name,value])=>`
+   <li><div><span>${esc(brandChart?industryLabel(name):name)}</span><strong>${format(value)}</strong></div>
+   <span class="daily-sales-track" aria-hidden="true"><span style="width:${value/max*100}%"></span></span></li>`).join('')}</ul>`:`<p>${empty}</p>`}</div>`;
+ };
+ return `<section class="box daily-sales" aria-labelledby="dailySalesTitle">
+  <div class="workspace-section-heading"><div><h2 id="dailySalesTitle">Vendas do dia</h2><p>${team?'Equipe comercial':'Minha carteira'} · Horário de Belém</p></div>
+  <label>Data dos pedidos<input type="date" value="${esc(day)}" max="${currentDay}" onchange="if(this.validity.valid){window.dailySalesDay=this.value;window.L2Live?.refresh()}"></label></div>
+  <div id="dailySalesData">${!s.syncAt&&!orders.length?'<p>Aguardando a primeira sincronização dos pedidos.</p>':`
+   <dl class="daily-sales-totals"><div><dt>Pedidos confirmados, faturados ou entregues</dt><dd>${summary.sold}</dd></div>
+   <div><dt>Pedidos pendentes</dt><dd>${summary.pending}</dd></div>
+   <div><dt>Valor vendido em pedidos</dt><dd>${cash(summary.total)}</dd></div>
+   <div><dt>Clientes positivados</dt><dd>${summary.buyers}</dd></div></dl>
+   <p>A positivação conta cada cliente com compra uma vez por vendedor. O total do dia também elimina repetições entre vendedores.</p>
+   <div class="daily-sales-charts">
+    ${chart('Positivação por vendedor',summary.sellers,value=>value.toLocaleString('pt-BR'),'Nenhum vendedor na base do dia.')}
+    ${chart('Valor vendido por marca',summary.brands,cash,'Nenhuma venda por marca nesta data.',true)}
+   </div>
+   <div class="daily-sales-opportunities"><h3>Oportunidades do dia</h3>
+    ${summary.pending?`<p><strong>${summary.pending}</strong> pedido(s) pendente(s). Confira o que falta para confirmar. <button type="button" class="secondary" onclick="window.orderStatusFilter='Pendente';show('pedidos');document.getElementById('orderRegister')?.scrollIntoView()">Abrir lista de pendentes</button></p>`:''}
+    ${summary.revisit.length?`<p><strong>${summary.revisit.length}</strong> cliente(s) com visita sem pedido e sem compra registrada no dia. ${revisitNames.length?`Retomar com ${esc(revisitNames.join(', '))}.`:''} ${sectionAllowed('registro')?'<button type="button" class="secondary" onclick="show(&#39;registro&#39;)">Ver atendimentos</button>':''}</p>`:''}
+    ${!summary.pending&&!summary.revisit.length?'<p>Sem pedidos pendentes ou visitas sem compra identificadas nesta data.</p>':''}
+   </div>`}</div>
+ </section>`;
+}
+
 function renderSalesHome(){
  const scope=salesScope(),pending=scope.orders.filter(o=>!['Faturado','Cancelado'].includes(o.status)),due=scope.tasks.filter(t=>t.status!=='Concluída'&&t.date&&t.date<=today()).sort((a,b)=>String(a.date).localeCompare(String(b.date))),follow=scope.opportunities.filter(o=>!['Ganho','Perdido','Pós-venda'].includes(o.stage)&&o.followUp&&o.followUp<=today());
  const month=today().slice(0,7),m=commercialMetrics(s,month,today(),s.user,managementAllowed()),priorities=m.priorities.slice(0,6),chat=['Ana Paula','Euler','Laís','Marlene'].includes(s.user);
