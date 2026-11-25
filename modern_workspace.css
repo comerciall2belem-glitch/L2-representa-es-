@@ -99,3 +99,18 @@
 .order-draft-row strong{overflow-wrap:anywhere}
 .order-draft-row small{display:block;margin-top:3px;color:#465d61}
 .order-draft-row button{min-height:44px;margin:0}
+
+.daily-sales { margin-bottom: 1rem; }
+.daily-sales .workspace-section-heading { align-items: flex-start; flex-wrap: wrap; gap: .75rem; }
+.daily-sales h2, .daily-sales h3 { margin: 0 0 .4rem; }
+.daily-sales p { margin: .35rem 0 .75rem; }
+.daily-sales-totals, .daily-sales-charts { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%, 14rem),1fr)); gap: .75rem; }
+.daily-sales-totals > div, .daily-sales-chart { border: 1px solid #cbdcde; border-radius: .75rem; padding: .85rem; }
+.daily-sales-totals dd { margin: .4rem 0 0; color: #12606a; font-size: 1.35rem; font-weight: 700; }
+.daily-sales-chart ul { padding: 0; margin: 0; list-style: none; }
+.daily-sales-chart li { margin-top: .7rem; }
+.daily-sales-chart li > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .25rem .75rem; overflow-wrap: anywhere; }
+.daily-sales-track { display: block; height: .5rem; margin-top: .25rem; background: #e4eef0; border-radius: .5rem; overflow: hidden; }
+.daily-sales-track > span { display: block; height: 100%; background: #12606a; border-radius: inherit; }
+.daily-sales-chart + .daily-sales-chart .daily-sales-track > span { background: #987019; }
+.daily-sales-opportunities { margin-top: 1rem; }

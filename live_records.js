@@ -15,7 +15,7 @@
    const preview=document.createElement('div');preview.innerHTML=html;const app=$('app');
    // Replace only read-only metrics and record tables. Form nodes, files, selection,
    // focus, scroll position and unsaved field contents are never recreated.
-   for(const selector of ['.l2-metrics','.l2-dashboard-grid','.l2-client-status-tabs','.client-directory','.l2-product-grid','#goalsDashboardData','#crm360Dashboard','.cards','.workspace-stats','.workspace-sync','.scroll','#clientTimeline','h3','.muted','.fin-chart','[data-live-client-facts]']){
+   for(const selector of ['.l2-metrics','.l2-dashboard-grid','.l2-client-status-tabs','.client-directory','.l2-product-grid','#goalsDashboardData','#dailySalesData','#crm360Dashboard','.cards','.workspace-stats','.workspace-sync','.scroll','#clientTimeline','h3','.muted','.fin-chart','[data-live-client-facts]']){
     const current=[...app.querySelectorAll(selector)],next=[...preview.querySelectorAll(selector)];
     if(current.length!==next.length)continue;
     current.forEach((node,index)=>{if(node.closest('form')||node.querySelector('input,textarea,select,form,[contenteditable="true"]')||next[index].querySelector('input,textarea,select,form'))return;
