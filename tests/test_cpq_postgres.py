@@ -134,3 +134,109 @@ def test_converted_snapshot_survives_price_and_table_changes(environment):
         with server.db() as con:
             price['price']='100.00';cpq.put(con,'price',price)
             table['active']=True;cpq.put(con,'price_table',table)
+
+
+def test_tracked_proposal_pdf_alerts_and_inactivity(environment):
+    server, client = environment
+    quote = create(client, notes='Condição especial para retirada')
+    quote_id = quote['id']
+    path = '/api/cpq/quotes/' + quote_id
+    auth = header()
+
+    def activity():
+        response = client.get('/api/cpq/activity/propostas', headers=auth)
+        assert response.status_code == 200, response.text
+        data = response.json()
+        current = next(row for row in data['quotes'] if row['id'] == quote_id)
+        return current, data['records'][quote_id]
+
+    original, baseline = activity()
+    assert original['proposalStatus'] == 'Rascunho'
+    link_response = client.post(path + '/links/whatsapp', headers=auth)
+    assert link_response.status_code == 200, link_response.text
+    link = link_response.json()['path']
+    email = client.post(path + '/links/email', headers=auth).json()['path']
+    assert link != email
+    assert client.get(link).status_code == 200
+    assert activity()[0]['views'] == 0
+    assert client.post(link + '/pdf', headers={'User-Agent':'Mozilla iPhone'}).content.startswith(b'%PDF-')
+    assert client.post(email + '/pdf').status_code == 200
+    tracked, contact = activity()
+    assert tracked['proposalStatus'] == 'Visualizada'
+    assert tracked['views'] == 2 and tracked['viewedChannel'] == 'email'
+    assert contact == baseline
+    seller_alerts = client.get('/api/cpq/alerts', headers=auth).json()
+    assert [alert['channel'] for alert in seller_alerts if alert['number'] == tracked['number']] == ['email','whatsapp']
+    assert not client.get('/api/cpq/alerts', headers=header('Outro')).json()
+    assert client.post('/api/cpq/alerts/read/' + str(seller_alerts[0]['id']), headers=auth).status_code == 200
+    assert seller_alerts[0]['id'] not in [a['id'] for a in client.get('/api/cpq/alerts', headers=auth).json()]
+    assert client.post('/api/cpq/contact/propostas/' + quote_id, headers=auth,
+                       json={'acao':'ligacao','canal':'telefone','evidencia':'Confirmei o interesse da compradora'}).status_code == 200
+    assert activity()[1]['channel'] == 'telefone'
+    assert client.put('/api/cpq/inactivity/propostas', headers=auth,
+                      json={'dias_atencao':7,'dias_risco':7,'dias_critico':30}).status_code == 422
+    assert client.put('/api/cpq/inactivity/propostas', headers=auth,
+                      json={'dias_atencao':3,'dias_risco':8,'dias_critico':15,'acoes_validas':['email_enviado']}).status_code == 200
+    assert activity()[1] == baseline
+    assert client.put('/api/cpq/inactivity/propostas', headers=auth, json={}).status_code == 200
+    assert client.post(link + '/aceite', data={'name':'Cliente do teste'}).status_code == 200
+    assert activity()[0]['proposalStatus'] == 'Aprovada'
+    response = client.post(path + '/convert', headers=auth)
+    assert response.status_code == 200, response.text
+    assert client.post(path + '/convert', headers=auth).json()['alreadyConverted']
+    with server.db() as con:
+        logs = con.execute('SELECT canal,dispositivo,ip_hash FROM proposta_logs_abertura WHERE proposta_id=%s ORDER BY id',
+                           (quote_id,)).fetchall()
+        assert [row[:2] for row in logs] == [('whatsapp','mobile'),('email','desktop')]
+        assert len(logs[0][2]) == 64 and logs[0][2] != logs[1][2]
+
+
+def test_draft_crud_and_standalone_linkage(environment):
+    _, client = environment
+    auth = header()
+    guest = {'name':'Loja avulsa','taxId':'11222333000181','state':'PA','city':'Belém'}
+    quote = create(client, clientId='', guest=guest)
+    path = '/api/cpq/quotes/' + quote['id']
+    assert client.get(path, headers=auth).json()['guest'] == guest
+    assert client.get(path, headers=header('Outro')).status_code == 403
+    updated = client.put(path, headers=auth, json=payload(clientId='',guest=guest,notes='Retirada')).json()
+    assert updated['notes'] == 'Retirada'
+    link = client.post(path + '/links/link_direto', headers=auth).json()['path']
+    assert client.delete(path, headers=auth).status_code == 409
+    assert client.post(link + '/aceite', data={'name':'Comprador do teste'}).status_code == 200
+    assert client.post(path + '/convert', headers=auth).status_code == 409
+    assert client.post(path + '/attach', headers=auth, json={'clientId':'ci-client'}).status_code == 200
+    response = client.post(path + '/convert', headers=auth)
+    assert response.status_code == 200, response.text
+
+    draft = create(client)
+    draft_path = '/api/cpq/quotes/' + draft['id']
+    assert client.delete(draft_path, headers=auth).status_code == 200
+    assert client.get(draft_path, headers=auth).status_code == 404
+
+
+def test_lead_scope_and_independent_business_rules(environment):
+    server, client = environment
+    auth = header()
+    with server.db() as con:
+        cpq.put(con, 'lead', {'id':'test-proposal-lead','name':'Lead para proposta','taxId':'11222333000181',
+                              'city':'Belém','state':'PA','owner':'Erika'})
+        cpq.put(con, 'opportunity', {'id':'test-proposal-deal','clientId':'ci-client','owner':'Erika',
+                                      'createdAt':'2020-01-01T12:00:00-03:00'})
+
+    quote = create(client, clientId='',leadId='test-proposal-lead')
+    assert quote['leadId'] == 'test-proposal-lead' and quote['guest']['name'] == 'Lead para proposta'
+    foreign = client.post('/api/cpq/quotes', headers=header('Outro'),
+                          json=payload(clientId='',leadId='test-proposal-lead',sellerResponsible='Outro'))
+    assert foreign.status_code == 403
+    assert client.get('/api/cpq/activity/negocios', headers=auth).json()['records']['test-proposal-deal']['level'] == 'Crítico'
+    assert client.put('/api/cpq/inactivity/negocios', headers=auth,
+                      json={'dias_atencao':7,'dias_risco':14,'dias_critico':30,'acoes_validas':['reuniao_realizada']}).status_code == 200
+    path = '/api/cpq/contact/negocios/test-proposal-deal'
+    assert client.post(path, headers=header('Outro'),
+                       json={'acao':'reuniao_realizada','canal':'video','evidencia':'Reunião concluída'}).status_code == 403
+    assert client.post(path, headers=auth,
+                       json={'acao':'reuniao_realizada','canal':'video','evidencia':'Reunião concluída'}).status_code == 200
+    result = client.get('/api/cpq/activity/negocios', headers=auth).json()['records']['test-proposal-deal']
+    assert result['level'] == 'Em dia' and result['channel'] == 'video'
+    assert 'ligacao' in client.get('/api/cpq/inactivity/propostas', headers=auth).json()['acoes_validas']
