@@ -33,6 +33,7 @@
    }
    if(tab==='gestao'&&!$('salesReports')?.contains(document.activeElement))window.L2SalesReports?.render();
    window.L2Modern?.bindReadOnly();
+   window.L2CPQ?.decorate();
    for(const select of app.querySelectorAll('select[name="sellerResponsible"],select[name="user"],select[name="owner"],select[name="Responsável"]')){const names=select.name==='sellerResponsible'?s.sellers:teamNames();for(const name of names||[])if(![...select.options].some(o=>o.value===name)){const option=document.createElement('option');option.value=name;option.textContent=name;select.append(option);}}
    const feed=$('commercialActivity');if(feed)feed.innerHTML=commercialActivityHTML(activities());network();
   }finally{window.liveRenderOnly=false;refreshing=false;}
@@ -62,7 +63,7 @@
    if(!response.ok||!response.body?.getReader)throw Error('Atualização compartilhada indisponível');
    failures=0;const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';
    while(!controller.signal.aborted){const {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});let end;
-    while((end=buffer.indexOf('\n\n'))>=0){const message=buffer.slice(0,end);buffer=buffer.slice(end+2);if(token!==s.token||server!==s.server){controller.abort();break;}if(message.includes('event: records')||message.includes('event: ready'))requestRead();}
+    while((end=buffer.indexOf('\n\n'))>=0){const message=buffer.slice(0,end);buffer=buffer.slice(end+2);if(token!==s.token||server!==s.server){controller.abort();break;}if(message.includes('event: records')||message.includes('event: ready')){requestRead();window.L2CPQ?.loadAlerts();window.L2CPQ?.refreshTracking();}}
    }
   }catch(error){if(!controller.signal.aborted)failures++;}finally{if(stream===controller)stream=null;if(!controller.signal.aborted&&token===s.token&&failures<4&&!document.hidden)retryTimer=setTimeout(connected,Math.min(30000,3000*Math.max(1,failures)));}
  }

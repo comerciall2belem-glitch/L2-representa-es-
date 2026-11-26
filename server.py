@@ -3,6 +3,7 @@ import monthly_goals
 import logging
 from pipeline_rules import validate_opportunity
 import cpq
+import proposal_tracking
 import global_search_server
 import next_staging_seed
 import commercial_planning
@@ -144,6 +145,7 @@ def initialize():
         drive_backup.setup(con)
         webchat.setup(con)
         con.execute('CREATE TABLE IF NOT EXISTS entities (kind TEXT NOT NULL, id TEXT NOT NULL, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(kind,id))')
+        proposal_tracking.setup(con)
         if os.getenv('L2_EXPECTED_DATABASE') == 'l2_one_next_staging_db':
             global_search_server.create_indexes(con)
         con.execute('ALTER TABLE entities ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ')
@@ -2577,6 +2579,7 @@ cpq.configure(db=db, auth=auth, require_sector=require_sector, check_client_scop
               scoped_rows=scoped_rows, is_seller=is_seller, normalize_uf=normalize_uf,
               price_table_matches_client=price_table_matches_client, valid_cnpj=valid_cnpj, sync_order=sync_cpq_order)
 app.include_router(cpq.router)
+app.include_router(proposal_tracking.router)
 
 from sales_reports import install as install_sales_reports
 install_sales_reports(app, auth)

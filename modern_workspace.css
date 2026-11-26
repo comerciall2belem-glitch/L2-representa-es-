@@ -148,3 +148,15 @@
 @media(max-width:760px){
  .l2-modern .order-summary-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+/* Proposal activity indicators and rules dialog. */
+[data-l2-inactivity="Atenção"] { border-inline-start: 4px solid #aa7914 !important; }
+[data-l2-inactivity="Em risco"] { border-inline-start: 4px solid #bd571b !important; }
+[data-l2-inactivity="Crítico"] { border-inline-start: 4px solid #ae252d !important; }
+[data-cpq-age]:empty { display: none; }
+#cpqDialog { width: min(34rem, calc(100% - 2rem)); box-sizing: border-box; max-height: 85vh; overflow: auto; color: #123d44; background: white; border: 1px solid #dbe8e8; border-radius: 12px; padding: clamp(.75rem, 4vw, 1.5rem); }
+#cpqDialog::backdrop { background: rgb(13 42 46 / 55%); }
+#cpqDialog label { display: block; margin-block: .4rem; }
+#cpqDialog input[type="checkbox"], #cpqGuest { width: auto; }
+#cpqWorkspace summary { overflow-wrap: anywhere; cursor: pointer; }
+#cpqWorkspace [hidden], #cpqDialog [hidden] { display: none !important; }
