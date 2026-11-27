@@ -1362,8 +1362,9 @@ async function sync(options={}){
   const data=await r.json();
   if(user!==s.user||server!==s.server||token!==s.token)return;
   if(data.crmTeam){window.crmTeamData=data.crmTeam;window.crmTeamOwner=user;window.crmTeamToken=token;}
-  const acknowledged=new Set(Array.isArray(data.acknowledgedChangeIds)?data.acknowledgedChangeIds:batch.map(x=>x.changeId));
+  const acknowledged=new Set(Array.isArray(data.acknowledgedChangeIds)?data.acknowledgedChangeIds.filter(id=>batch.some(x=>x.changeId===id)):batch.map(x=>x.changeId));
   if(Array.isArray(data.acknowledgedChangeIds)&&batch.some(x=>!acknowledged.has(x.changeId)))throw Error('Servidor não confirmou todas as alterações enviadas. Tente sincronizar novamente.');
+  if(batch.some(x=>l2DeliveryTracker().context(x))&&!Array.isArray(data.acknowledgedChangeIds))throw Error('Servidor sem confirmação explícita. Atualize o aplicativo e tente novamente.');
   l2DeliveryTracker().confirmBatch(batch,data.acknowledgedChangeIds);
   s.pending=s.pending.filter(x=>!acknowledged.has(x.changeId));
   for(const name of ['clients','visits','orders','tasks','routes','goals','prices','officeProcesses','officeActions','officeCommercial','officeAdministrative','officeRituals','officeRoles','officeFinance','officeBudget','officeMonthlyClose','commissionRates','commissionReceipts','cashDays','cashEntries','whatsappTemplates','opportunities','interactions','fulfillments','settlements','industries','priceTables'])if(Array.isArray(data[name]))s[name]=data[name];
