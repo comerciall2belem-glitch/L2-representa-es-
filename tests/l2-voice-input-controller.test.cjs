@@ -1,0 +1,25 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const vm=require('node:vm');
+const src=fs.readFileSync('app.js','utf8');
+const begin=src.indexOf('var l2VoiceControllers;'),end=src.indexOf("window.addEventListener('pagehide',l2VoiceDisposeAll)",begin);
+assert.ok(begin>=0&&end>begin,'controlador real localizado');
+function setup({supported=true,online=true,allow=true,secure=true}={}){
+ const instances=[],timers=new Map();let seq=0;
+ class El {constructor(){this.style={};this.value='';this.maxLength=-1;this.isConnected=true;this.events=[];this.attrs={};this.disabled=false}setAttribute(k,v){this.attrs[k]=v}append(){}after(){}closest(){return null}addEventListener(){}removeEventListener(){}remove(){this.removed=true}focus(){this.focused=true}dispatchEvent(e){this.events.push(e.type)}}
+ class Rec{constructor(){instances.push(this)}start(){this.started=true}stop(){this.stopped=true}abort(){this.aborted=true}}
+ const input=new El(),ctx={window:{isSecureContext:secure,SpeechRecognition:supported?Rec:undefined},navigator:{onLine:online},document:{createElement:()=>new El()},Event:class{constructor(type){this.type=type}},setTimeout:fn=>{timers.set(++seq,fn);return seq},clearTimeout:id=>timers.delete(id)};
+ vm.createContext(ctx);vm.runInContext(src.slice(begin,end)+'\nthis.Controller=L2VoiceInputController;',ctx);
+ const c=new ctx.Controller({inputEl:input,context:'lembrete',allow:()=>allow});
+ return {c,input,instances,timers};
+}
+const result=(text,final=true)=>Object.assign([{transcript:text}],{isFinal:final});
+test('fallback sem API ou HTTPS mantém texto e botão manual',()=>{for(const opts of [{supported:false},{secure:false}]){const {c,input}=setup(opts);input.value='rascunho';assert.equal(c.button.disabled,true);assert.equal(input.value,'rascunho');assert.ok(!input.focused);c.destroy()}});
+test('offline mantém texto e encaminha foco',()=>{const {c,input,instances}=setup({online:false});input.value='manual';c.start();assert.equal(input.value,'manual');assert.equal(input.focused,true);assert.equal(instances.length,0);c.destroy()});
+test('permissão negada bloqueia áudio e preserva edição',()=>{const {c,input,instances}=setup();input.value='manual';c.start();instances[0].onerror({error:'not-allowed'});assert.equal(c.state,'permission_denied');assert.equal(c.button.disabled,true);assert.equal(input.focused,true);assert.equal(input.value,'manual');assert.equal(instances[0].aborted,true);c.destroy()});
+test('resultados finais sem duplicidade e sem sobrescrever digitação',()=>{const {c,input,instances}=setup();input.value='manual';c.start();c.start();assert.equal(instances.length,1);const r=instances[0];r.onstart();r.onresult({resultIndex:0,results:[result('parcial',false)]});assert.equal(input.value,'manual');r.onresult({resultIndex:0,results:[result('texto')]});r.onresult({resultIndex:0,results:[result('texto')]});assert.equal(input.value,'manual texto');assert.deepEqual(input.events,['input']);input.value+=' editado';r.onresult({resultIndex:1,results:[result('texto'),result('novo')]});assert.equal(input.value,'manual texto editado novo');c.destroy()});
+test('parada voluntária recebe resultado final e libera sessão',()=>{const {c,input,instances}=setup();c.start();const r=instances[0];r.onstart();c.stop();assert.equal(c.state,'stopping');r.onresult({resultIndex:0,results:[result('final')]});r.onend();assert.equal(input.value,'final');assert.equal(c.rec,null);assert.equal(c.state,'idle');c.destroy()});
+test('destruir cancela sessão e ignora callback antigo',()=>{const {c,input,instances}=setup();c.start();const r=instances[0],old=r.onresult;c.destroy();old({resultIndex:0,results:[result('atrasado')]});assert.equal(input.value,'');assert.equal(r.aborted,true);assert.equal(c.group.removed,true)});
+test('restrição financeira impede reconhecimento',()=>{const {c,instances}=setup({allow:false});c.start();assert.equal(instances.length,0);assert.equal(c.state,'error');c.destroy()});
+test('limite do campo e integração dos contextos reais',()=>{const {c,input,instances}=setup();input.maxLength=5;c.start();instances[0].onresult({resultIndex:0,results:[result('123456789')]});assert.equal(input.value,'12345');c.destroy();for(const [form,field] of [['quickFinanceForm','Descrição'],['crmTaskForm','text'],['taskForm','text'],['visitForm','notes'],['crmInteractionForm','text'],['crmInteractionForm','next']])assert.ok(src.includes("['"+form+"','"+field+"'"),form+' / '+field);assert.ok(src.includes('CommercialDrafts.bind();l2VoiceBindForms();'));assert.ok(src.includes('if(!preview)l2VoiceDisposeAll();'))});
