@@ -1712,6 +1712,12 @@ class L2VoiceInputController {
   this.manual=()=>{if(!this.dead&&!this.emitting){this.lastSource='manual';this.notify()}};this.input.addEventListener('input',this.manual);this.click=()=>{const now=Date.now();if(now-this.lastClick<250)return;this.lastClick=now;if(!this.ctor||this.state==='permission_denied'){this.input.focus();return}if(this.rec)this.stop();else this.start()};this.button.addEventListener('click',this.click);
   if(!this.ctor){this.state='unsupported';this.button.textContent='Digitar manualmente';this.feedback.textContent='Ditado indisponível. Toque para digitar ou use o microfone do teclado.'}
   else this.feedback.textContent='Opcional. O reconhecimento pode usar serviço externo. Revise antes de salvar.';
+  this._bindMobileFieldResilience();
+ }
+ _bindMobileFieldResilience(){
+  this._onFocusScroll=()=>{clearTimeout(this.focusTimer);this.focusTimer=setTimeout(()=>{if(this.dead||!this.input.isConnected||document.hidden||document.activeElement!==this.input)return;const mobile=window.matchMedia?.('(pointer: coarse)')?.matches;if(!mobile)return;const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;try{this.input.scrollIntoView({behavior:reduced?'auto':'smooth',block:'center'})}catch(_){this.input.scrollIntoView?.()}},250)};
+  this._onVisibilityChange=()=>{if(!document.hidden&&document.visibilityState!=='hidden')return;clearTimeout(this.focusTimer);if(this.rec){this.cancel();this.stateUI('idle','Ditado interrompido. Revise o texto.')}};
+  this.input.addEventListener('focus',this._onFocusScroll);document.addEventListener('visibilitychange',this._onVisibilityChange);
  }
  getEnvironmentDiagnostic(){return {context:this.context,secure:!!window.isSecureContext,supported:!!this.ctor,online:navigator.onLine!==false,standalone:!!(navigator.standalone||window.matchMedia?.('(display-mode: standalone)')?.matches),state:this.state,permission:this.state==='permission_denied'?'denied':'unknown',source:this.lastSource}}
  notify(){this.onChange({text:this.input.value,context:this.context,status:this.state,source:this.lastSource})}
@@ -1733,9 +1739,9 @@ class L2VoiceInputController {
  stop(){const rec=this.rec;if(!rec||this.state==='stopping')return;this.stateUI('stopping','Finalizando ditado…');clearTimeout(this.timer);this.timer=setTimeout(()=>{if(this.rec===rec)this.fallback('error','Ditado encerrado. Confira o texto.')},5000);try{rec.stop()}catch(_){this.fallback('error','Ditado interrompido. Continue digitando.')}}
  release(rec){clearTimeout(this.timer);this.rec=null;rec.onstart=rec.onresult=rec.onerror=rec.onend=null}
  cancel(){const rec=this.rec;if(!rec)return;this.release(rec);try{if(typeof rec.abort==='function')rec.abort();else rec.stop()}catch(_){}}
- destroy(){if(this.dead)return;this.dead=true;this.cancel();this.button.removeEventListener('click',this.click);this.input.removeEventListener('input',this.manual);this.group.remove()}
+ destroy(){if(this.dead)return;this.dead=true;this.cancel();this.button.removeEventListener('click',this.click);this.input.removeEventListener('input',this.manual);this.input.removeEventListener('focus',this._onFocusScroll);document.removeEventListener('visibilitychange',this._onVisibilityChange);clearTimeout(this.focusTimer);this.group.remove()}
 }
 function l2VoiceBindForms(){l2VoiceDisposeAll();if(!s.token||s.mustChangePassword)return;const targets=[['quickFinanceForm','Descrição','expense',()=>financeAllowed()&&$('quickFinanceForm')?.elements.namedItem('Tipo')?.value==='Despesa'],['crmTaskForm','text','reminder'],['taskForm','text','reminder'],['visitForm','notes','visit_note'],['crmInteractionForm','text','follow_up'],['crmInteractionForm','next','follow_up']];for(const [id,name,context,allow] of targets){const input=$(id)?.elements.namedItem(name);if(input&&(!allow||financeAllowed()))l2VoiceControllers.push(new L2VoiceInputController({inputEl:input,context,allow}))}}
 window.addEventListener('pagehide',l2VoiceDisposeAll);
 window.addEventListener('pageshow',e=>{if(e.persisted)l2VoiceBindForms()});
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')for(const c of l2VoiceControllers||[])if(c.rec){c.cancel();c.stateUI('idle','Ditado interrompido. Revise o texto.')}});
+
