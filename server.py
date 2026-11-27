@@ -1682,6 +1682,7 @@ def sync(data: Sync, authorization: str | None = Header(default=None)):
             result['crmTeam']['at'] = datetime.now(TZ).isoformat()
         for kind, name in [('settlement','settlements'),('office_finance','officeFinance'),('office_budget','officeBudget'),('office_monthly_close','officeMonthlyClose'),('cash_day','cashDays'),('cash_entry','cashEntries'),('commission_rate','commissionRates'),('commission_receipt','commissionReceipts')]:
             result[name] = scoped_rows(con,kind,user) if 'finance' in permissions else []
+        result['acknowledgedChangeIds'] = [change.changeId for change in data.changes]
         return result if 'finance' in permissions else hide_industry_commissions(result)
 
 def order_exists(con, order_id: str):
