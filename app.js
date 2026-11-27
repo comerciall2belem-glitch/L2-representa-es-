@@ -1742,6 +1742,24 @@ class L2VoiceInputController {
  destroy(){if(this.dead)return;this.dead=true;this.cancel();this.button.removeEventListener('click',this.click);this.input.removeEventListener('input',this.manual);this.input.removeEventListener('focus',this._onFocusScroll);document.removeEventListener('visibilitychange',this._onVisibilityChange);clearTimeout(this.focusTimer);this.group.remove()}
 }
 function l2VoiceBindForms(){l2VoiceDisposeAll();if(!s.token||s.mustChangePassword)return;const targets=[['quickFinanceForm','Descrição','expense',()=>financeAllowed()&&$('quickFinanceForm')?.elements.namedItem('Tipo')?.value==='Despesa'],['crmTaskForm','text','reminder'],['taskForm','text','reminder'],['visitForm','notes','visit_note'],['crmInteractionForm','text','follow_up'],['crmInteractionForm','next','follow_up']];for(const [id,name,context,allow] of targets){const input=$(id)?.elements.namedItem(name);if(input&&(!allow||financeAllowed()))l2VoiceControllers.push(new L2VoiceInputController({inputEl:input,context,allow}))}}
+/* Read-only field diagnostics, opt-in, no draft content or account identifiers. */
+function createHomologationHelper({controllers=()=>l2VoiceControllers||[],getSyncState=()=>({pending:s.pending.length,syncing:!!syncing,hasError:!!window.lastSyncError,lastSyncAt:s.syncAt||null})}={}){
+ function inspectAllContexts(){
+  return controllers().filter(c=>!c.dead&&c.input.isConnected&&c.allow()).map(c=>({...c.getEnvironmentDiagnostic(),activity:c.context,isListening:c.state==='listening',draftLength:c.input.value.length}));
+ }
+ function bindOfflineSyncBanner(onSyncStateChange){
+  if(typeof onSyncStateChange!=='function')throw new TypeError('Informe a função de diagnóstico.');
+  const notify=()=>onSyncStateChange({online:navigator.onLine!==false,timestamp:new Date().toISOString(),...getSyncState()});
+  notify();
+  window.addEventListener('online',notify);window.addEventListener('offline',notify);
+  return ()=>{window.removeEventListener('online',notify);window.removeEventListener('offline',notify)};
+ }
+ return Object.freeze({inspectAllContexts,bindOfflineSyncBanner});
+}
+window.L2VoiceHomologation=Object.freeze({
+ inspectAllContexts:()=>s.token&&!s.mustChangePassword?createHomologationHelper().inspectAllContexts():[],
+ getSyncDiagnostic:()=>s.token&&!s.mustChangePassword?{online:navigator.onLine!==false,pending:s.pending.length,syncing:!!syncing,hasError:!!window.lastSyncError,lastSyncAt:s.syncAt||null}:null
+});
 window.addEventListener('pagehide',l2VoiceDisposeAll);
 window.addEventListener('pageshow',e=>{if(e.persisted)l2VoiceBindForms()});
 
