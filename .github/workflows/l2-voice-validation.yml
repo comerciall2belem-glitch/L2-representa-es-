@@ -1,0 +1,22 @@
+name: L2 One - Validação Voz e Fallback (PR)
+on:
+  pull_request:
+    branches: [main, staging]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  validate-voice-controller:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Validar sintaxe do aplicativo
+        run: node --check app.js
+      - name: Executar testes do controlador real e verificar os quatro contextos
+        run: node --test tests/l2-voice-input-controller.test.cjs
