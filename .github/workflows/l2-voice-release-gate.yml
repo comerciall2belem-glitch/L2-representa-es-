@@ -1,0 +1,44 @@
+name: L2 One - Voice Release Gate
+on:
+  pull_request:
+    branches: [main, staging]
+  push:
+    branches: [main, feature/field-96-operacional]
+  workflow_dispatch:
+concurrency:
+  group: voice-release-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Sintaxe
+        run: |
+          node --check app.js
+          node --check sw.js
+          python -m py_compile server.py
+      - name: Testes de voz, entrega, integridade e quatro contextos
+        run: node --test tests/l2-voice-input-controller.test.cjs
+      - name: Cache PWA
+        run: |
+          node -e 'const fs=require("node:fs");const h=fs.readFileSync("index.html","utf8"),s=fs.readFileSync("sw.js","utf8");const p=h.match(/src="(app\.js\?v=[^"]+)"/)?.[1];if(!p||!s.includes("/"+p))process.exit(1)'
+      - name: Resumo do commit
+        if: always()
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          CI_STATUS: ${{ job.status }}
+        run: |
+          {
+            echo "## L2 One — gate de voz"
+            echo "- GITHUB_SHA: $GITHUB_SHA"
+            echo "- SHA candidato: $HEAD_SHA"
+            echo "- CI: $CI_STATUS"
+            echo "- Produção: NÃO LIBERADA automaticamente"
+            echo "- Exigir homologação física e aprovação explícita do mesmo SHA antes do merge."
+          } >> "$GITHUB_STEP_SUMMARY"
