@@ -148,3 +148,72 @@
 @media(max-width:760px){
  .l2-modern .order-summary-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+/* L2 One navigation */
+.l2-modern #tabs {
+  background: linear-gradient(165deg, #203e47, #112d35 82%);
+  gap: 10px;
+  padding: 16px 12px;
+}
+.l2-modern #tabs .l2-sidebar-brand {
+  align-items: center;
+  border-bottom: 1px solid #ffffff26;
+  padding: 0 0 13px;
+}
+.l2-modern #tabs .l2-sidebar-brand img {
+  display: block;
+  width: 128px;
+  max-width: 80%;
+  height: auto;
+  object-fit: contain;
+  border-radius: 6px;
+}
+.l2-sidebar-groups {
+  display: grid;
+  gap: 7px;
+}
+.l2-modern #tabs .l2-sidebar-extra {
+  background: #ffffff09;
+  border: 1px solid #ffffff1e;
+  border-radius: 10px;
+  margin: 0;
+  padding: 0;
+}
+.l2-modern #tabs .l2-sidebar-extra > summary {
+  display: grid;
+  grid-template-columns: 18px 1fr 9px;
+  align-items: center;
+  gap: 10px;
+  list-style: none;
+  min-height: 44px;
+  padding: 8px 11px;
+  border-radius: 9px;
+  color: #f5f8f8;
+  letter-spacing: .01em;
+}
+.l2-sidebar-extra > summary::-webkit-details-marker { display: none; }
+.l2-sidebar-extra > summary svg { width: 17px; height: 17px; color: #dec48e; }
+.l2-sidebar-extra > summary::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border: solid #dec48e;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(-45deg);
+}
+.l2-sidebar-extra[open] > summary::after { transform: rotate(45deg); }
+.l2-sidebar-links { display: grid; gap: 2px; padding: 0 5px 6px 15px; }
+.l2-modern #tabs button { min-height: 44px; padding: 8px 11px; font-size: 13px; color: #e1ebeb; }
+.l2-modern #tabs button:hover, .l2-modern #tabs summary:hover { background: #ffffff15; color: #fff; }
+.l2-modern #tabs button:focus-visible, .l2-modern #tabs summary:focus-visible {
+  outline: 2px solid #dec48e;
+  outline-offset: -2px;
+}
+.l2-modern #tabs button[aria-current=page] {
+  background: #385763;
+  color: #fff;
+  box-shadow: inset 3px 0 #dec48e;
+}
+.l2-modern #tabs .l2-sidebar-footer { padding: 8px 0 0; }
+.l2-modern #tabs .l2-sidebar-footer button { margin-top: 0; }
+.l2-modern #tabs .l2-sidebar-footer small { margin: 6px 11px; padding: 0; background: none; color: #c1d3d6; }
