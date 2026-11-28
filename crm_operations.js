@@ -42,6 +42,13 @@
   });
  }
  function filterPending(rows,day,filter='all',owner=''){const visible=rows.filter(x=>(!owner||(x.owner||x.user||'Não definido')===owner)&&(filter==='all'||filter==='action'&&x.due&&x.due<=day||filter==='overdue'&&x.due&&x.due<day||filter==='today'&&x.due===day||filter==='future'&&x.due>day||filter==='undated'&&!x.due));return filter==='action'?visible.sort((a,b)=>b.due.localeCompare(a.due)):visible;}
+ function dailyPriorities(rows,clients,day,owner){
+  const byId=new Map(clients.map(c=>[c.id,c]));
+  const score=row=>(row.due===day?4:0)+(row.kind==='fulfillment'||row.kind==='opportunity'?2:0)+(String(byId.get(row.clientId)?.abc||'').trim().toUpperCase()==='A'?1:0);
+  return filterPending(rows,day,'action',owner)
+   .sort((a,b)=>score(b)-score(a)||b.due.localeCompare(a.due))
+   .slice(0,5);
+ }
  function historicalForecast(opportunities,orders,day,minimum=5){
   const byId=new Map(orders.map(o=>[o.id,o])),rates={},closedRows=opportunities.filter(o=>o.stage==='Perdido'||byId.has(o.orderId)&&['Confirmado','Faturado','Entregue'].includes(byId.get(o.orderId).status)&&date(byId.get(o.orderId).date)&&date(byId.get(o.orderId).date)<=day);
   for(const stage of ['Prospectado','Qualificado','Visita agendada','Proposta enviada','Negociação','Ganho']){
@@ -55,6 +62,6 @@
   const open=opportunities.filter(o=>!o.orderId&&rates[o.stage]),eligible=open.filter(o=>rates[o.stage].rate!==null);
   return {rates,open,eligible,unknown:open.length-eligible.length,expected:eligible.reduce((n,o)=>n+Math.round(Number(o.amount||0)*100*rates[o.stage].rate),0)/100};
  }
- root.CRMOperations={historicalForecast,attendedVisit,overview,targets,businessDays,closed,filterPending};
+ root.CRMOperations={historicalForecast,attendedVisit,overview,targets,businessDays,closed,filterPending,dailyPriorities};
  if(typeof module!=='undefined')module.exports=root.CRMOperations;
 })(typeof window==='undefined'?globalThis:window);

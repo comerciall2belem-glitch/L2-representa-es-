@@ -36,3 +36,15 @@ assert.equal(crm.filterPending([{due:'2026-10-05'},{due:'2026-10-06'},{due:'2026
  delete state.visits[0].routeId;
  assert.deepEqual(crm.overview(state,day).pending.map(x=>x.id),['overdue']);
 }
+
+{
+ const day='2026-11-28',alice='Ana Paula';
+ const rows=[
+  {id:'a',clientId:'a',user:alice,due:day,kind:'route'},
+  {id:'b',user:alice,due:day,kind:'fulfillment'},
+  {id:'other',user:'Euler',due:day,kind:'fulfillment'},
+  {id:'future',user:alice,due:'2026-11-29',kind:'opportunity'},
+  ...Array.from({length:7},(_,i)=>({id:String(i),user:alice,due:'2026-11-27',kind:'route'})),
+ ];
+ assert.deepEqual(crm.dailyPriorities(rows,[{id:'a',abc:'A'}],day,alice).map(x=>x.id),['b','a','0','1','2']);
+}
