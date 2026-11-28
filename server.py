@@ -1738,18 +1738,24 @@ def whatsapp_capabilities(authorization: str | None = Header(default=None)):
     require_sector(user, 'commercial', 'office')
     return {'mediaWithCaption': bool(provider_config()), 'tableDocuments': bool(provider_config())}
 
-def catalog_document_data(user, client_id, selected_table):
+def catalog_document_data(user, client_id, selected_table, selected_uf=None):
     require_sector(user, 'commercial', 'office', 'catalog')
     with db() as con:
-        check_client_scope(con, user, client_id)
-        customer = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (client_id,)).fetchone()
+        customer = None
+        if client_id:
+            check_client_scope(con, user, client_id)
+            row = con.execute("SELECT payload FROM entities WHERE kind='client' AND id=%s", (client_id,)).fetchone()
+            if not row: raise HTTPException(404, 'Cliente não encontrado')
+            customer = row[0]
         table = con.execute("SELECT payload FROM entities WHERE kind='price_table' AND id=%s", (selected_table,)).fetchone()
-        if not customer: raise HTTPException(404, 'Cliente não encontrado')
         if not table or not table[0].get('active'): raise HTTPException(400, 'Selecione uma tabela ativa')
-        customer, table = customer[0], table[0]
-        uf = normalize_uf(customer.get('state'))
-        if not uf or (table.get('state') != 'ALL' and not price_table_matches_client(uf, table.get('state'))):
-            raise HTTPException(400, 'Tabela não permitida para a UF do cliente')
+        table = table[0]
+        uf = normalize_uf(customer.get('state')) if customer else selected_uf
+        if customer:
+            if not uf or (table.get('state') != 'ALL' and not price_table_matches_client(uf, table.get('state'))):
+                raise HTTPException(400, 'Tabela não permitida para a UF do cliente')
+        elif uf not in ('PA', 'AP') or table.get('state') not in (uf, 'ALL'):
+            raise HTTPException(400, 'Selecione PA ou AP e uma tabela válida para a UF')
         prices = [r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='price' AND coalesce(payload->>'tableId',(payload->>'brand')||'|'||(payload->>'state'))=%s ORDER BY id", (selected_table,))]
         if not prices: raise HTTPException(400, 'Tabela sem produtos cadastrados')
         industries = [r[0] for r in con.execute("SELECT payload FROM entities WHERE kind='industry' AND (id=%s OR payload->>'name'=%s)", (table['brand'], table['brand']))]
@@ -1759,9 +1765,9 @@ def catalog_document_data(user, client_id, selected_table):
     return customer, table, content, filename
 
 @app.get('/api/catalog/table.pdf')
-def catalog_table_pdf(client_id: str, table_id: str, authorization: str | None = Header(default=None)):
+def catalog_table_pdf(table_id: str, client_id: str | None = None, uf: str | None = None, authorization: str | None = Header(default=None)):
     user = auth(authorization)
-    _, _, content, filename = catalog_document_data(user, client_id, table_id)
+    _, _, content, filename = catalog_document_data(user, client_id, table_id, uf)
     return Response(content=content, media_type='application/pdf', headers={'Cache-Control':'no-store','Content-Disposition':'attachment; filename="'+filename+'"'})
 
 class TableDocumentSend(BaseModel):
