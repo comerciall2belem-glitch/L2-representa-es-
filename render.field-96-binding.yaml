@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: l2-one-homologacao-field-96
+    runtime: python
+    repo: https://github.com/comerciall2belem-glitch/L2-representa-es-
+    branch: feature/field-96-operacional
+    region: oregon
+    plan: free
+    autoDeployTrigger: "off"
+    numInstances: 1
+    buildCommand: pip install -r requirements.txt
+    startCommand: >-
+      python -c "import os, sys; from staging_guard import validate_database_target; os.getenv('L2_EXPECTED_DATABASE','').strip() == 'l2one_homologacao' or sys.exit('BLOQUEIO: Banco esperado ausente ou nao autorizado'); os.getenv('RENDER_GIT_COMMIT','') == '33692b2ecb3420cd0055db228de1cedc42f85de1' or sys.exit('BLOQUEIO: SHA nao aprovado'); validate_database_target(os.environ['DATABASE_URL'], 'l2one_homologacao')" && uvicorn server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: l2-one-homologacao-db
+          property: connectionString
+      - key: L2_EXPECTED_DATABASE
+        value: l2one_homologacao
