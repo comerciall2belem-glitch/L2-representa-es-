@@ -170,7 +170,22 @@ def refresh_client(con, client_id):
         put(con, 'route', route)
     return info
 
+def update_mcr_task_owner(con, client):
+    task_id = 'mcr-' + client['id']
+    row = con.execute("SELECT payload FROM entities WHERE kind='task' AND id=%s FOR UPDATE", (task_id,)).fetchone()
+    if not row or row[0].get('source') != 'MCR':
+        return
+    owner = client.get('owner') or ''
+    member = con.execute('SELECT username FROM app_users WHERE username=%s AND active', (owner,)).fetchone()
+    task = row[0]
+    needs_review = member is None
+    if task.get('user') != owner or task.get('responsibleNeedsReview') != needs_review:
+        put(con, 'task', {**task, 'user': owner, 'responsibleNeedsReview': needs_review})
+
+
 def event(con, kind, item):
+    if kind == 'client':
+        update_mcr_task_owner(con, item)
     if kind in ('order','visit','interaction') and item.get('clientId'):
         refresh_client(con, item['clientId'])
         if kind=='order' and item.get('status') in BUYING and local_date(item.get('date')) and local_date(item['date'])<=datetime.now(TZ).date():
