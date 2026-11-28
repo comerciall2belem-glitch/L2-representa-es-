@@ -1735,9 +1735,16 @@ function validRouteDate(value){
 }
 function routeIntegrityPanel(){
  const broken=s.routes.filter(r=>!validRouteDate(r.date));
- const unknown=s.tasks.filter(t=>t.source==='MCR'&&t.status!=='Concluída'&&!teamNames().includes(t.user));
+ const people=new Set(teamNames());
+ const unknown=s.tasks.filter(t=>t.source==='MCR'&&!CRMOperations.closed(t.status)&&(!people.has(t.user)||t.responsibleNeedsReview===true));
  if(!broken.length&&!unknown.length)return '';
- return `<section class="box"><h3>Agenda a corrigir</h3>${broken.map(r=>`<form onsubmit="repairRouteDate(event,'${esc(r.id)}')"><b>${esc(client(r.clientId).name||'Cliente')}</b><p>Data inválida · responsável atual: ${esc(r.user||'Não definido')}</p><label>Data correta<input name="date" type="date" required></label><label>Responsável<select name="user" required><option value="">Selecione</option>${teamOptions()}</select></label><button>Salvar correção</button></form>`).join('')}${unknown.length?`<p class="warn">${unknown.length} lembrete(s) MCR com responsável a validar: ${esc([...new Set(unknown.map(t=>t.user||'Não definido'))].join(', '))}. Confira o responsável no cadastro do cliente e atualize os lembretes. Códigos de carteira não comprovam vínculo com usuário.</p>`:''}</section>`;
+ const canReview=managementAllowed()&&hasSector('clients_edit')&&sectionAllowed('clientes');
+ const reminders=unknown.length?'<details><summary>'+unknown.length+' lembretes de acompanhamento sem responsável confirmado</summary><p>Estes lembretes orientam o próximo contato com o cliente. Confirme o vendedor no cadastro para atualizar o responsável do lembrete.</p>'+
+  (canReview?'<ul>'+unknown.map(t=>{
+   const c=s.clients.find(x=>x.id===t.clientId);
+   return '<li>'+esc(c?.name||'Cliente indisponível')+' · '+esc(t.user||'Não definido')+(c?' <button type="button" class="secondary" data-mcr-client="'+esc(c.id)+'" onclick="editClient(this.dataset.mcrClient)">Revisar cadastro</button>':'')+'</li>';
+  }).join('')+'</ul>':'<p>Peça à gestão para revisar os cadastros.</p>')+'</details>':'';
+ return `<section class="box"><h3>Agenda a corrigir</h3>${broken.map(r=>`<form onsubmit="repairRouteDate(event,'${esc(r.id)}')"><b>${esc(client(r.clientId).name||'Cliente')}</b><p>Data inválida · responsável atual: ${esc(r.user||'Não definido')}</p><label>Data correta<input name="date" type="date" required></label><label>Responsável<select name="user" required><option value="">Selecione</option>${teamOptions()}</select></label><button>Salvar correção</button></form>`).join('')}${reminders}</section>`;
 }
 function repairRouteDate(event,id){
  event.preventDefault();const f=event.target,r=s.routes.find(x=>x.id===id),day=f.elements.date.value,user=f.elements.user.value;
