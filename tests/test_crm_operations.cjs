@@ -16,3 +16,35 @@ console.log('Pendências, deduplicação, escopo, recompra e metas: OK');
 {const rows=[{due:'2026-10-05',user:'Euler'},{due:'2026-10-06',owner:'Ana Paula'},{due:'2026-10-07',user:'Marlene'},{due:'',user:'Euler'}];assert.equal(crm.filterPending(rows,'2026-10-06','overdue').length,1);assert.equal(crm.filterPending(rows,'2026-10-06','today').length,1);assert.equal(crm.filterPending(rows,'2026-10-06','future','Marlene').length,1);assert.equal(crm.filterPending(rows,'2026-10-06','undated').length,1);assert.equal(crm.filterPending(rows,'2026-10-06','all','Euler').length,2);}
 
 assert.equal(crm.filterPending([{due:'2026-10-05'},{due:'2026-10-06'},{due:'2026-10-07'},{due:''}],'2026-10-06','action').length,2);
+
+{
+ const day='2026-11-28';
+ const state={
+  clients:[{id:'a'}],
+  routes:[
+   {id:'overdue',clientId:'a',date:'2026-09-22'},
+   {id:'today',clientId:'a',date:day},
+   {id:'absent',clientId:'a',date:'2026-09-22',status:'Cliente ausente'},
+  ],
+  visits:[{routeId:'overdue',clientId:'a',date:day,result:'Não visitado'}],
+ };
+ let rows=crm.overview(state,day).pending;
+ assert.deepEqual(crm.filterPending(rows,day,'action').map(x=>x.id),['today','overdue']);
+ state.visits[0].result='Contato remoto';
+ rows=crm.overview(state,day).pending;
+ assert.deepEqual(rows.map(x=>x.id),['today']);
+ delete state.visits[0].routeId;
+ assert.deepEqual(crm.overview(state,day).pending.map(x=>x.id),['overdue']);
+}
+
+{
+ const day='2026-11-28',alice='Ana Paula';
+ const rows=[
+  {id:'a',clientId:'a',user:alice,due:day,kind:'route'},
+  {id:'b',user:alice,due:day,kind:'fulfillment'},
+  {id:'other',user:'Euler',due:day,kind:'fulfillment'},
+  {id:'future',user:alice,due:'2026-11-29',kind:'opportunity'},
+  ...Array.from({length:7},(_,i)=>({id:String(i),user:alice,due:'2026-11-27',kind:'route'})),
+ ];
+ assert.deepEqual(crm.dailyPriorities(rows,[{id:'a',abc:'A'}],day,alice).map(x=>x.id),['b','a','0','1','2']);
+}
