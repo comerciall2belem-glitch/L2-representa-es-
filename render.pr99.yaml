@@ -17,7 +17,7 @@ services:
       - key: L2_EXPECTED_DATABASE
         value: l2_one_pr99
       - key: L2_PASSWORD_1
-        sync: false
+        generateValue: true
       - key: L2_PASSWORD_2
         generateValue: true
       - key: L2_PASSWORD_3
