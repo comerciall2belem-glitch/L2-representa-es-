@@ -27,14 +27,9 @@ window.L2Modern=(()=>{
  const root=document.getElementById('tabs');
  const buttons=new Map([...root.querySelectorAll('button[data-tab]')].map(button=>[button.dataset.tab,button]));
  const brand=document.createElement('div');brand.className='l2-sidebar-brand';
- const logo=document.querySelector('header .brand-logo');
- if(logo){
-  const img=logo.cloneNode(true);
-  img.removeAttribute('id');
-  img.width=1152;
-  img.height=768;
-  brand.append(img);
- }
+ const logo=document.getElementById('l2SidebarLogo')?.content?.firstElementChild
+  ||document.querySelector('header .brand-logo');
+ if(logo)brand.append(logo.cloneNode(true));
  function takeButton(id){
   const button=buttons.get(id);
   if(!button)return null;
