@@ -11,7 +11,10 @@
   for(const x of state.tasks||[])if(!closed(x.status)&&(!x.clientId||ids.has(x.clientId)))add(x.sourceVisitId?'visit:'+x.sourceVisitId:x.sourceOpportunityId?'opportunity:'+x.sourceOpportunityId:'task:'+x.id,{...x,kind:'task',due:date(x.date),title:x.text});
   for(const x of state.visits||[])if(!(state.tasks||[]).some(t=>t.sourceVisitId===x.id&&closed(t.status))&&ids.has(x.clientId)&&x.next&&x.returnDate&&!closed(x.nextStatus))add('visit:'+x.id,{...x,kind:'visit',due:date(x.returnDate),title:x.next});
   for(const x of state.opportunities||[])if(ids.has(x.clientId)&&x.stage!=='Perdido')add('opportunity:'+x.id,{...x,kind:'opportunity',due:date(x.followUp),title:x.next||'Retornar negociação '+x.brand});
-  for(const x of state.routes||[])if(ids.has(x.clientId)&&!closed(x.status)&&!(state.visits||[]).some(v=>v.clientId===x.clientId&&v.date===x.date&&attendedVisit(v)))add('route:'+x.id,{...x,kind:'route',due:date(x.date),title:x.objective||'Atendimento agendado'});
+  const attendedVisits=(state.visits||[]).filter(attendedVisit);
+  for(const x of state.routes||[])if(ids.has(x.clientId)&&!closed(x.status)&&x.status!=='Cliente ausente'&&!attendedVisits.some(v=>
+   v.clientId===x.clientId&&(v.routeId?v.routeId===x.id:v.date===x.date)
+  ))add('route:'+x.id,{...x,kind:'route',due:date(x.date),title:x.objective||'Atendimento agendado'});
   for(const collection of ['officeActions','officeCommercial','officeAdministrative'])for(const x of state[collection]||[])if(!closed(x.Status)&&!(/financeiro/i.test(x['Área']||'')))add(collection+':'+x.id,{...x,kind:'office',collection,due:date(x.Prazo||x['Data retorno']),title:x['Demanda ou problema']||x['Próxima ação']||x.Demanda||x.Atividade||'Pendência do escritório',user:x.Responsável});
   for(const x of state.fulfillments||[])if(!['Entregue','Pós-venda concluído'].includes(x.stage)&&(!x.clientId||ids.has(x.clientId)))add('fulfillment:'+x.id,{...x,kind:'fulfillment',due:date(x.due),title:'Pedido · '+(x.stage||'Conferência'),user:x.owner});
   const rows=[...pending.values()].sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
@@ -38,7 +41,7 @@
    return {...g,daily,weekly:period?period.weekly/100:Number(g.amount||0)*week.length/days.length,dailySales:sum([day]),weeklySales:sum(week),planned,perAttendance:planned?daily/planned:null};
   });
  }
- function filterPending(rows,day,filter='all',owner=''){return rows.filter(x=>(!owner||(x.owner||x.user||'Não definido')===owner)&&(filter==='all'||filter==='action'&&x.due&&x.due<=day||filter==='overdue'&&x.due&&x.due<day||filter==='today'&&x.due===day||filter==='future'&&x.due>day||filter==='undated'&&!x.due));}
+ function filterPending(rows,day,filter='all',owner=''){const visible=rows.filter(x=>(!owner||(x.owner||x.user||'Não definido')===owner)&&(filter==='all'||filter==='action'&&x.due&&x.due<=day||filter==='overdue'&&x.due&&x.due<day||filter==='today'&&x.due===day||filter==='future'&&x.due>day||filter==='undated'&&!x.due));return filter==='action'?visible.sort((a,b)=>b.due.localeCompare(a.due)):visible;}
  function historicalForecast(opportunities,orders,day,minimum=5){
   const byId=new Map(orders.map(o=>[o.id,o])),rates={},closedRows=opportunities.filter(o=>o.stage==='Perdido'||byId.has(o.orderId)&&['Confirmado','Faturado','Entregue'].includes(byId.get(o.orderId).status)&&date(byId.get(o.orderId).date)&&date(byId.get(o.orderId).date)<=day);
   for(const stage of ['Prospectado','Qualificado','Visita agendada','Proposta enviada','Negociação','Ganho']){
