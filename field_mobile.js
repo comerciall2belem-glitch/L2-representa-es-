@@ -32,12 +32,30 @@ window.L2Field=(()=>{
    else{downloadBlob(blob,name);pdfStatus(mode==='share'?'PDF baixado. Anexe a cópia na conversa do cliente para concluir o envio.':'Cópia do pedido baixada em PDF.');}
   }catch(e){pdfStatus(e.name==='AbortError'?'Compartilhamento cancelado.':e.message||'Não foi possível gerar o PDF.');}
  }
- function eligibleTablesFor(uf){if(!['PA','AP'].includes(uf))return [];return s.priceTables.filter(t=>t.active&&(t.state==='ALL'||t.state===uf));}
- function openTables(){if(!active()||!sectionAllowed('marcas'))return;document.getElementById('fieldTableDialog')?.remove();const d=document.createElement('dialog');d.id='fieldTableDialog';d.className='field-dialog';d.setAttribute('aria-label','Exportar tabela em PDF');d.innerHTML=`<h3>Tabela de preços em PDF</h3><p>Escolha o estado e a tabela da indústria.</p><label>Estado<select id="fieldTableUF"><option value="">Selecione</option><option value="PA">Pará</option><option value="AP">Amapá</option></select></label><label>Indústria e tabela<select id="fieldTableChoice"><option value="">Selecione o estado primeiro</option></select></label><p id="fieldTableStatus" role="status"></p><div class="field-actions"><button id="fieldTableDownload">Exportar PDF</button><button id="fieldTableClose" class="secondary">Fechar</button></div>`;
-  document.body.appendChild(d);d.querySelector('#fieldTableUF').onchange=e=>{d.querySelector('#fieldTableChoice').innerHTML='<option value="">Selecione</option>'+eligibleTablesFor(e.target.value).map(t=>`<option value="${esc(t.id)}">${esc(industryLabel(t.brand))} · ${esc(t.title||t.state)} · ${esc(t.state==='ALL'?'PA/AP':t.state)}</option>`).join('');};d.querySelector('#fieldTableClose').onclick=()=>d.close();d.addEventListener('close',()=>d.remove(),{once:true});d.querySelector('#fieldTableDownload').onclick=()=>downloadTable(d);d.showModal();
+ async function loadPDFTables(d){
+  const select=d.querySelector('#fieldTableChoice'), status=d.querySelector('#fieldTableStatus');
+  const uf=d.querySelector('#fieldTableUF').value, token=s.token, request=Symbol();
+  d.tableRequest=request;
+  const current=()=>d.isConnected&&d.tableRequest===request&&s.token===token;
+  select.replaceChildren(new Option(uf?'Carregando indústrias…':'Selecione o estado primeiro',''));
+  select.disabled=true;status.textContent='';
+  if(!uf)return;
+  try{
+   if(!token||!navigator.onLine)throw Error('Entre no sistema e conecte-se para consultar as tabelas.');
+   const r=await fetch(s.server+'/api/catalog/pdf-tables?uf='+encodeURIComponent(uf),{headers:{Authorization:'Bearer '+token},cache:'no-store'});
+   if(!r.ok)throw Error('Não foi possível carregar as indústrias. Toque em Atualizar lista para tentar de novo.');
+   const tables=await r.json();
+   if(!current())return;
+   select.replaceChildren(new Option(tables.length?'Selecione a indústria e a tabela':'Nenhuma tabela ativa para este estado',''));
+   for(const t of tables)select.add(new Option([industryLabel(t.brand),t.title,t.state==='ALL'?'PA/AP':t.state].filter(Boolean).join(' · '),t.id));
+   select.disabled=!tables.length;
+  }catch(e){if(current()){select.replaceChildren(new Option('Lista indisponível',''));status.textContent=e.message;}}
+ }
+ function openTables(){if(!active()||!sectionAllowed('marcas'))return;document.getElementById('fieldTableDialog')?.remove();const d=document.createElement('dialog');d.id='fieldTableDialog';d.className='field-dialog';d.setAttribute('aria-label','Exportar tabela em PDF');d.innerHTML=`<h3>Tabela de preços em PDF</h3><p>Escolha o estado e a tabela da indústria.</p><label>Estado<select id="fieldTableUF"><option value="">Selecione</option><option value="PA">Pará</option><option value="AP">Amapá</option></select></label><label>Indústria e tabela<select id="fieldTableChoice" disabled><option value="">Selecione o estado primeiro</option></select></label><p id="fieldTableStatus" role="status"></p><div class="field-actions"><button id="fieldTableDownload">Exportar PDF</button><button id="fieldTableReload" type="button" class="secondary">Atualizar lista</button><button id="fieldTableClose" class="secondary">Fechar</button></div>`;
+  document.body.appendChild(d);d.querySelector('#fieldTableUF').onchange=()=>loadPDFTables(d);d.querySelector('#fieldTableReload').onclick=()=>loadPDFTables(d);d.querySelector('#fieldTableClose').onclick=()=>d.close();d.addEventListener('close',()=>d.remove(),{once:true});d.querySelector('#fieldTableDownload').onclick=()=>downloadTable(d);d.showModal();
  }
  async function downloadTable(d){const status=d.querySelector('#fieldTableStatus'),button=d.querySelector('#fieldTableDownload'),uf=d.querySelector('#fieldTableUF').value,tableId=d.querySelector('#fieldTableChoice').value;
-  if(!s.token||!navigator.onLine){status.textContent='Conecte-se para consultar a tabela atualizada.';return;}if(!['PA','AP'].includes(uf)||!eligibleTablesFor(uf).some(t=>t.id===tableId)){status.textContent='Selecione o estado e uma tabela válida.';return;}const token=s.token,user=s.user;button.disabled=true;status.textContent='Gerando PDF atualizado…';
+  if(!s.token||!navigator.onLine){status.textContent='Conecte-se para consultar a tabela atualizada.';return;}if(!['PA','AP'].includes(uf)||!tableId){status.textContent='Selecione o estado e uma tabela válida.';return;}const token=s.token,user=s.user;button.disabled=true;status.textContent='Gerando PDF atualizado…';
   try{const r=await fetch(s.server+'/api/catalog/table.pdf?uf='+encodeURIComponent(uf)+'&table_id='+encodeURIComponent(tableId),{headers:{Authorization:'Bearer '+token}});if(!r.ok)throw Error((await r.json().catch(()=>({}))).detail||'Não foi possível gerar o PDF.');const blob=await r.blob();if(blob.type!=='application/pdf'||!blob.size)throw Error('O servidor não retornou um PDF válido.');if(s.token!==token||s.user!==user||!d.isConnected)return;downloadBlob(blob,'tabela-'+tableId.replace(/[^a-zA-Z0-9_-]/g,'-')+'.pdf');status.textContent='Tabela atualizada exportada em PDF.';}catch(e){if(d.isConnected)status.textContent=e.message;}finally{button.disabled=false;}
  }
  function activityAlert(){let el=document.getElementById('l2FieldActivityAlert');if(!active()){el?.remove();document.getElementById('fieldTableDialog')?.remove();return;}if(!el){el=document.createElement('div');el.id='l2FieldActivityAlert';el.setAttribute('role','status');el.setAttribute('aria-live','polite');document.getElementById('l2WorkspaceBar')?.after(el);}const due=rows().filter(x=>x.date<=today()),late=due.filter(x=>x.date<today());el.replaceChildren();if(!due.length){el.hidden=true;return;}el.hidden=false;const b=document.createElement('button');b.type='button';b.textContent=`${due.length} atividade(s) para acompanhar · ${late.length} atrasada(s) · Ver alertas`;b.onclick=()=>{filter='due';show('hoje');document.querySelector('.field-counters')?.scrollIntoView({block:'start',behavior:'smooth'});};el.appendChild(b);}

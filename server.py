@@ -12,7 +12,7 @@ import os, json, time, hashlib, secrets, re, base64, gzip, unicodedata, io, zipf
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Header, UploadFile, File, Form, Request
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import JSONResponse, FileResponse, Response, StreamingResponse
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from datetime import date, datetime
 from pydantic import BaseModel, Field
@@ -1763,6 +1763,20 @@ def catalog_document_data(user, client_id, selected_table, selected_uf=None):
     content = build_catalog_pdf(table, industry, prices, BASE, datetime.now(TZ).strftime('%d/%m/%Y'))
     filename = 'tabela-'+re.sub(r'[^a-zA-Z0-9_-]', '-', selected_table)[:100]+'.pdf'
     return customer, table, content, filename
+
+@app.get('/api/catalog/pdf-tables')
+def catalog_pdf_tables(uf: str, authorization: str | None = Header(default=None)):
+    user = auth(authorization)
+    require_sector(user, 'commercial', 'office', 'catalog')
+    if uf not in ('PA', 'AP'):
+        raise HTTPException(400, 'Selecione PA ou AP')
+    with db() as con:
+        rows = con.execute("""SELECT id, payload->>'brand', payload->>'title', payload->>'state'
+            FROM entities WHERE kind='price_table' AND payload->>'active'='true'
+            AND payload->>'state' IN (%s, 'ALL')
+            ORDER BY lower(payload->>'brand'), lower(payload->>'title'), id""", (uf,)).fetchall()
+    return JSONResponse([dict(id=id_, brand=brand, title=title, state=state)
+                         for id_, brand, title, state in rows], headers={'Cache-Control': 'no-store'})
 
 @app.get('/api/catalog/table.pdf')
 def catalog_table_pdf(table_id: str, client_id: str | None = None, uf: str | None = None, authorization: str | None = Header(default=None)):
