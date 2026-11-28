@@ -162,8 +162,8 @@
 }
 .l2-modern #tabs .l2-sidebar-brand img {
   display: block;
-  width: 128px;
-  max-width: 80%;
+  width: min(62%, 142px);
+  max-width: 100%;
   height: auto;
   object-fit: contain;
   border-radius: 6px;
