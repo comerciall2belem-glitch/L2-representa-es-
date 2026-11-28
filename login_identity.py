@@ -8,5 +8,11 @@ def identity_key(name):
 def resolve_identity(name, candidates):
     if name in candidates:
         return name
-    matches = [candidate for candidate in candidates if identity_key(candidate) == identity_key(name)]
+    key = identity_key(name)
+    matches = [candidate for candidate in candidates if identity_key(candidate) == key]
+    if matches or key != 'anapon':
+        return matches[0] if len(matches) == 1 else None
+
+    # O apelido só aponta para uma conta ativa e inequívoca de Ana Paula.
+    matches = [candidate for candidate in candidates if identity_key(candidate) == 'ana paula']
     return matches[0] if len(matches) == 1 else None
