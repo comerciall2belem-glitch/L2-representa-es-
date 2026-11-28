@@ -4,35 +4,73 @@ window.L2Modern=(()=>{
  const icon=key=>`<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[key]||paths.grid}"/></svg>`;
  const destinations=[['hoje','Hoje','grid'],['clientes','Clientes','users'],['rota','Rota','shop'],['pedidos','Pedidos','bag'],['registro','Atender','chat']];
  const sidebarGroups=[
-  ['Comercial',['hoje','clientes','rota','pedidos','registro','crm','marcas','industries','whatsapp']],
-  ['Operações',['operations','estoque']],
-  ['Escritório',['office','finance','cash','personal']],
-  ['Gestão',['gestao','crescimento','routine','admin','config']]
+  {label:'Comercial',icon:'bag',tabs:['clientes','crm','rota','registro','pedidos','whatsapp']},
+  {label:'Operações',icon:'columns',tabs:['operations','estoque','marcas','industries']},
+  {label:'Escritório',icon:'wallet',tabs:['office','finance','cash','personal']},
+  {label:'Gestão',icon:'grid',tabs:['gestao','crescimento','routine','admin']}
  ];
+ const tabLabels={rota:'Minha rota',registro:'Registrar atendimento',crm:'Visão 360°',whatsapp:'Chat e tabelas',
+  operations:'Acompanhamento de pedidos',office:'Processos do escritório',gestao:'Metas e gestão',crescimento:'Desempenho comercial',admin:'Equipe e administração'};
+ const openGroups=new Map();
+ let previousTab;
  function closeMenu(){document.body.classList.remove('l2-menu-open');document.getElementById('l2MenuButton')?.setAttribute('aria-expanded','false');}
- function toggleMenu(){document.body.classList.toggle('l2-menu-open');document.getElementById('l2MenuButton')?.setAttribute('aria-expanded',String(document.body.classList.contains('l2-menu-open')));}
+ function toggleMenu(){
+  if(document.body.classList.contains('l2-menu-open')){closeMenu();return;}
+  document.body.classList.add('l2-menu-open');
+  document.getElementById('l2MenuButton')?.setAttribute('aria-expanded','true');
+  document.querySelector('#tabs [aria-current="page"]')?.focus();
+ }
  const nativeNav=workspaceNav;
- workspaceNav=function(){nativeNav();document.body.classList.add('l2-modern');if(!document.getElementById('l2WorkspaceBar')){const bar=document.createElement('div');bar.id='l2WorkspaceBar';bar.innerHTML=`<button id="l2MenuButton" class="secondary" aria-label="Abrir todas as operações" aria-controls="tabs" aria-expanded="false">${icon('menu')}</button><span id="l2Breadcrumb"></span><span id="l2UserBadge"></span>`;document.querySelector('header')?.after(bar);document.getElementById('l2MenuButton').onclick=toggleMenu;document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('l2-menu-open')){closeMenu();document.getElementById('l2MenuButton').focus();}});const veil=document.createElement('button');veil.id='l2MenuVeil';veil.setAttribute('aria-label','Fechar menu');veil.onclick=toggleMenu;document.body.appendChild(veil);const bottom=document.createElement('nav');bottom.id='l2BottomNav';bottom.setAttribute('aria-label','Navegação principal');document.body.appendChild(bottom);}
+ workspaceNav=function(){nativeNav();document.body.classList.add('l2-modern');if(!document.getElementById('l2WorkspaceBar')){const bar=document.createElement('div');bar.id='l2WorkspaceBar';bar.innerHTML=`<button id="l2MenuButton" class="secondary" aria-label="Menu de navegação" aria-controls="tabs" aria-expanded="false">${icon('menu')}</button><span id="l2Breadcrumb"></span><span id="l2UserBadge"></span>`;document.querySelector('header')?.after(bar);document.getElementById('l2MenuButton').onclick=toggleMenu;document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('l2-menu-open')){closeMenu();document.getElementById('l2MenuButton').focus();}});const veil=document.createElement('button');veil.id='l2MenuVeil';veil.setAttribute('aria-label','Fechar menu');veil.onclick=()=>{closeMenu();document.getElementById('l2MenuButton').focus();};document.body.appendChild(veil);const bottom=document.createElement('nav');bottom.id='l2BottomNav';bottom.setAttribute('aria-label','Navegação principal');document.body.appendChild(bottom);}
  document.getElementById('l2Breadcrumb').textContent='Workspace / '+(WORKSPACE_TABS.find(x=>x[0]===tab)?.[1]||'Visão geral');document.getElementById('l2UserBadge').textContent=String(s.user||'L2').split(' ').map(x=>x[0]).slice(0,2).join('');
  const nav=document.getElementById('l2BottomNav');nav.replaceChildren();for(const [id,label,key] of destinations){if(!sectionAllowed(id))continue;const button=document.createElement('button');button.dataset.tab=id;button.setAttribute('aria-current',tab===id?'page':'false');button.innerHTML=icon(key)+`<span>${label}</span>`;button.onclick=()=>{closeMenu();if(id==='crm')window.crmClientId='';show(id);if(id==='admin'){const heading=[...document.querySelectorAll('#app h3')].find(x=>/Equipe|Vendedores|vendedores/.test(x.textContent));heading?.scrollIntoView?.({block:'start'});}};nav.appendChild(button)}
  const root=document.getElementById('tabs');
- const buttons=[...root.querySelectorAll('button[data-tab]')];
+ const buttons=new Map([...root.querySelectorAll('button[data-tab]')].map(button=>[button.dataset.tab,button]));
  const brand=document.createElement('div');brand.className='l2-sidebar-brand';
- const logo=document.querySelector('header .brand-logo');if(logo){const img=logo.cloneNode(true);img.removeAttribute('id');brand.appendChild(img);}
- const groups=sidebarGroups.flatMap(([label,ids],index)=>{
-  const items=ids.map(id=>buttons.find(button=>button.dataset.tab===id)).filter(Boolean);
-  if(!items.length)return [];
+ const logo=document.querySelector('header .brand-logo');
+ if(logo){
+  const img=logo.cloneNode(true);
+  img.removeAttribute('id');
+  img.width=1152;
+  img.height=768;
+  brand.append(img);
+ }
+ function takeButton(id){
+  const button=buttons.get(id);
+  if(!button)return null;
+  buttons.delete(id);
+  button.type='button';
+  button.textContent=tabLabels[id]||button.textContent;
+  return button;
+ }
+ const home=takeButton('hoje');
+ if(home)home.insertAdjacentHTML('afterbegin',icon('grid'));
+ const settings=takeButton('config');
+ if(tab!==previousTab){
+  const activeGroup=sidebarGroups.find(group=>group.tabs.includes(tab));
+  if(activeGroup)openGroups.set(activeGroup.label,true);
+  previousTab=tab;
+ }
+ const groups=document.createElement('div');groups.className='l2-sidebar-groups';
+ for(const {label,icon:key,tabs} of sidebarGroups){
+  const items=tabs.map(takeButton).filter(Boolean);
+  if(!items.length)continue;
   const group=document.createElement('details');group.className='l2-sidebar-extra';
-  group.open=items.some(button=>button.dataset.tab===tab)||(index===0&&destinations.some(([id])=>id===tab));
-  const summary=document.createElement('summary');summary.textContent=label;
-  for(const button of items){
-   const shortcut=destinations.find(([id])=>id===button.dataset.tab);
-   if(shortcut)button.innerHTML=icon(shortcut[2])+`<span>${shortcut[1]}</span>`;
-  }
-  group.append(summary,...items);return [group];
- });
- const remaining=buttons.filter(button=>!sidebarGroups.some(([,ids])=>ids.includes(button.dataset.tab)));
- const footer=document.createElement('div');footer.className='l2-sidebar-footer';const status=document.createElement('small');status.textContent=s.token?(navigator.onLine?'Conectado · L2 One':'Offline · dados locais'):'Acesso não conectado';const region=document.createElement('p');region.textContent='Pará & Amapá';const user=document.createElement('b');user.textContent=s.user||'L2 One';footer.append(status,region,user);root.replaceChildren(brand,...groups,...remaining,footer);
+  group.open=openGroups.get(label)||false;
+  const summary=document.createElement('summary');
+  summary.innerHTML=icon(key)+'<span>'+label+'</span>';
+  summary.addEventListener('click',()=>openGroups.set(label,!group.open));
+  const list=document.createElement('div');list.className='l2-sidebar-links';
+  list.append(...items);
+  group.append(summary,list);
+  groups.append(group);
+ }
+ const footer=document.createElement('div');footer.className='l2-sidebar-footer';
+ if(settings)footer.append(settings);
+ const status=document.createElement('small');
+ status.textContent=s.token?(navigator.onLine?'Conectado':'Offline · dados locais'):'Sessão desconectada';
+ footer.append(status);
+ root.replaceChildren(...[brand,home,groups,...buttons.values(),footer].filter(Boolean));
  document.querySelectorAll('#tabs button').forEach(button=>button.addEventListener('click',closeMenu));
  };
  const nativeHome=renderSalesHome;
